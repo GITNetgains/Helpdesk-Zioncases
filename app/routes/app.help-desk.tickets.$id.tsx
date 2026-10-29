@@ -257,15 +257,15 @@ const STATUS_DOT: Record<string, string> = { Open: "#F5A524", "In progress": "#5
 // dot (the page checks for new messages every second).
 function ChatHeader({ ticket, count }: { ticket: TicketData["ticket"]; count: number }) {
   const initials = ticket.name.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]!.toUpperCase()).join("") || "?";
-  const chip = (text: string, color: string) => <span style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "4px 9px", borderRadius: 999, fontSize: 12, fontWeight: 600, color: "#344054", background: "#F2F4F7", border: "1px solid #E4E7EC", whiteSpace: "nowrap" }}>
+  const chip = (text: string, color: string) => <span style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "4px 9px", borderRadius: 999, fontSize: 12, fontWeight: 600, color: "#E5EAF7", background: "rgba(255,255,255,.08)", border: "1px solid rgba(255,255,255,.12)", whiteSpace: "nowrap" }}>
     <span aria-hidden="true" style={{ width: 7, height: 7, borderRadius: "50%", background: color }} />{text}
   </span>;
-  return <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "10px 14px", padding: "12px 16px", background: "#FFFFFF", borderBottom: "1px solid #E8EBEF" }}>
+  return <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "10px 14px", padding: "12px 16px", background: "#172351", borderBottom: "1px solid rgba(255,255,255,.1)" }}>
     <style>{"@keyframes hd-live { 0% { box-shadow: 0 0 0 0 rgba(52,168,107,.6) } 70% { box-shadow: 0 0 0 7px rgba(52,168,107,0) } 100% { box-shadow: 0 0 0 0 rgba(52,168,107,0) } }"}</style>
-    <span aria-hidden="true" style={{ display: "grid", placeItems: "center", width: 40, height: 40, borderRadius: "50%", background: "#E9EDFB", color: "#263E91", fontWeight: 700, fontSize: 15, flex: "none" }}>{initials}</span>
+    <span aria-hidden="true" style={{ display: "grid", placeItems: "center", width: 40, height: 40, borderRadius: "50%", background: "#334FB4", color: "#FFFFFF", fontWeight: 700, fontSize: 15, flex: "none" }}>{initials}</span>
     <div style={{ display: "grid", gap: 2, minWidth: 0, flex: "1 1 200px" }}>
-      <span style={{ color: "#202939", fontWeight: 700, fontSize: 15, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{ticket.name}</span>
-      <span style={{ color: "#667085", fontSize: 12.5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+      <span style={{ color: "#FFFFFF", fontWeight: 700, fontSize: 15, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{ticket.name}</span>
+      <span style={{ color: "#B7C2E4", fontSize: 12.5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
         {ticket.email}{ticket.category ? ` · ${ticket.subcategory ? `${ticket.category} › ${ticket.subcategory}` : ticket.category}` : ""}
       </span>
     </div>
@@ -276,7 +276,7 @@ function ChatHeader({ ticket, count }: { ticket: TicketData["ticket"]; count: nu
       {ticket.channel === "chat" && chip("Live Chat", "#5B8DEF")}
       <CancelBadge status={ticket.cancelStatus} />
       <AddressBadge status={ticket.addressStatus} />
-      <span title="New messages appear here by themselves" style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, color: "#16834A", fontWeight: 600 }}>
+      <span title="New messages appear here by themselves" style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, color: "#8FE3B0", fontWeight: 600 }}>
         <span aria-hidden="true" style={{ width: 8, height: 8, borderRadius: "50%", background: "#34A86B", animation: "hd-live 2s infinite" }} />Live · {count} message{count === 1 ? "" : "s"}
       </span>
     </div>
@@ -327,13 +327,13 @@ function ChatThread({ ticket, replyEmails, readAt }: { ticket: TicketData["ticke
     }} style={{
       // Fills the screen above the reply box, like a chat app.
       // (The whole window, reply box included, fits on screen: it stays in view as the right column scrolls.)
-      height: "clamp(240px, calc(100vh - 470px), 620px)", overflowY: "auto", scrollbarWidth: "thin", scrollbarColor: "#C5CAD3 transparent", padding: "12px 14px 14px",
-      // Dark Zion navy, like the dark sections of zioncases.com, with a faint dot pattern.
-      backgroundColor: "#F5F6F8", backgroundImage: "none", backgroundSize: "auto",
+      height: "clamp(240px, calc(100vh - 470px), 620px)", overflowY: "auto", scrollbarWidth: "thin", scrollbarColor: "#53638F transparent", padding: "12px 14px 14px",
+      // Deep Zion navy with a quiet blue glow and low-contrast texture.
+      backgroundColor: "#111A35", backgroundImage: "radial-gradient(circle at 18% 0%, rgba(51,79,180,.26), transparent 48%), radial-gradient(rgba(255,255,255,.035) 1px, transparent 1px)", backgroundSize: "auto, 18px 18px",
     }}>
       <div ref={content}>
       <div style={{ display: "flex", justifyContent: "center", marginBottom: 8 }}>
-        <span suppressHydrationWarning style={{ padding: "4px 11px", borderRadius: 999, background: "#FFFFFF", border: "1px solid #E5E7EB", color: "#667085", fontSize: 11.5, fontWeight: 600 }}>{dayLabel(ticket.createdAt)}</span>
+        <span suppressHydrationWarning style={{ padding: "4px 11px", borderRadius: 999, background: "#1C2A50", border: "1px solid #35436B", color: "#D8E0F5", fontSize: 11.5, fontWeight: 600 }}>{dayLabel(ticket.createdAt)}</span>
       </div>
       <OriginalRequest ticket={ticket} />
       {ticket.messages.map((message) => {
@@ -345,7 +345,7 @@ function ChatThread({ ticket, replyEmails, readAt }: { ticket: TicketData["ticke
         lastAuthor = message.kind === "event" ? "" : author;
         return <div key={message.id}>
           {newDay && <div style={{ display: "flex", justifyContent: "center", margin: "12px 0 4px" }}>
-            <span suppressHydrationWarning style={{ padding: "4px 11px", borderRadius: 999, background: "#FFFFFF", border: "1px solid #E5E7EB", color: "#667085", fontSize: 11.5, fontWeight: 600 }}>{dayLabel(message.createdAt)}</span>
+            <span suppressHydrationWarning style={{ padding: "4px 11px", borderRadius: 999, background: "#1C2A50", border: "1px solid #35436B", color: "#D8E0F5", fontSize: 11.5, fontWeight: 600 }}>{dayLabel(message.createdAt)}</span>
           </div>}
           <Message message={message} email={replyEmails.get(message.id)} grouped={grouped}
             files={ticket.attachments.filter((file) => file.messageId === message.id)}
@@ -363,7 +363,7 @@ function ChatThread({ ticket, replyEmails, readAt }: { ticket: TicketData["ticke
     </div>
     {unseen > 0 && <button type="button" onClick={toBottom} style={{
       position: "absolute", left: "50%", bottom: 14, transform: "translateX(-50%)", padding: "7px 14px", border: 0, borderRadius: 999, cursor: "pointer",
-      background: "#172351", color: "#fff", font: "inherit", fontSize: 13, fontWeight: 600, boxShadow: "0 4px 14px rgba(16,24,40,.2)",
+      background: "#EF3A24", color: "#fff", font: "inherit", fontSize: 13, fontWeight: 600, boxShadow: "0 4px 14px rgba(16,24,40,.28)",
     }}>{unseen} new message{unseen === 1 ? "" : "s"} ↓</button>}
   </div>;
 }
@@ -381,12 +381,12 @@ function ChannelPicker({ value, onChange, email }: { value: "page" | "email"; on
   return <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
     <span style={{ fontSize: 12.5, color: "#A9B3D3" }}>Send via</span>
     <div role="radiogroup" aria-label="Send via" title={`Request page: shown in their chat in your store. Email: also sent to ${email}.`}
-      style={{ display: "flex", padding: 3, gap: 2, borderRadius: 10, background: "#F2F4F7", border: "1px solid #E4E7EC" }}>
+      style={{ display: "flex", padding: 3, gap: 2, borderRadius: 10, background: "rgba(255,255,255,.07)", border: "1px solid rgba(255,255,255,.14)" }}>
       {CHANNELS.map((channel) => {
         const active = value === channel.id;
         return <button key={channel.id} type="button" role="radio" aria-checked={active} onClick={() => onChange(channel.id)} style={{
           display: "inline-flex", alignItems: "center", gap: 6, padding: "5px 10px", borderRadius: 8, font: "inherit", fontSize: 12.5, cursor: "pointer",
-          fontWeight: active ? 650 : 500, color: active ? "#fff" : "#475467", background: active ? "#334FB4" : "transparent", border: 0,
+          fontWeight: active ? 650 : 500, color: active ? "#fff" : "#D3DCF2", background: active ? "#334FB4" : "transparent", border: 0,
         }}>
           <s-icon type={channel.icon} size="small" />
           {channel.label}
@@ -431,20 +431,20 @@ function Composer({ ticket, macros, storeName, team, configured, me, order }: { 
   const note = kind === "note";
   const pill = (value: "reply" | "note", label: string) => <button type="button" role="tab" aria-selected={kind === value} onClick={() => setKind(value)} style={{
     padding: "7px 14px", borderRadius: 8, font: "inherit", fontSize: 13.5, cursor: "pointer", fontWeight: kind === value ? 650 : 500, border: 0,
-    color: kind === value ? "#fff" : "#475467", background: kind === value ? (value === "note" ? "#A36D0A" : "#334FB4") : "transparent",
+    color: kind === value ? "#fff" : "#D3DCF2", background: kind === value ? (value === "note" ? "#A36D0A" : "#334FB4") : "transparent",
   }}>{label}</button>;
   // Zion red, like the buttons on zioncases.com, so it stands out on the dark bar.
   const sendButton = (label: string, onClick: () => void, primary = true) => <button type="button" disabled={!body.trim() || sending} onClick={onClick} style={{
     padding: "9px 18px", borderRadius: 6, font: "inherit", fontSize: 14, fontWeight: 650, cursor: !body.trim() || sending ? "not-allowed" : "pointer",
     opacity: !body.trim() || sending ? 0.5 : 1, color: "#fff", background: primary ? (note ? "#B7791F" : "#EF3A24") : "transparent",
-    border: primary ? "1px solid transparent" : "1px solid #D0D5DD", boxShadow: primary ? "0 2px 4px rgba(16,24,40,.12)" : "none",
+    border: primary ? "1px solid transparent" : "1px solid rgba(255,255,255,.28)", boxShadow: primary ? "0 2px 4px rgba(16,24,40,.12)" : "none",
   }}>{label}</button>;
   // The reply box is the bottom bar of the chat window, like a messaging app.
   const where = note ? "🔒 Only your team sees notes" : channel === "email" ? `Shown in their chat and emailed to ${ticket.email}` : "The customer sees this in their chat on the request page";
-  return <div style={{ display: "grid", gap: 9, padding: "12px 14px 13px", background: note ? "#FFFBEB" : "#FFFFFF", borderTop: `1px solid ${note ? "#F0D98D" : "#E8EBEF"}`, color: "#475467", transition: "background .15s" }}>
+  return <div style={{ display: "grid", gap: 9, padding: "12px 14px 13px", background: note ? "#302714" : "#172351", borderTop: `1px solid ${note ? "#735B20" : "#2A3965"}`, color: "#D3DCF2", transition: "background .15s" }}>
     {ticket.status === "Resolved" && <span style={{ fontSize: 13, color: "#8FE3B0" }}>✓ This ticket is resolved. If the customer replies, it reopens automatically.</span>}
     <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
-      <div role="tablist" aria-label="Message type" style={{ display: "flex", padding: 3, gap: 2, borderRadius: 10, background: "#F2F4F7", border: "1px solid #E4E7EC" }}>
+      <div role="tablist" aria-label="Message type" style={{ display: "flex", padding: 3, gap: 2, borderRadius: 10, background: "rgba(255,255,255,.07)", border: "1px solid rgba(255,255,255,.14)" }}>
         {pill("reply", `Reply to ${ticket.name.split(" ")[0] || "customer"}`)}
         {pill("note", "Internal note")}
       </div>
@@ -470,10 +470,10 @@ function Composer({ ticket, macros, storeName, team, configured, me, order }: { 
       </div>
     </div>
     {!note && groups.suggested.length > 0 && <div style={{ display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center" }}>
-      <span style={{ fontSize: 12.5, color: "#667085" }}>Suggested:</span>
+      <span style={{ fontSize: 12.5, color: "#A9B7D9" }}>Suggested:</span>
       {groups.suggested.slice(0, 4).map((item) => <button key={item.id} type="button" onClick={() => insert(item.id)} style={{
         padding: "4px 11px", borderRadius: 999, font: "inherit", fontSize: 12.5, cursor: "pointer",
-        color: macro === item.id ? "#172351" : "#475467", background: macro === item.id ? "#E9EDFB" : "#FFFFFF", border: "1px solid #D0D5DD",
+        color: macro === item.id ? "#FFFFFF" : "#D3DCF2", background: macro === item.id ? "#334FB4" : "rgba(255,255,255,.06)", border: "1px solid rgba(255,255,255,.18)",
       }}>{item.title}</button>)}
     </div>}
     <div role="presentation" onKeyDown={(event) => { if (event.key === "Enter" && (event.ctrlKey || event.metaKey) && body.trim() && !sending) { event.preventDefault(); send(); } }}>
@@ -991,7 +991,7 @@ function TicketDetail({ screen }: { screen: TicketData }) {
     <AddressPanel screen={screen} />
 
     {/* One chat window, like a messaging app: who and where it stands, the conversation, then the reply box. */}
-    <div className="hd-chat" style={{ borderRadius: 12, overflow: "hidden", border: "1px solid #E1E5EB", boxShadow: "0 2px 8px rgba(16,24,40,.06)", background: "#FFFFFF" }}>
+    <div className="hd-chat" style={{ borderRadius: 12, overflow: "hidden", border: "1px solid #2A3965", boxShadow: "0 12px 30px rgba(12,20,43,.2)", background: "#172351" }}>
       <ChatHeader ticket={ticket} count={conversation.filter((message) => message.kind !== "event").length + (ticket.channel === "chat" ? 0 : 1)} />
       <ChatThread ticket={ticket} replyEmails={replyEmails} readAt={readAt} />
       <Composer key={ticket.id} ticket={ticket} macros={screen.macros} storeName={screen.storeName} team={screen.team} configured={screen.configured} me={screen.me} order={macroOrder(screen.order)} />
