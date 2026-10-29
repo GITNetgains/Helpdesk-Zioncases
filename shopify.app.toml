@@ -1,0 +1,47 @@
+# Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
+
+client_id = "b48eb12d314da0aa0c7398a1bcf5c2a3"
+name = "Zion Cases Helpdesk"
+application_url = "https://example.com"
+embedded = true
+
+[access_scopes]
+# Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
+# read_products: product picker on the form and ticket product images.
+# read_orders: the customer's orders on the form and the agent's order lookup.
+# write_orders: cancelling an order from an approved cancellation request.
+scopes = "read_products,read_orders,write_orders,read_shipping,write_draft_orders,write_app_proxy"
+
+# Storefront Help Desk form, customer request page and ticket tracking links.
+# Customers reach it at https://<store>/apps/help-desk.
+[app_proxy]
+url = "/help-desk"
+prefix = "apps"
+subpath = "help-desk"
+
+[webhooks]
+api_version = "2026-07"
+
+  [[webhooks.subscriptions]]
+  uri = "/webhooks/app/uninstalled"
+  topics = [ "app/uninstalled" ]
+
+  [[webhooks.subscriptions]]
+  uri = "/webhooks/app/scopes_update"
+  topics = [ "app/scopes_update" ]
+
+  # Closes order cancellation requests when the order is cancelled in Shopify.
+  [[webhooks.subscriptions]]
+  uri = "/webhooks/orders/cancelled"
+  topics = [ "orders/cancelled" ]
+
+  # Mandatory privacy webhooks; the Help Desk stores customer data.
+  [[webhooks.subscriptions]]
+  uri = "/webhooks/compliance"
+  compliance_topics = [ "customers/data_request", "customers/redact", "shop/redact" ]
+
+[auth]
+redirect_urls = [ "https://example.com/api/auth" ]
+
+[build]
+automatically_update_urls_on_dev = true

@@ -1,0 +1,888 @@
+/* Colours come from the block settings (defaults match Zion Cases: navy text, red accent). */
+.help-desk {
+  --hd-accent: #ef3a24;
+  --hd-text: #19213d;
+  --hd-muted: #5b6275;
+  --hd-border: #d4d6dd;
+  --hd-field: #fff;
+  --hd-ring: color-mix(in srgb, var(--hd-accent) 20%, transparent);
+  box-sizing: border-box;
+  /* The theme's .page-width wrapper sets the width, matching other sections. */
+  width: 100%;
+  max-width: 1180px;
+  margin: clamp(24px, 5vw, 56px) auto;
+  padding: clamp(20px, 4vw, 48px);
+  border: 1px solid #e4e5ea;
+  border-radius: 20px;
+  background: #fff;
+  box-shadow: 0 8px 32px rgba(25, 33, 61, .04);
+  color: var(--hd-text);
+  font-size: 16px;
+  line-height: 1.5;
+}
+.help-desk *, .help-desk *::before, .help-desk *::after { box-sizing: border-box; }
+.help-desk-header { margin-bottom: 28px; }
+/* A short accent bar above the heading. */
+.help-desk-header::before { content: ""; display: block; width: 40px; height: 4px; margin-bottom: 18px; border-radius: 4px; background: var(--hd-accent); }
+.help-desk h2 {
+  margin: 0 0 12px;
+  color: var(--hd-text);
+  font-size: clamp(26px, 3.4vw, 36px);
+  font-weight: 600;
+  line-height: 1.15;
+  letter-spacing: -.01em;
+}
+.help-desk-header p { margin: 0; color: var(--hd-muted); }
+
+.help-desk form, .help-desk fieldset, .help-desk [data-fields] { display: grid; gap: 20px; }
+.help-desk fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
+.help-desk form > fieldset > * { grid-column: 1 / -1; }
+.help-desk-section { display: grid; gap: 20px; min-width: 0; }
+.help-desk-section + .help-desk-section { margin-top: 12px; }
+/* Numbered steps: the number in a circle beside the title. */
+.help-desk-section-heading { display: grid; grid-template-columns: 32px minmax(0, 1fr); align-items: start; gap: 14px; }
+.help-desk-section-heading > div { display: grid; gap: 2px; padding-top: 3px; }
+.help-desk-step {
+  display: grid; place-items: center; width: 32px; height: 32px; border-radius: 50%;
+  background: var(--hd-text); color: #fff; font-size: 14px; font-weight: 700; line-height: 1;
+}
+.help-desk h3 { margin: 0; color: var(--hd-text); font: inherit; font-size: 18px; font-weight: 650; letter-spacing: -.015em; }
+@media (min-width: 640px) {
+  /* Fields line up under the step's title, not its number. */
+  .help-desk-section > :not(.help-desk-section-heading) { margin-left: 46px; }
+  /* A line joins each step's number to the next, like a timeline. */
+  .help-desk-section { position: relative; }
+  /* The footer lines up with the fields too. */
+  .help-desk-footer { margin-left: 46px; }
+}
+.help-desk-contact-fields { display: grid; gap: 20px; min-width: 0; }
+.help-desk [data-fields]:empty { display: none; }
+.help-desk-category-picker {
+  display: grid; gap: 16px; padding: 20px; border: 1px solid #e9ebef; border-radius: 14px; background: #f8f9fb;
+}
+.help-desk-category-select, .help-desk-issue-select { display: block; width: 100%; }
+.help-desk .help-desk-category-select, .help-desk .help-desk-issue-select {
+  min-height: 56px; border-color: #c7cbd3; border-radius: 10px; background-color: #fff;
+}
+.help-desk .help-desk-category-select:focus, .help-desk .help-desk-issue-select:focus {
+  border-color: var(--hd-accent); box-shadow: 0 0 0 3px var(--hd-ring);
+}
+.help-desk .help-desk-category-hint {
+  margin: -8px 0 0; padding: 10px 12px; border-left: 3px solid var(--hd-accent); border-radius: 0 8px 8px 0;
+  background: #fff; color: var(--hd-muted); font-size: 13px; line-height: 1.5;
+}
+.help-desk .help-desk-request-type { gap: 8px; padding-top: 2px; }
+/* The chosen option's description, under its dropdown. */
+.help-desk .help-desk-option-hint { padding-left: 2px; color: var(--hd-muted); font-size: 13px; line-height: 1.5; }
+.help-desk-footer { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 20px; margin-top: 12px; padding-top: 24px; border-top: 1px solid #eceef2; }
+.help-desk-footer > p {
+  max-width: 520px; padding-left: 26px; font-size: 13px; line-height: 1.5;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='none' stroke='%235b6275' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='7' width='10' height='7' rx='1.5'/%3E%3Cpath d='M5.5 7V5a2.5 2.5 0 0 1 5 0v2'/%3E%3C/svg%3E") left 2px no-repeat;
+}
+@media (min-width: 640px) {
+  .help-desk-contact-fields { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .help-desk-contact-fields > label:first-child { grid-column: 1 / -1; }
+}
+
+.help-desk label, .help-desk legend { display: grid; gap: 8px; color: var(--hd-text); font-size: 14px; font-weight: 600; letter-spacing: .01em; }
+.help-desk legend { display: block; margin-bottom: 4px; padding: 0; }
+.help-desk-required { color: var(--hd-accent); }
+.help-desk p { margin: 0; color: var(--hd-muted); font-size: 14px; }
+.help-desk a { color: var(--hd-accent); font-weight: 600; text-underline-offset: 3px; }
+
+.help-desk input:not([type=checkbox]):not([type=radio]):not([type=file]), .help-desk select, .help-desk textarea {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  min-height: 52px;
+  padding: 14px 16px;
+  border: 1px solid var(--hd-border);
+  border-radius: 10px;
+  background: var(--hd-field);
+  color: var(--hd-text);
+  font: inherit;
+  font-size: 16px;
+  font-weight: 400;
+  transition: border-color .15s, box-shadow .15s, background-color .15s;
+}
+.help-desk ::placeholder { color: #73798a; opacity: 1; }
+.help-desk select {
+  appearance: none;
+  padding-right: 44px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' fill='none'%3E%3Cpath d='M1 1.5l5 5 5-5' stroke='%2319213d' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 18px center;
+  cursor: pointer;
+}
+.help-desk textarea { min-height: 130px; resize: vertical; }
+.help-desk label { min-width: 0; }
+.help-desk input:hover, .help-desk select:hover, .help-desk textarea:hover { border-color: #b4b8c4; }
+.help-desk input:focus, .help-desk select:focus, .help-desk textarea:focus { outline: none; border-color: var(--hd-text); background-color: #fff; box-shadow: 0 0 0 4px var(--hd-ring); }
+/* Image upload: the transparent file input covers the drop zone, so clicks and drops reach it. */
+.help-desk-upload { display: grid; gap: 12px; }
+.help-desk-drop { 
+  position: relative;
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+  padding: 28px 20px;
+  border: 1.5px dashed var(--hd-border);
+  border-radius: 12px;
+  background: var(--hd-field);
+  text-align: center;
+  transition: border-color .15s, background-color .15s;
+}
+.help-desk-drop:hover, .help-desk-drop.help-desk-dragging { border-color: var(--hd-accent); background: color-mix(in srgb, var(--hd-accent) 5%, #fff); }
+.help-desk-drop:focus-within { border-color: var(--hd-text); box-shadow: 0 0 0 4px var(--hd-ring); }
+.help-desk-drop strong { color: var(--hd-text); font-size: 15px; font-weight: 600; }
+.help-desk-drop small { color: var(--hd-muted); font-size: 13px; font-weight: 400; }
+.help-desk-drop[data-count]:not([data-count=""])::after { content: attr(data-count); margin-top: 6px; padding: 3px 10px; border-radius: 999px; background: var(--hd-text); color: #fff; font-size: 12px; font-weight: 600; }
+.help-desk-drop-icon {
+  width: 44px; height: 44px; margin-bottom: 6px; border-radius: 50%;
+  background: color-mix(in srgb, var(--hd-accent) 12%, #fff) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='22' height='22' fill='none' stroke='%23ef3a24' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M11 15V4m0 0L6.5 8.5M11 4l4.5 4.5M3 15v2.5A1.5 1.5 0 0 0 4.5 19h13a1.5 1.5 0 0 0 1.5-1.5V15'/%3E%3C/svg%3E") center no-repeat;
+}
+.help-desk-drop input[type=file] { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
+.help-desk-previews { display: grid; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 12px; }
+.help-desk-previews:empty { display: none; }
+.help-desk-previews figure { position: relative; margin: 0; overflow: hidden; border: 1px solid #e4e5ea; border-radius: 10px; background: #fff; }
+.help-desk-previews img { display: block; width: 100%; aspect-ratio: 1; object-fit: cover; }
+.help-desk-previews figcaption { padding: 6px 8px; overflow: hidden; color: var(--hd-muted); font-size: 12px; white-space: nowrap; text-overflow: ellipsis; }
+.help-desk-previews figure.help-desk-invalid { border-color: var(--hd-accent); }
+.help-desk-previews figure.help-desk-invalid figcaption { color: var(--hd-accent); }
+.help-desk .help-desk-previews button { position: absolute; top: 6px; right: 6px; display: grid; place-items: center; width: 26px; min-height: 0; height: 26px; padding: 0; border-radius: 50%; background: rgba(25, 33, 61, .85); color: #fff; font-size: 16px; line-height: 1; letter-spacing: 0; }
+.help-desk .help-desk-previews button:hover { background: var(--hd-accent); box-shadow: none; transform: none; filter: none; }
+.help-desk input[type=checkbox], .help-desk input[type=radio] { width: 18px; height: 18px; margin: 0; accent-color: var(--hd-accent); flex: none; }
+
+.help-desk button {
+  min-height: 54px;
+  padding: 14px 28px;
+  border: 0;
+  border-radius: 10px;
+  background: var(--hd-accent);
+  color: #fff;
+  font: inherit;
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: .02em;
+  cursor: pointer;
+  transition: filter .15s, transform .15s, box-shadow .15s;
+}
+.help-desk button:hover:not(:disabled) { filter: brightness(.93); box-shadow: 0 6px 18px color-mix(in srgb, var(--hd-accent) 30%, transparent); transform: translateY(-1px); }
+.help-desk button:disabled { opacity: .6; cursor: wait; }
+.help-desk button[type=submit] { margin-left: auto; font-weight: 600; letter-spacing: 0; text-transform: none; }
+.help-desk :focus-visible { outline: 3px solid var(--hd-text); outline-offset: 3px; }
+
+/* Yes / No answers as pill buttons */
+.help-desk legend ~ .help-desk-choice {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 18px;
+  font-size: 15px;
+  font-weight: 500;
+  border: 1px solid var(--hd-border);
+  border-radius: 10px;
+  background: var(--hd-field);
+  cursor: pointer;
+}
+.help-desk legend ~ .help-desk-choice:has(input:checked) { border-color: var(--hd-accent); background: color-mix(in srgb, var(--hd-accent) 7%, #fff); }
+.help-desk fieldset:has(> legend) { grid-template-columns: 1fr 1fr; gap: 12px; }
+.help-desk fieldset:has(> legend) > legend { grid-column: 1 / -1; }
+.help-desk .help-desk-results .help-desk-choice { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 8px; font-weight: 400; font-size: 15px; cursor: pointer; }
+
+/* Product picker */
+.help-desk details { border: 1px solid var(--hd-border); border-radius: 10px; background: #fff; overflow: hidden; }
+.help-desk details[open] { padding-bottom: 16px; }
+.help-desk details > :not(summary) { margin: 12px 16px 0; }
+.help-desk summary { position: relative; padding: 16px 44px 16px 16px; background: var(--hd-field); font-size: 14px; font-weight: 600; list-style: none; cursor: pointer; }
+.help-desk summary::-webkit-details-marker { display: none; }
+.help-desk summary::after { content: ""; position: absolute; right: 18px; top: 50%; width: 8px; height: 8px; border: solid var(--hd-text); border-width: 0 2px 2px 0; transform: translateY(-70%) rotate(45deg); transition: transform .15s; }
+.help-desk details[open] summary::after { transform: translateY(-30%) rotate(-135deg); }
+.help-desk details > button { justify-self: start; min-height: 44px; padding: 10px 20px; background: var(--hd-text); }
+.help-desk .help-desk-results { max-height: 260px; overflow: auto; padding: 4px; border: 1px solid #eceef2; border-radius: 8px; }
+.help-desk .help-desk-results .help-desk-choice:hover { background: var(--hd-field); }
+/* Product search: suggestions open under the box as the customer types. */
+.help-desk .help-desk-product-search { position: relative; }
+.help-desk .help-desk-suggestions {
+  position: absolute; z-index: 20; top: calc(100% + 4px); left: 0; right: 0; max-height: 300px; overflow: auto; margin: 0; padding: 4px; list-style: none;
+  border: 1px solid var(--hd-border); border-radius: 10px; background: #fff; box-shadow: 0 10px 30px rgba(25, 33, 61, .12);
+}
+.help-desk .help-desk-suggestions li { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 8px; color: var(--hd-text); font-size: 15px; cursor: pointer; }
+.help-desk .help-desk-suggestions li:hover { background: var(--hd-field); }
+.help-desk .help-desk-suggestions .help-desk-suggestions-empty { color: var(--hd-muted); font-size: 14px; cursor: default; }
+.help-desk .help-desk-suggestions .help-desk-suggestions-empty:hover { background: none; }
+.help-desk .help-desk-selected { display: flex; flex-wrap: wrap; gap: 8px; }
+.help-desk .help-desk-selected:empty { display: none; }
+.help-desk .help-desk-thumb { flex: none; width: 44px; height: 44px; border-radius: 8px; border: 1px solid #eceef2; background: var(--hd-field); object-fit: cover; }
+/* No product photo: a box icon instead of an empty square. */
+.help-desk span.help-desk-thumb {
+  background: #f3f4f7 url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%239aa0ae' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 7.5L12 3l9 4.5v9L12 21l-9-4.5z'/%3E%3Cpath d='M3 7.5L12 12l9-4.5M12 12v9'/%3E%3C/svg%3E") center / 55% no-repeat;
+}
+.help-desk .help-desk-selected .help-desk-thumb { width: 26px; height: 26px; border-radius: 50%; }
+.help-desk .help-desk-selected button { display: inline-flex; align-items: center; gap: 8px; min-height: 0; padding: 4px 12px 4px 4px; border-radius: 999px; background: color-mix(in srgb, var(--hd-text) 8%, #fff); color: var(--hd-text); font-size: 13px; font-weight: 500; letter-spacing: 0; }
+.help-desk .help-desk-selected button:hover { box-shadow: none; transform: none; background: color-mix(in srgb, var(--hd-accent) 12%, #fff); }
+
+/* Status messages */
+.help-desk [data-help-desk-status]:not(:empty) { margin-bottom: 24px; padding: 14px 18px; border-left: 4px solid #2f9e6a; border-radius: 10px; background: #edf8f2; color: #1d5c3f; font-size: 15px; overflow-wrap: anywhere; }
+.help-desk [data-help-desk-status][data-error=true] { border-left-color: var(--hd-accent); background: color-mix(in srgb, var(--hd-accent) 8%, #fff); color: #8f1f12; }
+.help-desk [data-help-desk-status]:not([data-error]) { border-left-color: var(--hd-border); background: var(--hd-field); color: var(--hd-muted); }
+.help-desk [data-help-desk-status] button { display: block; min-height: 44px; margin-top: 12px; padding: 10px 20px; }
+
+.help-desk .help-desk-trap { display: none; }
+.help-desk [hidden] { display: none !important; }
+
+/* Signed-in customers */
+.help-desk .help-desk-signed {
+  display: flex; align-items: center; gap: 14px; padding: 14px 16px; border: 1px solid #e3f1e9; border-radius: 12px; background: #f3faf6;
+}
+.help-desk .help-desk-signed > div { display: grid; gap: 1px; min-width: 0; }
+.help-desk .help-desk-signed strong { color: var(--hd-text); font-size: 15px; font-weight: 650; }
+.help-desk .help-desk-signed span:not(.help-desk-avatar) { color: var(--hd-muted); font-size: 13px; }
+.help-desk-avatar {
+  display: grid; place-items: center; flex: none; width: 40px; height: 40px; border-radius: 50%;
+  background: var(--hd-text); color: #fff; font-size: 14px; font-weight: 700; letter-spacing: .02em;
+}
+.help-desk .help-desk-badge { margin-left: auto; padding: 2px 8px; border-radius: 999px; background: color-mix(in srgb, var(--hd-accent) 12%, #fff); color: var(--hd-accent); font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; }
+.help-desk .help-desk-order-items { display: grid; gap: 2px; padding: 8px; border: 1px solid #eceef2; border-radius: 10px; background: #fff; }
+.help-desk .help-desk-order-items > div { display: flex; align-items: center; gap: 12px; padding: 6px; }
+.help-desk .help-desk-order-items span:not(.help-desk-thumb) { display: grid; color: var(--hd-text); font-size: 14px; font-weight: 500; }
+.help-desk .help-desk-order-items small { color: var(--hd-muted); font-size: 13px; font-weight: 400; }
+
+/* Signed-in customers' earlier requests. */
+.help-desk-history { border: 1px solid #e4e5ea; border-radius: 12px; background: var(--hd-field); }
+.help-desk .help-desk-history summary { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 14px 44px 14px 16px; font-size: 15px; font-weight: 650; cursor: pointer; }
+.help-desk-count {
+  display: inline-grid; place-items: center; min-width: 24px; height: 24px; padding: 0 8px; border-radius: 999px;
+  background: var(--hd-text); color: #fff; font-size: 12px; font-weight: 700;
+}
+.help-desk-history li a { color: var(--hd-text); }
+.help-desk-history ul { display: grid; gap: 0; margin: 0; padding: 0 16px 8px; list-style: none; }
+.help-desk-history li { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; padding: 10px 0; border-top: 1px solid #e4e5ea; }
+.help-desk-history li a { flex: 1 1 220px; }
+.help-desk-history small { color: var(--hd-muted); font-size: 13px; }
+.help-desk-pill { padding: 2px 10px; border-radius: 999px; background: #eef0f4; font-size: 12px; font-weight: 600; }
+.help-desk-pill[data-status="Waiting on customer"] { background: #e3effd; color: #003a80; }
+.help-desk-pill[data-status="Resolved"] { background: #d9f5e3; color: #0c5132; }
+.help-desk-pill[data-cancel="Pending"] { background: #fff4d6; color: #7a5600; }
+.help-desk-pill[data-cancel="Approved"] { background: #e3effd; color: #003a80; }
+.help-desk-pill[data-cancel="Rejected"] { background: #fde8e5; color: #b3261e; }
+.help-desk-pill[data-cancel="Cancelled"] { background: #d9f5e3; color: #0c5132; }
+/* Cancel Order: the whole order is cancelled, only before it ships */
+.help-desk-cancel-notice { display: grid; gap: 2px; padding: 12px 14px; border: 1px solid #f3d9a4; border-left: 4px solid #f0b400; border-radius: 0 10px 10px 0; background: #fffaf0; font-size: 13px; line-height: 1.5; color: var(--hd-muted); }
+.help-desk-cancel-notice strong { color: var(--hd-text); font-size: 14px; }
+/* Modify Address: the new address in its own panel, like the topic picker;
+   street lines full width, the rest two to a row on wider screens */
+.help-desk-address { display: grid; gap: 20px; min-width: 0; padding: 20px; border: 1px solid #e9ebef; border-radius: 14px; background: #f8f9fb; }
+.help-desk-address > h4 { margin: 0; color: var(--hd-text); font: inherit; font-size: 15px; font-weight: 650; }
+@media (min-width: 640px) {
+  .help-desk-address { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .help-desk-address > h4, .help-desk-address > .help-desk-wide { grid-column: 1 / -1; }
+}
+.help-desk [data-help-desk-status] a { margin-left: 4px; }
+
+.help-desk .help-desk-hint { margin: 0; color: var(--hd-muted); font-size: 13px; }
+/* A hint under a field sits close to it, not a full field gap away. */
+.help-desk [data-fields]:not(.help-desk-request-type) > label + .help-desk-hint { margin-top: -12px; }
+.help-desk .help-desk-hint[hidden] { display: none; }
+
+/* Self-service order tracking. */
+.help-desk .help-desk-track { display: grid; gap: 16px; justify-items: start; }
+.help-desk .help-desk-track-result { display: grid; gap: 12px; width: 100%; }
+.help-desk .help-desk-track-result:empty { display: none; }
+/* --hd-tone colours the badge, progress bar and current step. */
+.help-desk .help-desk-track-card {
+  --hd-tone: var(--hd-accent); --hd-tone-soft: color-mix(in srgb, var(--hd-accent) 9%, #fff); --hd-done: var(--hd-accent);
+  display: grid; gap: 20px; width: 100%; padding: 20px 22px; border: 1px solid #e4e5ea; border-radius: 14px; background: #fff;
+  box-shadow: 0 4px 16px rgba(25, 33, 61, .05);
+}
+.help-desk .help-desk-track-card[data-tone=success] { --hd-tone: #1f8a53; --hd-tone-soft: #e3f5ea; --hd-done: #1f8a53; }
+.help-desk .help-desk-track-card[data-tone=warning] { --hd-tone: #b54708; --hd-tone-soft: #fdf1e1; }
+.help-desk .help-desk-track-card[data-tone=critical] { --hd-tone: #c4321f; --hd-tone-soft: #fdecea; }
+.help-desk .help-desk-track-head { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 8px 16px; }
+.help-desk .help-desk-track-head > div { display: grid; gap: 2px; }
+.help-desk .help-desk-track-head strong { color: var(--hd-text); font-size: 18px; font-weight: 700; line-height: 1.3; }
+.help-desk .help-desk-track-head small { color: var(--hd-muted); font-size: 13px; }
+.help-desk .help-desk-track-badge {
+  display: inline-flex; align-items: center; gap: 6px; padding: 5px 12px; border-radius: 999px;
+  background: var(--hd-tone-soft); color: var(--hd-tone); font-size: 13px; font-weight: 700; line-height: 1.2; white-space: nowrap;
+}
+.help-desk .help-desk-track-badge::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+/* A live order's badge light blinks; a delivered or cancelled one stays still. */
+.help-desk .help-desk-track-card:not([data-tone=success]) .help-desk-track-badge::before { animation: help-desk-blink 1.2s ease-in-out infinite; }
+.help-desk .help-desk-track-message { display: grid; gap: 4px; padding: 14px 16px; border-left: 3px solid var(--hd-tone); border-radius: 0 10px 10px 0; background: var(--hd-tone-soft); }
+.help-desk .help-desk-track-message strong { color: var(--hd-text); font-size: 15px; font-weight: 650; }
+.help-desk .help-desk-track-message p { color: var(--hd-text); opacity: .82; font-size: 14px; line-height: 1.55; }
+
+/* Progress bar: a thin grey track filled up to the current step (it grows in
+   when shown). Done steps are small ticked dots, the current step a larger
+   marker with its icon and a pulsing glow, later steps hollow rings. */
+.help-desk .help-desk-track-steps {
+  --hd-track-inset: 10%; --hd-marker: 36px;
+  position: relative; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); margin: 6px 0 0; padding: 0; list-style: none;
+}
+.help-desk .help-desk-track-steps::before, .help-desk .help-desk-track-steps::after {
+  content: ""; position: absolute; top: calc(var(--hd-marker) / 2 - 2px); left: var(--hd-track-inset); height: 4px; border-radius: 4px;
+}
+.help-desk .help-desk-track-steps::before { right: var(--hd-track-inset); background: #e6e8ed; }
+.help-desk .help-desk-track-steps::after {
+  width: calc((100% - 2 * var(--hd-track-inset)) * var(--hd-track-progress, 0)); background: var(--hd-done);
+  animation: help-desk-fill 1.2s cubic-bezier(.2, .8, .2, 1) both;
+}
+.help-desk .help-desk-track-steps li {
+  position: relative; z-index: 1; display: grid; grid-template-rows: var(--hd-marker) auto auto; justify-items: center; align-content: start;
+  gap: 2px; padding: 0 2px; text-align: center;
+}
+.help-desk .help-desk-track-steps li > span:not(.help-desk-track-dot) { margin-top: 8px; color: var(--hd-muted); font-size: 13px; font-weight: 500; line-height: 1.3; }
+.help-desk .help-desk-track-steps small { color: #8a90a0; font-size: 12px; }
+.help-desk .help-desk-track-dot {
+  position: relative; align-self: center; width: 22px; height: 22px; border: 2px solid #d4d7de; border-radius: 50%; background: #fff;
+  background-position: center; background-repeat: no-repeat;
+}
+.help-desk .help-desk-track-steps [data-state=done] .help-desk-track-dot {
+  border-color: var(--hd-done); background-color: var(--hd-done); background-size: 11px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12' fill='none' stroke='%23fff' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M2 6.5l2.8 2.8L10 3.5'/%3E%3C/svg%3E");
+}
+.help-desk .help-desk-track-steps [data-state=current] .help-desk-track-dot {
+  width: var(--hd-marker); height: var(--hd-marker); border: 0; background-color: var(--hd-tone); background-size: 18px;
+  box-shadow: 0 0 0 5px var(--hd-tone-soft), 0 4px 14px color-mix(in srgb, var(--hd-tone) 40%, transparent);
+  animation: help-desk-glow 1.6s ease-in-out infinite;
+}
+/* A ring rippling out from the marker, like a live location. */
+.help-desk .help-desk-track-steps [data-state=current] .help-desk-track-dot::after {
+  content: ""; position: absolute; inset: 0; border: 2px solid var(--hd-tone); border-radius: 50%; animation: help-desk-ripple 1.6s ease-out infinite;
+}
+/* The current step's icon: bag, box, truck, pin, home. */
+.help-desk .help-desk-track-steps [data-step="0"][data-state=current] .help-desk-track-dot { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23fff' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 8h14l-1 12H6L5 8z'/%3E%3Cpath d='M9 8V7a3 3 0 0 1 6 0v1'/%3E%3C/svg%3E"); }
+.help-desk .help-desk-track-steps [data-step="1"][data-state=current] .help-desk-track-dot { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23fff' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 7.5L12 3l9 4.5v9L12 21l-9-4.5z'/%3E%3Cpath d='M3 7.5L12 12l9-4.5M12 12v9'/%3E%3C/svg%3E"); }
+.help-desk .help-desk-track-steps [data-step="2"][data-state=current] .help-desk-track-dot { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23fff' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M2 5h12v11H2zM14 9h4l4 4v3h-8'/%3E%3Ccircle cx='6' cy='18' r='2'/%3E%3Ccircle cx='18' cy='18' r='2'/%3E%3C/svg%3E"); }
+.help-desk .help-desk-track-steps [data-step="3"][data-state=current] .help-desk-track-dot { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23fff' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 21s-7-6.2-7-11.5a7 7 0 0 1 14 0C19 14.8 12 21 12 21z'/%3E%3Ccircle cx='12' cy='9.5' r='2.5'/%3E%3C/svg%3E"); }
+.help-desk .help-desk-track-steps [data-step="4"][data-state=current] .help-desk-track-dot { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23fff' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 11l9-7 9 7M5 10v10h14V10M10 20v-6h4v6'/%3E%3C/svg%3E"); }
+.help-desk .help-desk-track-steps [data-state=done] > span:not(.help-desk-track-dot) { color: var(--hd-text); }
+.help-desk .help-desk-track-steps [data-state=current] > span:not(.help-desk-track-dot) { color: var(--hd-tone); font-weight: 700; }
+@keyframes help-desk-fill { from { width: 0; } }
+@keyframes help-desk-blink { 50% { opacity: .25; } }
+@keyframes help-desk-glow {
+  50% { box-shadow: 0 0 0 8px var(--hd-tone-soft), 0 4px 22px color-mix(in srgb, var(--hd-tone) 60%, transparent); }
+}
+@keyframes help-desk-ripple { from { opacity: .6; transform: scale(1); } to { opacity: 0; transform: scale(1.9); } }
+
+/* Carrier and tracking number, with a link to the carrier's page. */
+.help-desk .help-desk-track-package {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 16px;
+  padding: 14px 16px; border: 1px solid #eceef2; border-radius: 10px; background: #f8f9fb;
+}
+.help-desk .help-desk-track-package > div { display: grid; gap: 2px; min-width: 0; }
+.help-desk .help-desk-track-package small { color: var(--hd-muted); font-size: 12px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; }
+.help-desk .help-desk-track-package strong { color: var(--hd-text); font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.help-desk .help-desk-track-package div > span { color: var(--hd-muted); font-size: 14px; }
+.help-desk a.help-desk-track-link {
+  display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 10px 18px; border-radius: 10px;
+  background: var(--hd-text); color: #fff; font-size: 14px; font-weight: 600; text-decoration: none; white-space: nowrap;
+}
+.help-desk a.help-desk-track-link::after { content: "\2197"; font-size: 15px; line-height: 1; }
+.help-desk .help-desk-track-card > a.help-desk-track-link { justify-self: start; }
+
+/* Shipping Times: each rate with its price, and when it would arrive. */
+.help-desk .help-desk-ship-rates { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.help-desk .help-desk-ship-rates li {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 16px;
+  padding: 14px 16px; border: 1px solid #eceef2; border-radius: 10px; background: #f8f9fb;
+}
+.help-desk .help-desk-ship-rates li > div { display: grid; gap: 2px; min-width: 0; }
+.help-desk .help-desk-ship-rates li > div + div { text-align: right; }
+.help-desk .help-desk-ship-rates strong { color: var(--hd-text); font-size: 15px; font-weight: 600; }
+.help-desk .help-desk-ship-rates small { color: var(--hd-muted); font-size: 13px; }
+@media (max-width: 479px) { .help-desk .help-desk-ship-rates li > div + div { text-align: left; } }
+.help-desk a.help-desk-track-link:hover { background: color-mix(in srgb, var(--hd-text) 85%, #000); }
+/* "Didn't answer your question?" beside the button that opens a request. */
+.help-desk .help-desk-track-followup {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 20px; width: 100%;
+  padding: 16px 18px; border: 1px dashed #d4d7de; border-radius: 12px; background: #fafbfc;
+}
+.help-desk .help-desk-track-followup > div { display: grid; gap: 2px; min-width: 0; }
+.help-desk .help-desk-track-followup strong { color: var(--hd-text); font-size: 15px; font-weight: 650; }
+.help-desk .help-desk-track-followup span { color: var(--hd-muted); font-size: 14px; }
+.help-desk .help-desk-track-followup button { min-height: 46px; padding: 10px 22px; background: #fff; font-size: 15px; }
+.help-desk .help-desk-track-error { margin: 0; padding: 12px 16px; border-left: 3px solid var(--hd-accent); border-radius: 0 10px 10px 0; background: color-mix(in srgb, var(--hd-accent) 7%, #fff); color: #8f1f12; font-size: 14px; }
+.help-desk .help-desk-secondary { background: transparent; color: var(--hd-text); border: 1px solid var(--hd-text); box-shadow: none; }
+.help-desk button[hidden] { display: none; }
+
+.help-desk input:user-invalid, .help-desk select:user-invalid, .help-desk textarea:user-invalid { border-color: #b42318; background-color: #fffafa; }
+.help-desk .help-desk-previews button { width: 36px; height: 36px; }
+.help-desk .help-desk-selected button { min-height: 44px; }
+.help-desk label, .help-desk p, .help-desk-section { overflow-wrap: anywhere; }
+@media (max-width: 639px) {
+  .help-desk { border-radius: 14px; }
+  .help-desk-header { margin-bottom: 24px; padding-bottom: 24px; }
+  .help-desk-category-picker { gap: 14px; padding: 16px; }
+  .help-desk-footer { grid-template-columns: auto minmax(0, 1fr); gap: 16px; }
+  .help-desk-footer > button[type=submit] { justify-self: end; }
+  .help-desk-footer > p { max-width: none; }
+  .help-desk button[type=submit] { width: 100%; }
+  .help-desk .help-desk-track > button, .help-desk .help-desk-track-followup button { width: 100%; }
+  .help-desk .help-desk-track-card { padding: 16px; gap: 18px; }
+  .help-desk .help-desk-track-steps { --hd-track-inset: 10%; }
+  .help-desk .help-desk-track-steps li > span:not(.help-desk-track-dot) { font-size: 11.5px; }
+  .help-desk .help-desk-track-steps small { font-size: 11px; }
+  .help-desk .help-desk-track-steps { --hd-marker: 30px; }
+  .help-desk .help-desk-track-dot { width: 18px; height: 18px; }
+  .help-desk .help-desk-track-steps [data-state=done] .help-desk-track-dot { background-size: 9px; }
+  .help-desk .help-desk-track-steps [data-state=current] .help-desk-track-dot { background-size: 15px; }
+  .help-desk .help-desk-track-package { flex-direction: column; align-items: stretch; }
+  .help-desk a.help-desk-track-link { justify-content: center; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .help-desk *, .help-desk *::before, .help-desk *::after { transition: none !important; }
+  .help-desk button:hover:not(:disabled) { transform: none; }
+  .help-desk .help-desk-track-card *, .help-desk .help-desk-track-card *::before, .help-desk .help-desk-track-card *::after { animation: none !important; }
+}
+
+/* ---------- The step-by-step form ---------- */
+
+/* One step at a time; each step's title is focused when it opens. */
+.help-desk .help-desk-section[hidden] { display: none; }
+.help-desk .help-desk-section { gap: 24px; }
+.help-desk .help-desk-section h3 { font-size: 22px; font-weight: 700; }
+.help-desk .help-desk-section h3:focus { outline: none; }
+.help-desk .help-desk-section-heading { grid-template-columns: minmax(0, 1fr); }
+.help-desk .help-desk-section-heading > div { gap: 6px; padding-top: 0; }
+.help-desk .help-desk-section-heading p { margin: 0; color: var(--hd-muted); font-size: 15px; }
+.help-desk .help-desk-step, .help-desk .help-desk-progress-count, .help-desk .help-desk-option-hint { display: none; }
+.help-desk .help-desk-section > :not(.help-desk-section-heading), .help-desk .help-desk-footer { margin-left: 0; }
+.help-desk .help-desk-category-hint { margin: 0; }
+
+/* Layout: steps on the left on wide screens; stacked on phones. */
+.help-desk .help-desk-aside { display: grid; gap: 24px; align-content: start; min-width: 0; }
+@media (min-width: 900px) {
+  .help-desk form { grid-template-columns: 230px minmax(0, 1fr); align-items: start; column-gap: 56px; }
+  .help-desk form > .help-desk-aside { position: sticky; top: 24px; padding-right: 32px; border-right: 1px solid #eceef2; min-height: 100%; }
+}
+
+/* Progress: numbered circles joined by a line; done steps get a tick. */
+.help-desk .help-desk-progress { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); margin: 0; padding: 0; list-style: none; counter-reset: hd-step; }
+.help-desk .help-desk-progress li {
+  position: relative; display: grid; justify-items: center; gap: 8px; color: var(--hd-muted);
+  font-size: 13px; font-weight: 600; line-height: 1.3; text-align: center; counter-increment: hd-step;
+}
+.help-desk .help-desk-progress li::before {
+  content: counter(hd-step); position: relative; z-index: 1; display: grid; place-items: center; width: 32px; height: 32px;
+  border: 2px solid #dfe2e8; border-radius: 50%; background: #fff; color: var(--hd-muted); font-size: 14px; font-weight: 700;
+}
+.help-desk .help-desk-progress li:not(:last-child)::after {
+  content: ""; position: absolute; top: 15px; left: calc(50% + 20px); right: calc(-50% + 20px); height: 2px; background: #dfe2e8;
+}
+.help-desk .help-desk-progress li[data-state=done], .help-desk .help-desk-progress li[data-state=current] { color: var(--hd-text); }
+.help-desk .help-desk-progress li[data-state=current] { font-weight: 700; }
+.help-desk .help-desk-progress li[data-state=current]::before { border-color: var(--hd-accent); background: var(--hd-accent); color: #fff; box-shadow: 0 0 0 4px var(--hd-ring); }
+.help-desk .help-desk-progress li[data-state=done]::before { content: ""; border-color: var(--hd-accent); background: var(--hd-accent) url("data:image/svg+xml,%3Csvg%20xmlns%3D%27http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%27%20viewBox%3D%270%200%2024%2024%27%20fill%3D%27none%27%20stroke%3D%27%23fff%27%20stroke-width%3D%273%27%20stroke-linecap%3D%27round%27%20stroke-linejoin%3D%27round%27%3E%3Cpath%20d%3D%27M5%2012l5%205%209-10%27%2F%3E%3C%2Fsvg%3E") center / 14px no-repeat; }
+.help-desk .help-desk-progress li[data-state=done]::after { background: var(--hd-accent); }
+@media (max-width: 479px) { .help-desk .help-desk-progress li { font-size: 11px; } }
+@media (min-width: 900px) {
+  .help-desk .help-desk-progress { grid-template-columns: minmax(0, 1fr); }
+  .help-desk .help-desk-progress li { display: flex; align-items: center; gap: 14px; padding-bottom: 28px; font-size: 15px; text-align: left; }
+  .help-desk .help-desk-progress li:last-child { padding-bottom: 0; }
+  .help-desk .help-desk-progress li:not(:last-child)::after { top: 36px; bottom: 4px; left: 15px; right: auto; width: 2px; height: auto; }
+}
+
+/* Choices: a card per option with its icon, name, a line about it and a radio. */
+.help-desk .help-desk-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
+.help-desk .help-desk-tiles-heading { grid-column: 1 / -1; margin: 10px 0 0; color: var(--hd-muted); font: inherit; font-size: 12px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
+.help-desk .help-desk-tiles-heading:first-child { margin-top: 0; }
+.help-desk button.help-desk-tile {
+  position: relative; display: flex; align-items: flex-start; gap: 14px; width: 100%; min-width: 0; min-height: 0; margin: 0; padding: 18px 52px 18px 18px;
+  border: 1px solid var(--hd-border); border-radius: 12px; background: #fff; box-shadow: none; color: var(--hd-text);
+  font: inherit; text-align: left; letter-spacing: 0; text-transform: none; cursor: pointer; transition: border-color .15s, box-shadow .15s, background .15s;
+}
+.help-desk button.help-desk-tile:hover:not(:disabled) { border-color: var(--hd-accent); box-shadow: 0 4px 16px rgba(25, 33, 61, .08); filter: none; transform: none; }
+.help-desk button.help-desk-tile:focus-visible { outline: none; border-color: var(--hd-accent); box-shadow: 0 0 0 3px var(--hd-ring); }
+.help-desk button.help-desk-tile[aria-pressed=true] { border-color: var(--hd-accent); background: color-mix(in srgb, var(--hd-accent) 5%, #fff); box-shadow: 0 0 0 1px var(--hd-accent); }
+.help-desk button.help-desk-tile[data-icon]::before {
+  content: ""; flex: none; width: 44px; height: 44px; border-radius: 12px; background: color-mix(in srgb, var(--hd-accent) 9%, #fff) center / 22px no-repeat;
+}
+.help-desk button.help-desk-tile[data-icon=orders]::before { background-image: url("data:image/svg+xml,%3Csvg%20xmlns%3D%27http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%27%20viewBox%3D%270%200%2024%2024%27%20fill%3D%27none%27%20stroke%3D%27%23ef3a24%27%20stroke-width%3D%271.8%27%20stroke-linecap%3D%27round%27%20stroke-linejoin%3D%27round%27%3E%3Cpath%20d%3D%27M21%208l-9-5-9%205v8l9%205%209-5z%27%2F%3E%3Cpath%20d%3D%27M3%208l9%205%209-5M12%2013v8%27%2F%3E%3C%2Fsvg%3E"); }
+.help-desk button.help-desk-tile[data-icon=shipping]::before { background-image: url("data:image/svg+xml,%3Csvg%20xmlns%3D%27http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%27%20viewBox%3D%270%200%2024%2024%27%20fill%3D%27none%27%20stroke%3D%27%23ef3a24%27%20stroke-width%3D%271.8%27%20stroke-linecap%3D%27round%27%20stroke-linejoin%3D%27round%27%3E%3Cpath%20d%3D%27M1%205h13v11H1zM14%209h4l4%204v3h-8%27%2F%3E%3Ccircle%20cx%3D%275.5%27%20cy%3D%2718.5%27%20r%3D%272%27%2F%3E%3Ccircle%20cx%3D%2717.5%27%20cy%3D%2718.5%27%20r%3D%272%27%2F%3E%3C%2Fsvg%3E"); }
+.help-desk button.help-desk-tile[data-icon=product]::before { background-image: url("data:image/svg+xml,%3Csvg%20xmlns%3D%27http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%27%20viewBox%3D%270%200%2024%2024%27%20fill%3D%27none%27%20stroke%3D%27%23ef3a24%27%20stroke-width%3D%271.8%27%20stroke-linecap%3D%27round%27%20stroke-linejoin%3D%27round%27%3E%3Cpath%20d%3D%27M12%203l9%2016H3z%27%2F%3E%3Cpath%20d%3D%27M12%2010v4M12%2017h.01%27%2F%3E%3C%2Fsvg%3E"); }
+.help-desk button.help-desk-tile[data-icon=returns]::before { background-image: url("data:image/svg+xml,%3Csvg%20xmlns%3D%27http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%27%20viewBox%3D%270%200%2024%2024%27%20fill%3D%27none%27%20stroke%3D%27%23ef3a24%27%20stroke-width%3D%271.8%27%20stroke-linecap%3D%27round%27%20stroke-linejoin%3D%27round%27%3E%3Cpath%20d%3D%27M9%2014L4%209l5-5%27%2F%3E%3Cpath%20d%3D%27M4%209h11a5%205%200%200%201%200%2010h-3%27%2F%3E%3C%2Fsvg%3E"); }
+.help-desk button.help-desk-tile[data-icon=wholesale]::before { background-image: url("data:image/svg+xml,%3Csvg%20xmlns%3D%27http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%27%20viewBox%3D%270%200%2024%2024%27%20fill%3D%27none%27%20stroke%3D%27%23ef3a24%27%20stroke-width%3D%271.8%27%20stroke-linecap%3D%27round%27%20stroke-linejoin%3D%27round%27%3E%3Cpath%20d%3D%27M3%209l1.5-5h15L21%209%27%2F%3E%3Cpath%20d%3D%27M3%209h18v2a3%203%200%200%201-6%200%203%203%200%200%201-6%200%203%203%200%200%201-6%200z%27%2F%3E%3Cpath%20d%3D%27M5%2013v8h14v-8%27%2F%3E%3C%2Fsvg%3E"); }
+.help-desk button.help-desk-tile[data-icon=affiliate]::before { background-image: url("data:image/svg+xml,%3Csvg%20xmlns%3D%27http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%27%20viewBox%3D%270%200%2024%2024%27%20fill%3D%27none%27%20stroke%3D%27%23ef3a24%27%20stroke-width%3D%271.8%27%20stroke-linecap%3D%27round%27%20stroke-linejoin%3D%27round%27%3E%3Ccircle%20cx%3D%279%27%20cy%3D%278%27%20r%3D%273.5%27%2F%3E%3Cpath%20d%3D%27M2.5%2020a6.5%206.5%200%200%201%2013%200%27%2F%3E%3Cpath%20d%3D%27M16%204.5a3.5%203.5%200%200%201%200%207M18%2014a6.5%206.5%200%200%201%203.5%206%27%2F%3E%3C%2Fsvg%3E"); }
+.help-desk button.help-desk-tile[data-icon=other]::before { background-image: url("data:image/svg+xml,%3Csvg%20xmlns%3D%27http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%27%20viewBox%3D%270%200%2024%2024%27%20fill%3D%27none%27%20stroke%3D%27%23ef3a24%27%20stroke-width%3D%271.8%27%20stroke-linecap%3D%27round%27%20stroke-linejoin%3D%27round%27%3E%3Cpath%20d%3D%27M21%2012a8%208%200%200%201-11.6%207.1L4%2020l1-4.6A8%208%200%201%201%2021%2012z%27%2F%3E%3Cpath%20d%3D%27M8.5%2012h.01M12%2012h.01M15.5%2012h.01%27%2F%3E%3C%2Fsvg%3E"); }
+.help-desk .help-desk-tile-text { display: grid; gap: 4px; min-width: 0; }
+.help-desk .help-desk-tile-text strong { font-size: 16px; font-weight: 650; line-height: 1.3; }
+.help-desk .help-desk-tile-text span { color: var(--hd-muted); font-size: 14px; font-weight: 400; line-height: 1.5; }
+.help-desk .help-desk-radio {
+  position: absolute; top: 20px; right: 18px; width: 20px; height: 20px; border: 2px solid #c3c7d0; border-radius: 50%; background: #fff;
+  transition: border-color .15s, box-shadow .15s, background .15s;
+}
+.help-desk button.help-desk-tile:hover:not(:disabled) .help-desk-radio { border-color: var(--hd-accent); }
+.help-desk button.help-desk-tile[aria-pressed=true] .help-desk-radio { border-color: var(--hd-accent); background: var(--hd-accent); box-shadow: inset 0 0 0 4px #fff; }
+
+/* What was picked, with Change, on the last two steps. */
+.help-desk .help-desk-chosen {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px;
+  padding: 12px 16px; border: 1px solid #eceef2; border-radius: 10px; background: #f8f9fb; font-size: 14px; font-weight: 600;
+}
+.help-desk .help-desk-chosen[hidden] { display: none; }
+.help-desk button.help-desk-link {
+  min-height: 0; margin: 0; padding: 0; border: 0; background: none; box-shadow: none; color: var(--hd-accent);
+  font: inherit; font-size: 14px; font-weight: 600; letter-spacing: 0; text-decoration: underline; text-underline-offset: 3px; text-transform: none;
+}
+.help-desk button.help-desk-link:hover:not(:disabled) { filter: none; transform: none; box-shadow: none; }
+
+/* Back and Next. */
+.help-desk .help-desk-nav { display: flex; justify-content: space-between; gap: 12px; padding-top: 24px; border-top: 1px solid #eceef2; }
+.help-desk .help-desk-nav button, .help-desk .help-desk-footer > button { margin: 0; }
+@media (max-width: 639px) { .help-desk .help-desk-footer > p { grid-column: 1 / -1; grid-row: 1; } }
+
+/* The topic's line under "What do you need help with?" reads like any step's subtitle. */
+.help-desk .help-desk-section .help-desk-category-hint { padding: 0; border: 0; border-radius: 0; background: none; color: var(--hd-muted); font-size: 15px; }
+/* Signed in, compact in the sidebar. */
+.help-desk .help-desk-aside .help-desk-signed { grid-template-columns: 40px minmax(0, 1fr); gap: 12px; padding: 14px; }
+.help-desk .help-desk-aside .help-desk-signed .help-desk-avatar { width: 40px; height: 40px; font-size: 14px; }
+.help-desk .help-desk-aside .help-desk-signed strong { font-size: 14px; line-height: 1.35; }
+.help-desk .help-desk-aside .help-desk-signed span:not(.help-desk-avatar) { font-size: 12px; line-height: 1.4; }
+/* The issue dropdown behind the cards is never shown. */
+.help-desk .help-desk-section .help-desk-request-type { display: none; }
+
+/* The theme's own text styles (letter-spacing, capitals, heading fonts, paragraph
+   margins) don't reach into the form, so it reads the same on every theme. */
+.help-desk h2, .help-desk h3, .help-desk h4, .help-desk p, .help-desk li, .help-desk strong, .help-desk small,
+.help-desk span, .help-desk label, .help-desk legend, .help-desk input, .help-desk select, .help-desk textarea, .help-desk button {
+  font-family: inherit; letter-spacing: normal; text-transform: none;
+}
+.help-desk h2, .help-desk h3, .help-desk h4 { line-height: 1.25; word-break: normal; }
+.help-desk p, .help-desk ul, .help-desk ol { margin-top: 0; margin-bottom: 0; }
+.help-desk .help-desk-section-heading h3 { margin: 0; font-size: 22px; font-weight: 700; }
+.help-desk .help-desk-header h2 { letter-spacing: -.01em; }
+.help-desk label > span:first-child { font-size: 14px; font-weight: 600; line-height: 1.4; }
+.help-desk input, .help-desk select, .help-desk textarea { font-size: 16px; line-height: 1.4; }
+.help-desk .help-desk-tiles-heading { letter-spacing: .06em; text-transform: uppercase; }
+
+/* Signed-in customers skip "Your details", so its step isn't listed. */
+.help-desk .help-desk-progress li[hidden] { display: none; }
+.help-desk .help-desk-progress { grid-template-columns: none; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); }
+@media (min-width: 900px) { .help-desk .help-desk-progress { grid-auto-flow: row; } }
+
+/* Clear, compact progress and a readable final confirmation. */
+.help-desk .help-desk-progress-count {
+  display: block; color: var(--hd-muted); font-size: 13px; font-weight: 650; letter-spacing: .02em;
+}
+.help-desk .help-desk-progress { gap: 6px; }
+.help-desk .help-desk-progress li { transition: color .18s ease; }
+.help-desk .help-desk-review {
+  display: grid; overflow: hidden; border: 1px solid #e6e8ee; border-radius: 14px; background: #fbfcfe;
+}
+.help-desk .help-desk-review:empty { display: none; }
+.help-desk .help-desk-review-row {
+  display: grid; grid-template-columns: minmax(110px, .7fr) minmax(0, 1.3fr); gap: 16px;
+  padding: 14px 16px; border-bottom: 1px solid #e9ebf0; font-size: 14px;
+}
+.help-desk .help-desk-review-row:last-child { border-bottom: 0; }
+.help-desk .help-desk-review-row > span { color: var(--hd-muted); }
+.help-desk .help-desk-review-row > strong { min-width: 0; overflow-wrap: anywhere; color: var(--hd-text); font-weight: 600; white-space: pre-wrap; }
+.help-desk .help-desk-section > .help-desk-nav { margin-top: 4px; }
+.help-desk .help-desk-nav button { min-height: 48px; padding-inline: 24px; }
+@media (max-width: 639px) {
+  .help-desk .help-desk-aside { gap: 12px; }
+  .help-desk .help-desk-progress-count { text-align: center; }
+  .help-desk .help-desk-progress li { font-size: 10px; }
+  .help-desk .help-desk-progress li::before { width: 28px; height: 28px; }
+  .help-desk .help-desk-progress li:not(:last-child)::after { top: 13px; }
+  .help-desk .help-desk-nav button { flex: 1; }
+  .help-desk .help-desk-review-row { grid-template-columns: 1fr; gap: 4px; padding: 12px 14px; }
+}
+.help-desk .help-desk-footer > button[type=submit] { min-height: 50px; padding-inline: 26px; }
+
+/* Let the customer form use the storefront viewport instead of Dawn's narrow
+   page-width container, which leaves large empty gutters on wide screens. */
+.help-desk-page.page-width {
+  width: 100%;
+  max-width: none;
+  padding-inline: clamp(16px, 4vw, 72px);
+}
+.help-desk-page .help-desk {
+  width: 100%;
+  max-width: 1540px;
+}
+@media (min-width: 1600px) {
+  .help-desk-page.page-width { padding-inline: 5vw; }
+  .help-desk-page .help-desk { max-width: 1680px; }
+}
+@media (max-width: 639px) {
+  .help-desk-page.page-width { padding-inline: 12px; }
+}
+
+/* Final storefront layout: generous on desktop, calm and compact on mobile. */
+.help-desk-page .help-desk {
+  border-color: #e1e5ed;
+  border-radius: 22px;
+  box-shadow: 0 18px 56px rgba(25, 33, 61, .07);
+}
+.help-desk .help-desk-header { max-width: 880px; margin-bottom: 36px; }
+.help-desk .help-desk-header::before { width: 48px; height: 4px; margin-bottom: 20px; }
+.help-desk .help-desk-header h2 { font-size: clamp(30px, 3vw, 40px); }
+@media (min-width: 900px) {
+  .help-desk form { grid-template-columns: minmax(220px, 260px) minmax(0, 1fr); column-gap: 44px; }
+  .help-desk form > .help-desk-aside { padding-right: 28px; }
+}
+.help-desk .help-desk-tiles { grid-template-columns: minmax(0, 1fr); gap: 14px; }
+@media (min-width: 1200px) {
+  .help-desk .help-desk-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+.help-desk button.help-desk-tile { min-height: 112px; padding: 20px 54px 20px 20px; border-radius: 14px; }
+.help-desk button.help-desk-tile[data-icon]::before { width: 48px; height: 48px; border-radius: 14px; }
+.help-desk button.help-desk-tile[aria-pressed=true] { box-shadow: 0 0 0 1px var(--hd-accent), 0 8px 22px rgba(25, 33, 61, .07); }
+.help-desk .help-desk-section { gap: 26px; }
+.help-desk .help-desk-section-heading p { max-width: 680px; line-height: 1.65; }
+.help-desk .help-desk-nav { padding-top: 20px; }
+.help-desk .help-desk-nav button:not(.help-desk-link), .help-desk .help-desk-footer > button {
+  min-height: 50px; border-radius: 10px; font-weight: 650;
+}
+.help-desk .help-desk-nav button[type=button]:not(.help-desk-link) { min-width: 116px; }
+.help-desk .help-desk-footer { gap: 16px; }
+.help-desk .help-desk-section-heading { margin-bottom: -2px; }
+.help-desk .help-desk-section-heading h3 { letter-spacing: -.025em; }
+.help-desk .help-desk-section-heading p { color: #646c80; }
+.help-desk .help-desk-section-issue .help-desk-category-hint {
+  padding: 12px 15px; border-left: 3px solid var(--hd-accent); border-radius: 0 10px 10px 0;
+  background: color-mix(in srgb, var(--hd-accent) 5%, #fff); color: #505a70; font-size: 14px;
+}
+.help-desk .help-desk-section-issue .help-desk-tiles { align-items: stretch; }
+.help-desk .help-desk-section-issue .help-desk-tiles-heading { padding: 12px 0 2px; border-bottom: 1px solid #eceef2; }
+.help-desk .help-desk-section-details .help-desk-contact-fields { max-width: 860px; gap: 18px 20px; }
+.help-desk .help-desk-section-details .help-desk-login { max-width: 860px; }
+.help-desk .help-desk-section-details .help-desk-guest { margin-top: -4px; }
+.help-desk .help-desk-section-request > [data-fields]:not(.help-desk-request-type) { gap: 18px; }
+.help-desk .help-desk-section-request label > span:first-child { color: #252d43; }
+.help-desk .help-desk-section-request textarea { min-height: 156px; }
+.help-desk .help-desk-section-request .help-desk-upload { max-width: 860px; }
+.help-desk .help-desk-section-review .help-desk-chosen { border-color: #e6e9ef; background: #f7f8fb; }
+.help-desk .help-desk-section-review .help-desk-review { box-shadow: 0 2px 8px rgba(25, 33, 61, .025); }
+.help-desk .help-desk-section-review .help-desk-review-row { min-height: 52px; align-items: center; }
+.help-desk .help-desk-section-review .help-desk-review-row:nth-child(even) { background: #fff; }
+.help-desk .help-desk-section-review .help-desk-footer { margin-top: 4px; }
+.help-desk .help-desk-section-review .help-desk-footer > p { color: #596176; }
+.help-desk .help-desk-progress li[data-state=current]::before { transform: scale(1.04); }
+.help-desk .help-desk-progress li[data-state=done] { color: #374057; }
+.help-desk .help-desk-progress li[data-state=done]::before { box-shadow: 0 0 0 3px color-mix(in srgb, var(--hd-accent) 12%, #fff); }
+.help-desk .help-desk-progress-count { padding-bottom: 2px; }
+@media (max-width: 899px) {
+  .help-desk .help-desk-aside { padding: 16px; border: 1px solid #e8ebf1; border-radius: 14px; background: #fbfcfe; }
+  .help-desk .help-desk-aside .help-desk-signed { max-width: 420px; }
+}
+@media (max-width: 639px) {
+  .help-desk-page .help-desk { margin-block: 20px; padding: 22px 18px; border-radius: 16px; }
+  .help-desk .help-desk-header { margin-bottom: 24px; }
+  .help-desk .help-desk-header h2 { font-size: 29px; }
+  .help-desk button.help-desk-tile { min-height: 96px; padding: 16px 48px 16px 16px; }
+  .help-desk button.help-desk-tile[data-icon]::before { width: 42px; height: 42px; }
+  .help-desk .help-desk-tile-text strong { font-size: 15px; }
+  .help-desk .help-desk-footer { grid-template-columns: minmax(0, 1fr); }
+  .help-desk .help-desk-footer > button[type=submit] { width: 100%; justify-self: stretch; }
+  .help-desk .help-desk-section-review .help-desk-footer > p { grid-column: auto; grid-row: auto; }
+}
+/* Guests: sign in first, or continue as a guest. */
+.help-desk .help-desk-login {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 14px 20px;
+  padding: 18px 20px; border: 1px solid color-mix(in srgb, var(--hd-accent) 30%, #fff); border-radius: 12px; background: color-mix(in srgb, var(--hd-accent) 5%, #fff);
+}
+.help-desk .help-desk-login > div { display: grid; gap: 4px; min-width: 0; flex: 1 1 260px; }
+.help-desk .help-desk-login strong { font-size: 16px; font-weight: 650; }
+.help-desk .help-desk-login span { color: var(--hd-muted); font-size: 14px; line-height: 1.5; }
+.help-desk a.help-desk-login-button {
+  display: inline-flex; align-items: center; min-height: 44px; padding: 10px 24px; border-radius: 8px;
+  background: var(--hd-accent); color: #fff; font-size: 15px; font-weight: 600; text-decoration: none; white-space: nowrap;
+}
+.help-desk a.help-desk-login-button:hover { filter: brightness(.93); }
+/* Sign-in first: the prompt stands in for the whole form. */
+.help-desk .help-desk-gate { max-width: 640px; padding: 28px; }
+.help-desk .help-desk-gate strong { font-size: 20px; }
+.help-desk .help-desk-gate-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 20px; }
+@media (max-width: 639px) {
+  .help-desk .help-desk-gate { padding: 20px 16px; }
+  .help-desk .help-desk-gate-actions, .help-desk .help-desk-gate-actions a { width: 100%; justify-content: center; text-align: center; }
+}
+.help-desk .help-desk-guest { color: var(--hd-muted); font-size: 14px; font-weight: 600; }
+
+/* No empty gaps: the form sits right under the header and runs the width of
+   the page, with an even side margin, instead of a card floating in space. */
+.help-desk-page.page-width { padding-inline: clamp(16px, 3vw, 48px); }
+.help-desk-page .help-desk {
+  max-width: none; margin: 0 auto; padding: clamp(20px, 3vw, 36px) 0 clamp(32px, 4vw, 56px);
+  border: 0; border-radius: 0; box-shadow: none; background: transparent;
+}
+.help-desk .help-desk-header { margin-bottom: 28px; }
+
+/* A check's answer opens as a screen of its own inside the request step. */
+.help-desk [data-fields]:not([data-stage]) > [data-part=answer], .help-desk [data-fields]:not([data-stage]) > [data-part=request]:empty,
+.help-desk [data-stage=ask] > [data-part=answer], .help-desk [data-stage=ask] > [data-part=request],
+.help-desk [data-stage=answer] > :not([data-part=answer]),
+.help-desk [data-stage=request] > [data-part=ask], .help-desk [data-stage=request] > [data-part=answer] { display: none !important; }
+.help-desk .help-desk-nav[hidden], .help-desk .help-desk-nav button[hidden] { display: none; }
+.help-desk .help-desk-answer { display: grid; gap: 20px; }
+.help-desk .help-desk-answer-actions {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 16px 20px; padding-top: 20px; border-top: 1px solid #eceef2;
+}
+.help-desk .help-desk-answer-actions > div { display: grid; gap: 2px; flex: 1 1 240px; min-width: 0; }
+.help-desk .help-desk-answer-actions strong { font-size: 15px; font-weight: 650; }
+.help-desk .help-desk-answer-actions span { color: var(--hd-muted); font-size: 14px; }
+.help-desk .help-desk-answer-actions button { min-height: 50px; margin: 0; padding-inline: 24px; border-radius: 10px; font-weight: 650; }
+@media (max-width: 639px) { .help-desk .help-desk-answer-actions > div { order: -1; flex-basis: 100%; } .help-desk .help-desk-answer-actions button { flex: 1; } }
+/* "Order #1001 · This order can still be cancelled." above the next fields. */
+.help-desk .help-desk-verified {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; padding: 14px 16px 14px 44px; border: 1px solid #cfe9da; border-radius: 10px;
+  background: #f1faf5 url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%231f8a53' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 12l5 5 9-10'/%3E%3C/svg%3E") 16px center / 18px no-repeat;
+}
+.help-desk .help-desk-verified strong { font-size: 15px; font-weight: 650; }
+.help-desk .help-desk-verified span { color: #1f6b44; font-size: 14px; }
+/* The page's side margin is inside its width, so nothing runs off the screen. */
+.help-desk-page, .help-desk-page *, .help-desk-page *::before, .help-desk-page *::after { box-sizing: border-box; }
+.help-desk-page .help-desk form, .help-desk-page .help-desk fieldset, .help-desk-page .help-desk section { min-width: 0; max-width: 100%; }
+/* The step list already says which step this is. */
+@media (min-width: 900px) { .help-desk .help-desk-progress-count { display: none; } }
+/* One right edge for everything in a step. */
+.help-desk .help-desk-section-details .help-desk-contact-fields, .help-desk .help-desk-section-details .help-desk-login,
+.help-desk .help-desk-section-request .help-desk-upload, .help-desk .help-desk-aside .help-desk-signed { max-width: none; }
+
+/* Country: ours first, then "Another country" with its own picker and a coming-soon note. */
+.help-desk .help-desk-country, .help-desk .help-desk-elsewhere { display: grid; gap: 14px; min-width: 0; }
+.help-desk .help-desk-elsewhere[hidden] { display: none; }
+.help-desk .help-desk-coming-soon {
+  display: grid; gap: 4px; padding: 14px 16px; border: 1px solid #f3d9a8; border-left: 3px solid #b54708; border-radius: 0 10px 10px 0; background: #fdf6e9;
+}
+.help-desk .help-desk-coming-soon strong { color: var(--hd-text); font-size: 15px; font-weight: 650; }
+.help-desk .help-desk-coming-soon span { color: #5d4a2a; font-size: 14px; line-height: 1.5; }
+
+/* Product issues: the item from the order, photo tips, and what they'd like done. */
+.help-desk .help-desk-pick { display: grid; gap: 10px; min-width: 0; }
+.help-desk .help-desk-pick-title { color: var(--hd-text); font-size: 14px; font-weight: 600; }
+.help-desk .help-desk-items { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 10px; }
+.help-desk button.help-desk-item {
+  position: relative; display: flex; align-items: center; gap: 14px; width: 100%; min-width: 0; min-height: 0; margin: 0; padding: 12px 48px 12px 12px;
+  border: 1px solid var(--hd-border); border-radius: 12px; background: #fff; box-shadow: none; color: var(--hd-text);
+  font: inherit; text-align: left; letter-spacing: 0; text-transform: none; cursor: pointer; transition: border-color .15s, box-shadow .15s, background .15s;
+}
+.help-desk button.help-desk-item:hover:not(:disabled) { border-color: var(--hd-accent); filter: none; transform: none; box-shadow: 0 4px 14px rgba(25, 33, 61, .07); }
+.help-desk button.help-desk-item:focus-visible { outline: none; border-color: var(--hd-accent); box-shadow: 0 0 0 3px var(--hd-ring); }
+.help-desk button.help-desk-item[aria-pressed=true] { border-color: var(--hd-accent); background: color-mix(in srgb, var(--hd-accent) 5%, #fff); box-shadow: 0 0 0 1px var(--hd-accent); }
+.help-desk .help-desk-item .help-desk-thumb { flex: none; width: 56px; height: 56px; border-radius: 10px; object-fit: cover; background: #f1f2f5; }
+.help-desk .help-desk-item > span:not(.help-desk-thumb):not(.help-desk-check) { display: grid; gap: 2px; min-width: 0; }
+.help-desk .help-desk-item strong { font-size: 15px; font-weight: 650; line-height: 1.35; }
+.help-desk .help-desk-item small { color: var(--hd-muted); font-size: 13px; }
+.help-desk .help-desk-check {
+  position: absolute; top: 50%; right: 16px; width: 20px; height: 20px; margin-top: -10px; border: 2px solid #c3c7d0; border-radius: 6px; background: #fff center / 12px no-repeat;
+}
+.help-desk .help-desk-item[aria-pressed=true] .help-desk-check {
+  border-color: var(--hd-accent);
+  background: var(--hd-accent) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23fff' stroke-width='3.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 12l5 5 9-10'/%3E%3C/svg%3E") center / 12px no-repeat;
+}
+.help-desk .help-desk-photo-tips { margin: 0; color: var(--hd-muted); font-size: 13px; line-height: 1.5; }
+.help-desk .help-desk-photo-tips strong { color: var(--hd-text); font-weight: 600; }
+.help-desk .help-desk-video .help-desk-drop-icon {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2319213d' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='2' y='6' width='14' height='12' rx='2'/%3E%3Cpath d='M16 10l6-3v10l-6-3z'/%3E%3C/svg%3E");
+}
+.help-desk .help-desk-choices { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; min-width: 0; margin: 0; padding: 0; border: 0; }
+.help-desk .help-desk-choices legend { grid-column: 1 / -1; margin-bottom: 10px; padding: 0; font-size: 14px; font-weight: 600; }
+.help-desk label.help-desk-choice-card {
+  display: flex; align-items: flex-start; gap: 12px; padding: 14px 16px; border: 1px solid var(--hd-border); border-radius: 12px; background: #fff;
+  cursor: pointer; font-weight: 400; transition: border-color .15s, background .15s, box-shadow .15s;
+}
+.help-desk label.help-desk-choice-card:hover { border-color: var(--hd-accent); }
+.help-desk label.help-desk-choice-card:has(input:checked) { border-color: var(--hd-accent); background: color-mix(in srgb, var(--hd-accent) 5%, #fff); box-shadow: 0 0 0 1px var(--hd-accent); }
+.help-desk label.help-desk-choice-card input { margin-top: 2px; }
+/* Short answers (no hint line): smaller cards, more per row. */
+.help-desk .help-desk-choices-compact { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
+.help-desk .help-desk-choices-compact label.help-desk-choice-card { align-items: center; padding: 11px 14px; }
+.help-desk .help-desk-choices-compact label.help-desk-choice-card input { margin-top: 0; }
+.help-desk label.help-desk-choice-card > span { display: grid; gap: 2px; }
+.help-desk label.help-desk-choice-card strong { font-size: 15px; font-weight: 650; }
+.help-desk label.help-desk-choice-card small { color: var(--hd-muted); font-size: 13px; line-height: 1.45; }
+.help-desk .help-desk-video .help-desk-drop-icon { background-size: 22px; }
+
+/* Polish: compact upload rows, a tidy signed-in card, a readable review table. */
+.help-desk .help-desk-drop {
+  grid-template-columns: 44px minmax(0, 1fr); justify-items: start; align-items: center; column-gap: 14px; row-gap: 2px;
+  padding: 16px 18px; text-align: left;
+}
+.help-desk .help-desk-drop .help-desk-drop-icon { grid-row: 1 / span 2; margin: 0; }
+.help-desk .help-desk-drop strong, .help-desk .help-desk-drop small, .help-desk .help-desk-drop[data-count]:not([data-count=""])::after { grid-column: 2; }
+.help-desk .help-desk-drop[data-count]:not([data-count=""])::after { margin-top: 4px; }
+.help-desk .help-desk-signed .help-desk-signed-label { color: var(--hd-muted); font-size: 12px; font-weight: 600; letter-spacing: .02em; }
+.help-desk .help-desk-signed strong { overflow-wrap: anywhere; }
+.help-desk .help-desk-review-row { grid-template-columns: minmax(120px, 180px) minmax(0, 1fr); }
+@media (max-width: 639px) {
+  .help-desk .help-desk-choices, .help-desk .help-desk-items { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* Cards are as tall as what's in them: a card with just a name has no empty band under it. */
+.help-desk button.help-desk-tile, .help-desk .help-desk-tiles button.help-desk-tile { min-height: 0; }
+.help-desk button.help-desk-tile:not(:has(.help-desk-tile-text > span)) { align-items: center; padding-top: 18px; padding-bottom: 18px; }
+.help-desk button.help-desk-tile:not(:has(.help-desk-tile-text > span)) .help-desk-radio { top: 50%; margin-top: -10px; }
+.help-desk .help-desk-tiles { align-items: stretch; }
+@media (max-width: 639px) { .help-desk .help-desk-tiles button.help-desk-tile { min-height: 0; } }
+
+/* A product issue: one box per product, with what's wrong and its own photos and video. */
+.help-desk .help-desk-product-issues { display: grid; gap: 16px; }
+.help-desk .help-desk-product-issues:empty { display: none; }
+.help-desk .help-desk-product-issue { display: grid; gap: 16px; padding: 18px 20px; border: 1px solid #e3e6ee; border-radius: 14px; background: #fff; }
+.help-desk .help-desk-product-issue-head { display: flex; align-items: center; gap: 12px; padding-bottom: 14px; border-bottom: 1px solid #eceef2; }
+.help-desk .help-desk-product-issue-head .help-desk-thumb { flex: none; width: 44px; height: 44px; border-radius: 10px; object-fit: cover; background: #f1f2f5; }
+.help-desk .help-desk-product-issue-head strong { font-size: 16px; font-weight: 650; }
+.help-desk .help-desk-photo-tips[hidden] { display: none; }
+/* Product issues: one product per line. Picking one expands it, like an
+   accordion, into its details, photos and video as one joined card. */
+.help-desk .help-desk-items-stack { grid-template-columns: minmax(0, 1fr); }
+.help-desk .help-desk-item-row { display: grid; min-width: 0; border-radius: 12px; }
+.help-desk .help-desk-item-row[data-open] { box-shadow: 0 6px 20px rgba(25, 33, 61, .08); }
+.help-desk .help-desk-item-row[data-open] > button.help-desk-item { border-bottom-color: color-mix(in srgb, var(--hd-accent) 25%, #fff); border-radius: 12px 12px 0 0; box-shadow: none; }
+.help-desk .help-desk-item-row > .help-desk-product-issue {
+  gap: 14px; margin: 0; padding: 18px 20px 20px; border: 1px solid var(--hd-accent); border-top: 0; border-radius: 0 0 12px 12px; background: #fff;
+  animation: help-desk-expand .2s ease-out;
+}
+/* The card above already names the product. */
+.help-desk .help-desk-item-row > .help-desk-product-issue > .help-desk-product-issue-head { display: none; }
+@keyframes help-desk-expand { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .help-desk .help-desk-item-row > .help-desk-product-issue { animation: none; } }
+@media (max-width: 600px) { .help-desk .help-desk-item-row > .help-desk-product-issue { padding: 14px 14px 16px; } }
+
+/* Under a chosen video: take it off again. */
+.help-desk .help-desk-video { display: grid; gap: 8px; }
+.help-desk button.help-desk-remove-video { justify-self: start; min-height: 44px; padding: 0 2px; color: #b42318; font-size: 14px; font-weight: 600; }
+
+/* Two short numbers side by side ("How many arrived?" / "How many do you want?"). */
+.help-desk .help-desk-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; align-items: end; }
+/* A product's own question sits inside its box: a little less air. */
+.help-desk .help-desk-product-issue .help-desk-choices legend { margin-bottom: 8px; }
+.help-desk .help-desk-product-issue .help-desk-replacement { display: grid; gap: 10px; }
+
+/* Hover only with a mouse, so a tapped card doesn't stay lit on a phone. */
+@media (hover: none) {
+  .help-desk button.help-desk-item:hover:not(:disabled) { border-color: var(--hd-border); box-shadow: none; }
+  .help-desk button.help-desk-item[aria-pressed=true]:hover { border-color: var(--hd-accent); box-shadow: 0 0 0 1px var(--hd-accent); }
+  .help-desk label.help-desk-choice-card:hover { border-color: var(--hd-border); }
+  .help-desk label.help-desk-choice-card:has(input:checked):hover { border-color: var(--hd-accent); }
+}
+
+/* Phones: the product issue flow, compact and easy to tap. */
+@media (max-width: 639px) {
+  /* Short answers (Replacement / Refund) stay two to a row instead of stacking. */
+  .help-desk .help-desk-choices.help-desk-choices-compact { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .help-desk .help-desk-choices-compact label.help-desk-choice-card { min-height: 48px; padding: 10px 12px; gap: 10px; }
+  .help-desk label.help-desk-choice-card { padding: 12px 14px; gap: 10px; }
+  .help-desk label.help-desk-choice-card strong { font-size: 15px; }
+  /* Product cards: a smaller thumbnail leaves room for long names. */
+  .help-desk button.help-desk-item { gap: 12px; padding: 10px 44px 10px 10px; }
+  .help-desk .help-desk-item .help-desk-thumb { width: 48px; height: 48px; }
+  .help-desk .help-desk-item strong { font-size: 14.5px; }
+  .help-desk .help-desk-check { right: 14px; }
+  .help-desk .help-desk-item-row > .help-desk-product-issue { gap: 14px; padding: 14px 12px 16px; }
+  /* Several products each with a note: shorter boxes, still resizable. */
+  .help-desk .help-desk-section-request .help-desk-product-issue textarea { min-height: 104px; }
+  .help-desk .help-desk-drop { grid-template-columns: 38px minmax(0, 1fr); padding: 12px 14px; column-gap: 12px; }
+  .help-desk .help-desk-drop .help-desk-drop-icon { width: 38px; height: 38px; }
+  .help-desk .help-desk-pair { gap: 10px; }
+  .help-desk .help-desk-pair label > span:first-child { font-size: 13px; }
+  /* Chips and their × big enough for a finger. */
+  .help-desk .help-desk-selected button { min-height: 44px; font-size: 14px; }
+  .help-desk .help-desk-suggestions li { min-height: 48px; }
+  .help-desk .help-desk-photo-tips { font-size: 13px; }
+}

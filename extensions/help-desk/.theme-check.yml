@@ -1,0 +1,10 @@
+# Theme check for the Help Desk block. Shopify CLI uses this file instead of
+# its defaults when it's present, so it starts from the same app-extension rules.
+extends: theme-check:theme-app-extension
+
+# The form script is about 86 KB. It loads, deferred, only on the page that has
+# the Help Desk block, not across the store, so the 10 KB default is relaxed.
+# Over the threshold, Shopify CLI rejects the extension and the block disappears
+# from the theme, so leave headroom when the form grows.
+AssetSizeAppBlockJavaScript:
+  thresholdInBytes: 100000

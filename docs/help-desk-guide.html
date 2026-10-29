@@ -1,0 +1,396 @@
+<!doctype html>
+<html lang="hi-Latn">
+<head>
+<meta charset="utf-8">
+<title>Zion App Help Desk: Poori Guide</title>
+<style>
+  @page { size: A4; margin: 18mm 16mm 20mm; }
+  :root { --ink: #19213d; --muted: #5b6275; --line: #e4e5ea; --accent: #ef3a24; --soft: #f5f6f8; --ok: #0c5132; --okbg: #e3f5ea; --warn: #5e4200; --warnbg: #fff4d6; --bad: #8e1f0b; --badbg: #fde8e6; --info: #003a80; --infobg: #e6effc; }
+  * { box-sizing: border-box; }
+  body { margin: 0; color: var(--ink); font: 10.5pt/1.55 "Segoe UI", Roboto, Arial, sans-serif; }
+  h1 { font-size: 26pt; line-height: 1.15; margin: 0 0 8px; }
+  h2 { font-size: 15pt; margin: 0 0 10px; padding-bottom: 6px; border-bottom: 2px solid var(--ink); break-after: avoid; }
+  h3 { font-size: 11.5pt; margin: 16px 0 6px; break-after: avoid; }
+  p { margin: 0 0 8px; }
+  ul, ol { margin: 0 0 10px; padding-left: 20px; }
+  li { margin: 3px 0; }
+  code { font-family: Consolas, "Courier New", monospace; font-size: 9pt; background: var(--soft); padding: 1px 4px; border-radius: 3px; }
+  pre { font-family: Consolas, "Courier New", monospace; font-size: 8.8pt; background: #1d2335; color: #f2f3f7; padding: 10px 12px; border-radius: 6px; white-space: pre-wrap; break-inside: avoid; margin: 6px 0 10px; }
+  table { width: 100%; border-collapse: collapse; margin: 6px 0 12px; font-size: 9.5pt; break-inside: auto; }
+  th, td { text-align: left; vertical-align: top; padding: 6px 8px; border-bottom: 1px solid var(--line); }
+  th { background: var(--soft); font-weight: 600; }
+  tr { break-inside: avoid; }
+  section { break-before: page; }
+  .cover { height: 250mm; display: flex; flex-direction: column; justify-content: space-between; }
+  .cover .bar { width: 60px; height: 5px; background: var(--accent); border-radius: 3px; margin: 18px 0; }
+  .cover .sub { font-size: 13pt; color: var(--muted); max-width: 140mm; }
+  .meta { color: var(--muted); font-size: 9.5pt; }
+  .toc { margin-top: 26px; columns: 2; column-gap: 24px; font-size: 10.5pt; }
+  .toc div { break-inside: avoid; padding: 3px 0; border-bottom: 1px dotted var(--line); }
+  .box { border-radius: 6px; padding: 9px 12px; margin: 8px 0 12px; break-inside: avoid; border-left: 4px solid; }
+  .box.tip { background: var(--okbg); border-color: #2f9e6a; }
+  .box.warn { background: var(--warnbg); border-color: #d9a100; }
+  .box.bad { background: var(--badbg); border-color: var(--accent); }
+  .box.info { background: var(--infobg); border-color: #2c6ecb; }
+  .box b:first-child { display: block; margin-bottom: 2px; }
+  .steps { counter-reset: s; list-style: none; padding-left: 0; }
+  .steps > li { counter-increment: s; position: relative; padding-left: 30px; margin: 7px 0; break-inside: avoid; }
+  .steps > li::before { content: counter(s); position: absolute; left: 0; top: 0; width: 20px; height: 20px; border-radius: 50%; background: var(--ink); color: #fff; font-size: 9pt; font-weight: 600; display: grid; place-items: center; }
+  .flow { display: flex; flex-wrap: wrap; align-items: stretch; gap: 6px; margin: 8px 0 12px; break-inside: avoid; }
+  .flow div { flex: 1 1 0; min-width: 28mm; background: var(--soft); border: 1px solid var(--line); border-radius: 6px; padding: 7px 8px; font-size: 9pt; }
+  .flow div b { display: block; font-size: 9.5pt; margin-bottom: 2px; }
+  .flow span { align-self: center; color: var(--muted); font-weight: 700; }
+  .pill { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 8.8pt; font-weight: 600; white-space: nowrap; }
+  .p-bad { background: var(--badbg); color: var(--bad); } .p-warn { background: var(--warnbg); color: var(--warn); } .p-ok { background: var(--okbg); color: var(--ok); }
+  .p-info { background: var(--infobg); color: var(--info); } .p-n { background: var(--soft); color: var(--muted); }
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .two > div { break-inside: avoid; }
+  .small { font-size: 9pt; color: var(--muted); }
+</style>
+</head>
+<body>
+
+<div class="cover">
+  <div>
+    <p class="meta">Zion App · Help Desk</p>
+    <div class="bar"></div>
+    <h1>Help Desk aur<br>AI Photo Check: Poori Guide</h1>
+    <p class="sub">Yeh system kaise kaam karta hai, store pe kaise set karna hai, roz tickets kaise sambhalne hain, aur server pe deploy ya wapas (rollback) kaise karna hai. Sab kuch step by step, Hinglish mein.</p>
+    <div class="toc">
+      <div>1. Ek nazar mein: kya bana hai</div>
+      <div>2. Pehli baar setup (har store pe)</div>
+      <div>3. Customer ka safar: form aur request page</div>
+      <div>4. Roz ka kaam: inbox aur ticket</div>
+      <div>5. AI Photo Check</div>
+      <div>6. Emails kaise jaate hain</div>
+      <div>7. Security aur limits</div>
+      <div>8. Technical: server, deploy, rollback</div>
+      <div>9. Problem aaye toh kya karein</div>
+      <div>10. Jaldi yaad rakhne wali baatein</div>
+    </div>
+  </div>
+  <div class="meta">
+    Version: app release <code>zion-app-77</code> · code commit <code>0d47b81</code> · deploy: 22 October 2026<br>
+    Stores: <code>netgains10.myshopify.com</code> aur <code>custom-collection-cases.myshopify.com</code> (dono ek hi app aur ek hi server se chalte hain)
+  </div>
+</div>
+
+<section>
+  <h2>1. Ek nazar mein: kya bana hai</h2>
+  <p>Zion App ke andar ab ek poora support system hai, jaise Gorgias, Zendesk ya Richpanel jaise bade apps mein hota hai. Customer storefront se sawal poochta hai ya request bhejta hai, woh ek <b>ticket</b> ban jaata hai, aur aapki team Shopify admin ke andar se hi reply karti hai.</p>
+  <table>
+    <tr><th style="width:28%">Hissa</th><th>Kya karta hai</th><th style="width:22%">Kahan milega</th></tr>
+    <tr><td><b>Help Desk form</b></td><td>Storefront ka form: order query, return/refund, shipping, wholesale, affiliate. Photos upload ho sakti hain.</td><td>Theme ka block "Help Desk form"</td></tr>
+    <tr><td><b>Request page</b></td><td>Har customer ka private page jahan woh status dekhta hai, aapka reply padhta hai aur photos ke saath jawab deta hai.</td><td>Link email mein aur form submit ke baad</td></tr>
+    <tr><td><b>Help Desk inbox</b></td><td>Saare tickets, views, filters, bulk actions, response time ki ginti.</td><td>Apps → Zion App → Help Desk</td></tr>
+    <tr><td><b>AI Photo Check</b></td><td>Customer ki har photo check hoti hai: AI se bani hai, kisi aur ticket se copy hai, ya edit ki gayi hai.</td><td>Har photo ke neeche badge</td></tr>
+    <tr><td><b>Settings</b></td><td>Email notifications, signature, team ke naam, saved replies, AI photo check.</td><td>Help Desk → <b>Settings</b> button</td></tr>
+  </table>
+
+  <h3>Poora system ek line mein</h3>
+  <div class="flow">
+    <div><b>Customer</b>form se sawal</div><span>→</span>
+    <div><b>Ticket bana</b>#1001, #1002... number ke saath</div><span>→</span>
+    <div><b>Customer ko email</b>ticket number + private link</div><span>→</span>
+    <div><b>Aapki team</b>admin mein reply, note, status</div><span>→</span>
+    <div><b>Customer</b>email/request page pe reply dekhta hai</div>
+  </div>
+
+  <div class="box info"><b>Ek app, do store</b>Dono stores (netgains10 aur custom-collection-cases) ek hi "Zion App" aur ek hi server use karte hain. Jo badlav server pe jaata hai woh dono pe ek saath lagta hai. Har store ka data (tickets, settings) alag-alag rehta hai, ek store ka data doosre ko kabhi nahi dikhta.</div>
+
+  <h3>Ticket ke status ka matlab</h3>
+  <table>
+    <tr><th style="width:26%">Status</th><th>Matlab</th></tr>
+    <tr><td><span class="pill p-warn">Open</span></td><td>Naya ticket, ya customer ne naya jawab bheja hai. Aapki team ki baari hai.</td></tr>
+    <tr><td><span class="pill p-info">In progress</span></td><td>Team kaam kar rahi hai (jaise replacement bhej rahe hain).</td></tr>
+    <tr><td><span class="pill p-n">Waiting on customer</span></td><td>Aapne reply kar diya, ab customer ka jawab chahiye. Reply bhejte hi status apne aap yahi ho jaata hai. <b>Sirf isi status pe customer ko request page pe "Add a message" box milta hai.</b> Customer jawab de toh ticket wapas <b>Open</b>.</td></tr>
+    <tr><td><span class="pill p-ok">Resolved</span></td><td>Kaam ho gaya. Request page pe likha aata hai "This request is closed", customer ko nayi request bhejni hogi.</td></tr>
+  </table>
+  <p><b>Priority:</b> Low, Normal, High, Urgent. <b>Assignee:</b> team ka koi member (naam Settings mein daalte hain). <b>Tags:</b> jaise "damaged", "vip", comma laga ke.</p>
+</section>
+
+<section>
+  <h2>2. Pehli baar setup (har store pe)</h2>
+  <p>Yeh kaam <b>har store pe alag</b> karna hai, kyunki theme aur settings har store ki apni hoti hain.</p>
+  <ol class="steps">
+    <li><b>Help Desk form page pe lagao.</b> Online Store → Themes → Customize → apna Contact/Support page kholo → Add section/block → <b>Help Desk form</b> → Save. Block settings mein Wholesale aur Affiliate signup page ke URL daal do.</li>
+    <li><b>Team aur signature.</b> Har staff member (jiske paas Shopify admin access hai) ek baar <b>Apps → Zion App → Help Desk</b> khol le: woh apne aap <b>Settings → Team → Shopify staff</b> mein aa jaata hai aur tickets usko assign ho sakte hain. Kisi ko assign list se hatana ho toh uska switch band karo. Jinke paas Shopify login nahi (jaise warehouse team), unke naam <b>Other names</b> mein comma laga ke daalo. Phir Settings → <b>Emails</b> mein <b>Reply signature</b> daalo → Save.</li>
+    <li><b>Saved replies dekh lo.</b> Settings ke neeche 5 saved replies pehle se hain. Apne hisaab se badlo ya naye jodo.</li>
+    <li><b>AI Photo Check: detector key zaroor daalo.</b> Settings → <b>AI photo check</b> → AI detector chuno (Sightengine ya TruthScan) → apni API key daalo → <b>Save AI photo check</b>. Key save karte waqt provider se verify hoti hai. Bina key ke sirf free checks (layer 1-4) chalte hain, aur jo photo woh decide nahi kar paate woh "Can't confirm" reh jaati hai.</li>
+    <li><b>Emails (server pe, ek baar).</b> Customer aur team ko email bhejne ke liye server ki <code>.env</code> mein SMTP settings chahiye. Abhi yeh <b>set nahi hain</b>, isliye emails nahi jaate. Section 6 dekho.</li>
+    <li><b>Test karo.</b> Storefront pe photo ke saath form bhejo. Admin mein ticket bina refresh kiye aa jaana chahiye, aur photo pe AI check ka badge.</li>
+  </ol>
+</section>
+
+<section>
+  <h2>3. Customer ka safar: form aur request page</h2>
+  <h3>Form bhejna</h3>
+  <ol class="steps">
+    <li>Customer topic chunta hai (Order Queries sabse upar). <b>Login customer</b> ka naam, email, phone apne aap bhar jaata hai, aur <b>order number poochha nahi jaata</b>: uske orders ki list aati hai (naye se purane, purane orders bhi), sabse naya order pehle se chuna hota hai, aur order chunte hi uske products dikh jaate hain. Topic ke hisaab se sahi orders upar aate hain (Update order pe jo ship nahi hue, Return/Issue pe jo ship ho chuke); aisa koi na ho toh saare orders dikhte hain. "My order isn't listed" chun ke number khud bhi likh sakta hai.</li>
+    <li><b>Login nahi hai</b> toh order number likhna padta hai, aur wahin "Sign in" ka link aata hai.</li>
+    <li>Topic ke hisaab se fields aati hain: order number, issue, product chunna, photos (5 tak, 10 MB har ek, JPG/PNG/WebP).</li>
+    <li>Submit karte hi screen pe dikhta hai: <i>"Your request #1007 has been received"</i> aur <b>View your request</b> ka link.</li>
+    <li>Customer ko confirmation email jaata hai (jab SMTP set ho) jismein ticket number aur private link hota hai.</li>
+  </ol>
+  <h3>Request page (customer ka private page)</h3>
+  <p>Link aisa hota hai: <code>https://store-domain/apps/help-desk?ticket=...</code>. Yeh page store ki apni theme ke andar khulta hai (header/footer same), aur mobile pe bhi theek dikhta hai.</p>
+  <ul>
+    <li><b>Progress tracker:</b> Received → Team is on it → Your reply → Resolved. Abhi ka step laal ring se highlight hota hai.</li>
+    <li><b>Upar ka box</b> batata hai abhi kya ho raha hai (jaise "We've replied: your turn").</li>
+    <li><b>Conversation</b> chat jaisi dikhti hai: customer ke messages right side (dark), team ke left side "Support team" tag ke saath. Time customer ke apne time zone mein dikhta hai.</li>
+    <li><b>Right side</b> (mobile pe neeche): "Your request" mein form ki saari details aur "Good to know".</li>
+  </ul>
+  <ul>
+    <li>Upar status dikhta hai, jaise "We've replied and are waiting for your response".</li>
+    <li>Customer ki original request aur poori conversation (aapke replies, uske jawab).</li>
+    <li><b>Add a message</b> box <b>sirf tab khulta hai jab aapki team ne reply kiya ho</b> (status "Waiting on customer"). Tab customer text aur 3 tak photos ke saath jawab de sakta hai. Jawab aate hi ticket <b>Open</b> ho jaata hai, team ko email jaata hai, aur box tab tak band ho jaata hai jab tak team phir se reply na kare.</li>
+    <li>Status <b>Open</b> ya <b>In progress</b> pe customer ko dikhta hai: "Our team will reply soon". <b>Resolved</b> pe: "This request is closed", nayi request bhejo.</li>
+    <li>Internal notes aur activity log customer ko <b>kabhi nahi</b> dikhte.</li>
+  </ul>
+  <h3>Link kho gaya?</h3>
+  <p>Customer <code>/apps/help-desk?ticket=</code> kholke <b>request number + email</b> daal ke apni request dhoondh sakta hai. 5 galat koshish ke baad 15 minute ka lock lagta hai, taaki koi doosron ki request guess na kar sake.</p>
+  <h3>Signed-in customer</h3>
+  <p>Jo customer login hai, use form ke upar <b>"Your requests"</b> list dikhti hai: uske saare tickets, status ke saath, ek click pe khulte hain.</p>
+</section>
+
+<section>
+  <h2>4. Roz ka kaam: inbox aur ticket</h2>
+  <h3>Inbox (Apps → Zion App → Help Desk)</h3>
+  <ul>
+    <li><b>Upar ke 4 boxes:</b> Needs attention, Waiting on customer, High priority, Flagged photos. Box pe click karo toh wahi tickets khulte hain. Setup adhoora ho toh upar "Finish setting up" ka banner aata hai (<b>Continue setup</b>). Poore numbers aur setup checklist <b>Overview &amp; setup</b> tab mein hain.</li>
+    <li><b>Views (tabs):</b> Needs attention · Waiting on customer · Resolved · All tickets, phir Unassigned · High priority · <b>Flagged photos</b> (jinki photo AI/reused nikli). Har tab pe ginti likhi hai.</li>
+    <li><b>Search:</b> #number, naam, email, order number ya tag se.</li>
+    <li><b>Filters</b> button dabao toh topic, priority, assignee aur <b>Created</b> (Today / 7 / 30 / 90 din) khulte hain. Lage hue filters chips ban ke dikhte hain, chip ka × dabao toh hat jaata hai. Sort (Last activity / Newest / Oldest) search ke bagal mein.</li>
+    <li><b>Row mein:</b> <span class="pill p-info">New</span> matlab abhi tak kisi ne nahi khola · <span class="pill p-bad">AI photo</span> / <span class="pill p-warn">Reused photo</span> matlab photo pe shak hai · laal "No reply yet · 5h" matlab abhi tak pehla jawab nahi gaya.</li>
+    <li><b>Bulk:</b> checkbox se kai tickets chuno → status, priority ya assignee ek saath badlo, ya <b>Delete</b>.</li>
+  </ul>
+  <h3>Ticket kholne pe</h3>
+  <ol class="steps">
+    <li><b>Conversation padho.</b> Chat jaisa dikhta hai: customer ke messages left mein (grey), aapki team ke replies right mein (navy), internal notes right mein peele. Customer ki request, photos, replies, notes aur activity log ek hi timeline mein. Pichhli visit ke baad aaye customer messages pe <span class="pill p-info">New</span>.</li>
+    <li><b>Reply likho.</b> "Reply to customer" chuno. Reply hamesha customer ke store wale private request page pe chat mein dikhta hai. Server pe email set hone ke baad <b>Send via</b> aata hai: <b>Request page</b> (default) ya <b>Email</b> (page pe bhi aur customer ke inbox mein bhi). WhatsApp aur SMS account jodne ke baad yahin judenge (dekho <code>docs/Channels-Setup-Requirements.pdf</code>). <b>Insert a saved reply</b> se ready jawab daalo (doosra saved reply chunoge toh pehle wala text hat ke naya aa jaata hai). Placeholders jaise <code>{{ customer.first_name }}</code> apne aap bhar jaate hain. <b>Reply as</b> mein apne aap aapka naam hota hai (jo Shopify mein login hai).</li>
+    <li><b>Bhejo.</b> <b>Send reply</b> (status apne aap "Waiting on customer") ya <b>Send and resolve</b>.</li>
+    <li><b>Internal note</b> sirf team ke liye (peela box), customer ko kabhi nahi dikhta.</li>
+    <li><b>Right side:</b> Status, Priority, Assignee, Tags badlo. Tags ke neeche <b>suggestions</b> aate hain: "From this request" (customer ne jo chuna/likha, jaise defective, return, damaged) aur "Your team uses" (store mein sabse zyada lage tags). Chip pe click karo toh tag lag jaata hai. Saath mein customer ki details, recent Shopify orders, purane tickets, emails ka status, aur sabse neeche <b>Delete ticket</b>.</li>
+  </ol>
+  <h3>Ticket delete karna</h3>
+  <p>Do tarike: (1) ticket kholke right side mein sabse neeche <b>Delete ticket</b>, (2) list mein checkbox se ek ya kai tickets chun ke <b>Delete</b>. Ek confirm box aata hai: <b>Delete permanently</b> dabane pe ticket, uski poori conversation, notes, photos, photo checks aur emails hamesha ke liye hat jaate hain, aur customer ka request page link band ho jaata hai. Wapas nahi aata, isliye spam ya test tickets ke liye hi use karo; normal kaam ke liye <b>Resolved</b> karo.</p>
+  <div class="box info"><b>Live chat jaisa, dono taraf</b><b>Admin:</b> inbox aur khula ticket har ~4 second mein check karte hain. Customer ka naya ticket, message ya photo check ka result aate hi screen apne aap update hoti hai, aur ticket khula ho toh "New message from the customer" ka popup aata hai. Jo reply aap type kar rahe ho woh nahi mitta. <b>Customer ka request page:</b> har ~5 second mein check karta hai. Team ka reply aate hi page reload kiye bina naya message aa jaata hai aur "New message from our team" dikhta hai. Customer ka reply bhi bina reload ke jaata hai. Internal notes customer ke page pe kabhi nahi aate.</div>
+  <h3>Kaun sa status kab</h3>
+  <table>
+    <tr><th>Situation</th><th>Kya karein</th></tr>
+    <tr><td>Customer se aur info/photo chahiye</td><td>Reply bhejo, status khud "Waiting on customer" ho jaayega</td></tr>
+    <tr><td>Replacement/refund process ho raha hai</td><td>Status "In progress" (customer ko update email jaata hai, agar on hai)</td></tr>
+    <tr><td>Kaam ho gaya</td><td>"Send and resolve" ya status "Resolved"</td></tr>
+    <tr><td>Bahut zaroori (VIP, galat order bada)</td><td>Priority "Urgent" aur kisi ko assign karo</td></tr>
+  </table>
+</section>
+
+<section>
+  <h2>5. AI Photo Check</h2>
+  <p>Return/refund ke liye customer jo photo bhejta hai, woh apne aap background mein check hoti hai. Isse customer ko koi deri nahi hoti. 5 layers mein check hota hai, sabse pakke (aur free) saboot se shuru. Pehli 4 layers kuch pakka paa lein toh wahin faisla; kuch na milein toh <b>layer 5, AI detector</b> aapki apni Sightengine/TruthScan key se chalta hai:</p>
+  <table>
+    <tr><th style="width:30%">Check</th><th>Kya dekhta hai</th><th style="width:14%">Kharcha</th></tr>
+    <tr><td>1. Content Credentials (C2PA)</td><td>OpenAI, Adobe Firefly, Google jaise tools photo ke andar "AI se bani hai" likh dete hain.</td><td>Free</td></tr>
+    <tr><td>2. Watermark / signature</td><td>Stable Diffusion/ComfyUI ki settings, C2PA mein declared invisible watermark, aur Gemini ka chamakta star (✦) kone mein. Yeh WhatsApp forward ke baad bhi pakda jaata hai. (SynthID jaisa pixel watermark offline check nahi ho sakta; use layer 5 pakadta hai.)</td><td>Free</td></tr>
+    <tr><td>3. Metadata (EXIF)</td><td>AI tool ka naam, "ChatGPT Image..." jaisa file name, gpt-image jaisa pixel size, camera ki details.</td><td>Free</td></tr>
+    <tr><td>4. Hash / known image</td><td>Photo ka SHA-256 aur perceptual hash: yahi photo (ya thoda badla hua version) pehle kisi aur ticket mein aayi thi? Pehle AI nikli photo ki copy ho toh woh bhi AI.</td><td>Free</td></tr>
+    <tr><td>Saath mein: editing ke nishaan</td><td>Photoshop/Canva, camera preview match nahi karta, screenshot ya app export.</td><td>Free</td></tr>
+    <tr><td>5. AI detector (aakhri layer)</td><td>Sightengine ya TruthScan ka trained model: "AI 94% · Real 6%" jaisa result. Har us photo pe chalta hai jiska faisla layer 1-4 na kar paayein.</td><td>Aapki key</td></tr>
+  </table>
+  <h3>Badge ka matlab</h3>
+  <table>
+    <tr><th style="width:28%">Badge</th><th>Matlab aur kya karein</th></tr>
+    <tr><td><span class="pill p-bad">Likely AI-generated</span></td><td>Pakka saboot mila (credentials, watermark, AI tool ka naam) ya detector 70%+ bola. Customer se asli photo/video maango.</td></tr>
+    <tr><td><span class="pill p-warn">Reused photo</span></td><td>Yahi photo pehle kisi aur ticket pe aayi thi. Panel mein us ticket ka link hai, dono dekho.</td></tr>
+    <tr><td><span class="pill p-warn">Can't confirm</span></td><td>Na pakka asli, na pakka AI (metadata hata hua, detector key nahi, ya score beech mein). Zaroorat ho toh aur photo maango.</td></tr>
+    <tr><td><span class="pill p-ok">Likely genuine</span></td><td>Camera ki asli details theek hain, ya detector ne kam score diya.</td></tr>
+    <tr><td><span class="pill p-n">Couldn't check / Scan incomplete</span></td><td><b>Re-scan</b> dabao.</td></tr>
+  </table>
+  <h3>Poori report (popup)</h3>
+  <p>Har photo ke neeche rangeen badge hai jisme <b>View report ›</b> likha hai. Uspe click karo (ya photo kholke <b>View full report</b>), toh <b>AI photo check report</b> popup khulta hai. Photo checks page pe bhi row pe click karne se ya <b>Full report</b> button se yahi popup khulta hai. Popup mein:</p>
+  <ul>
+    <li><b>Upar result:</b> photo, verdict (jaise "Likely AI-generated"), "kitna sure" ki bar, ek line mein matlab, aur side mein 3 points: kitne strong AI signs, kitne suspicious signs, kitne checks pass hue.</li>
+    <li><b>What to do</b> (navy box): is result pe aage kya karna hai, jaise customer se nayi photo maango.</li>
+    <li><b>Checks at a glance:</b> 6 rangeen tiles, har check ka ek. Laal = <span class="pill p-bad">AI evidence found</span>, peela = <span class="pill p-warn">Suspicious</span> ya <span class="pill p-warn">Needs setup</span>, hara = <span class="pill p-ok">Passed</span>, neela = Info only, grey = Not run.</li>
+    <li><b>AI detector panel:</b> AI detector ka alag bada box.
+      <ul>
+        <li>Detector chala ho toh <b>meter</b> (Real → AI) pe % dikhta hai: 40% se kam = Looks real, 40-69% = Unsure, 70%+ = Likely AI. Saath mein kaunse AI tool (ChatGPT, Midjourney...) se bani hogi.</li>
+        <li><b>Not connected</b> (peela): detector ki key nahi daali, sirf free checks chale. <b>Connect AI detector</b> button settings kholta hai.</li>
+        <li><b>Error</b> (laal): key galat hai ya checks khatam ho gaye. Wajah aur fix wahi likha hota hai, saath mein <b>Try the AI detector again</b> button.</li>
+        <li><b>Not needed:</b> free checks ne pehle hi faisla kar diya. Chaho toh <b>Get a second opinion</b> se detector chala lo.</li>
+      </ul></li>
+    <li><b>Issues found:</b> har problem alag card mein: laal = <span class="pill p-bad">AI evidence</span> (pakka saboot), peela = <span class="pill p-warn">Suspicious</span> (shak). Har card pe likha hai kya mila aur kis check ne pakda ("Found by"). Reused photo ho toh doosre ticket ka link bhi.</li>
+    <li><b>Every check, step by step:</b> 6 checks ki detail. Click karke dekho woh check kya dekhta hai aur usne kya paaya. Jin checks mein issue ya setup baaki hai woh apne aap khule rehte hain.</li>
+    <li><b>Photo details:</b> size, format, camera, kab li gayi, software, location data.</li>
+    <li>Neeche buttons: <b>Re-scan photo</b> aur <b>Done</b>.</li>
+  </ul>
+  <h3>AI detector chal raha hai ya nahi? (Photo checks page)</h3>
+  <p>Help Desk → <b>Photo checks</b> page pe sabse upar <b>AI detector status</b> box hai:</p>
+  <table>
+    <tr><th style="width:26%">Status</th><th>Matlab aur kya karein</th></tr>
+    <tr><td><span class="pill p-ok">Working</span></td><td>Detector connected hai aur result de raha hai. Sab theek.</td></tr>
+    <tr><td><span class="pill p-info">Connected</span></td><td>Key save hai, abhi tak kisi photo ko detector ki zaroorat nahi padi.</td></tr>
+    <tr><td><span class="pill p-warn">Not connected</span></td><td>Key nahi daali. <b>Connect AI detector</b> dabao aur Sightengine ya TruthScan key daalo. Jo photos ruki hain woh apne aap dobara check hongi.</td></tr>
+    <tr><td><span class="pill p-bad">Needs attention</span></td><td>Detector ka aakhri call fail hua (key galat, checks khatam). Wajah box mein likhi hai. <b>Fix in settings</b> dabao.</td></tr>
+    <tr><td><span class="pill p-n">Off</span></td><td>AI photo check band hai. <b>Turn on</b> dabao.</td></tr>
+  </table>
+  <p>Neeche teen numbers: kaunsa detector, pichhle 30 din mein kitne detector checks, aur aakhri result kab aaya.</p>
+  <h3>Detector kab chale (Settings → AI photo check)</h3>
+  <ul>
+    <li><b>Every photo the free checks can't settle</b> (recommended, default): layer 1-4 faisla na karein toh har photo detector ko jaati hai.</li>
+    <li><b>Skip clear camera originals:</b> checks bachata hai; jinki camera details poori aur sahi hain, woh detector ko nahi jaatin.</li>
+    <li><b>Only when I click:</b> kabhi apne aap nahi, sirf button dabane pe.</li>
+  </ul>
+  <p class="small">Ek hi photo pe dobara paisa nahi lagta (purana result reuse hota hai). Key save karte waqt provider se verify hoti hai. Jo photos bina key ke scan hui thi, unhe key daalte hi detector apne aap dobara check karta hai.</p>
+  <div class="box warn"><b>Yeh saboot hai, faisla nahi</b>WhatsApp jaise apps photo ka metadata hata dete hain, isliye metadata na hona customer ke khilaaf nahi gina jaata. Badge ko ishaara samjho: shak ho toh customer se aur photo ya video maango, seedha mana mat karo.</div>
+</section>
+
+<section>
+  <h2>6. Emails kaise jaate hain</h2>
+  <table>
+    <tr><th style="width:34%">Email</th><th>Kisko</th><th>Kab</th></tr>
+    <tr><td>New ticket alert</td><td>Aapki team</td><td>Naya ticket</td></tr>
+    <tr><td>Confirmation (#number + link)</td><td>Customer</td><td>Ticket bante hi (Settings mein on/off)</td></tr>
+    <tr><td>Reply</td><td>Customer</td><td>Aap "Send reply" dabao (signature ke saath)</td></tr>
+    <tr><td>Status update</td><td>Customer</td><td>Aap status "In progress" ya "Resolved" karo (on/off)</td></tr>
+    <tr><td>Customer replied alert</td><td>Aapki team</td><td>Customer request page se jawab de</td></tr>
+  </table>
+  <h3>Queue aur retry</h3>
+  <p>Har email pehle database mein save hota hai, phir bheja jaata hai. Fail ho jaaye toh 1 minute, phir 5 minute baad dobara try. 3 baar fail hone pe "Email failed" dikhta hai aur ticket pe <b>Retry</b> button aata hai. Ticket ke right side mein <b>Emails</b> section mein har email ka status dikhta hai.</p>
+  <div class="box bad"><b>Abhi emails band hain</b>Server pe SMTP settings nahi hain, isliye abhi koi email nahi jaata. Tickets aur request page phir bhi poori tarah chalte hain, customer reply request page pe dekh sakta hai. Emails chalu karne ke liye server ki <code>/var/www/zion-app/.env</code> mein yeh daalo, phir app restart karo (Section 8):
+<pre>SMTP_HOST=smtp.gmail.com        # ya aapka mail server
+SMTP_PORT=587                   # 465 ho toh SSL apne aap
+SMTP_USER=support@yourstore.com
+SMTP_PASS=app-password-yahan
+SMTP_FROM=support@yourstore.com # optional</pre>
+  Gmail ho toh normal password nahi, <b>App Password</b> lagega. Settings mein <b>Send test email</b> se check karo.</div>
+</section>
+
+<section>
+  <h2>7. Security aur limits</h2>
+  <ul>
+    <li><b>Har store ka data alag:</b> server Shopify ke signed request se store pehchanta hai. Koi URL badal ke doosre store ka data nahi dekh sakta.</li>
+    <li><b>Request page ka link secret hai:</b> 48 character ka random token. Isliye customer ko link share na karne ko kaho.</li>
+    <li><b>Internal notes</b> aur activity log customer ko kabhi nahi bheje jaate.</li>
+    <li><b>Spam se bachav:</b> chhupa "honeypot" field, aur har visitor ki limit:</li>
+  </ul>
+  <table>
+    <tr><th>Kaam</th><th>Limit (har visitor)</th></tr>
+    <tr><td>Naya ticket</td><td>5 per minute</td></tr>
+    <tr><td>Reply bhejna</td><td>10 per minute</td></tr>
+    <tr><td>Galat request lookup</td><td>5 galti → 15 minute lock</td></tr>
+  </table>
+  <ul>
+    <li><b>Photos:</b> sirf asli JPG/PNG/WebP, 10 MB tak har ek. Naam badal ke koi aur file upload nahi ho sakti, andar ke bytes check hote hain.</li>
+    <li><b>Privacy (GDPR) webhooks:</b> customer Shopify se apna data delete karwaye toh uske saare tickets apne aap delete ho jaate hain. Store app hataye toh 48 ghante baad Shopify ke kehne pe us store ka saara Help Desk data saaf ho jaata hai.</li>
+    <li><b>AI detector keys</b> sirf server pe rehti hain, browser ko kabhi nahi bheji jaatin. <span class="small">(Abhi database mein bina encryption ke save hoti hain.)</span></li>
+  </ul>
+  <p class="small">Limits server ki memory mein hain: server restart pe reset ho jaati hain. Abhi ek hi server hai, toh yeh theek hai.</p>
+</section>
+
+<section>
+  <h2>8. Technical: server, deploy, rollback</h2>
+  <table>
+    <tr><th style="width:30%">Cheez</th><th>Detail</th></tr>
+    <tr><td>App URL</td><td><code>https://zion.netgains.org</code></td></tr>
+    <tr><td>Server</td><td><code>2.25.226.33</code> (Ubuntu, nginx), login <code>root</code> (SSH key se)</td></tr>
+    <tr><td>App folder</td><td><code>/var/www/zion-app</code></td></tr>
+    <tr><td>Process</td><td><code>pm2</code> naam <code>zion-app</code>, port 3000</td></tr>
+    <tr><td>Database</td><td>SQLite: <code>/var/www/zion-app/prisma/dev.sqlite</code></td></tr>
+    <tr><td>Code</td><td>GitHub <code>GITNetgains/Free-Gift-Cart</code>, branch <code>main</code></td></tr>
+    <tr><td>Shopify app</td><td>"Zion App", org Netgains. Extensions <code>shopify app deploy</code> se jaate hain</td></tr>
+  </table>
+  <div class="box warn"><b>Auto deploy nahi hota</b>GitHub pe push karne se server apne aap update <b>nahi</b> hota. Neeche wale steps chalane padte hain.</div>
+  <h3>Naya version deploy karna</h3>
+  <p><b>A. Apne computer pe</b> (project folder mein):</p>
+<pre>pnpm test                      # sab tests pass hone chahiye
+git push origin main           # code GitHub pe
+npx shopify app deploy --allow-updates --message "kya badla"   # theme widget/blocks</pre>
+  <p><b>B. Server pe</b> (<code>ssh root@2.25.226.33</code>):</p>
+<pre>TS=$(date +%Y%m%d-%H%M%S); mkdir -p /root/backups
+cp -a /var/www/zion-app/prisma/dev.sqlite /root/backups/zion-app-dev-$TS.sqlite   # DB backup
+cd /var/www/zion-app
+git fetch origin &amp;&amp; git reset --hard origin/main
+CI=true pnpm install --frozen-lockfile
+npx prisma migrate deploy      # database badlav
+npx prisma generate            # Prisma client naye schema se (zaroori!)
+rm -rf build.prev &amp;&amp; cp -a build build.prev   # purana build sambhal ke
+pnpm run build
+pm2 restart zion-app --update-env
+pm2 logs zion-app --lines 30 --nostream       # error toh nahi?</pre>
+  <h3>Gadbad ho toh wapas (rollback)</h3>
+<pre>cd /var/www/zion-app
+rm -rf build &amp;&amp; cp -a build.prev build       # purana build wapas
+pm2 restart zion-app
+# database bhi wapas chahiye toh (pehle app band karo):
+pm2 stop zion-app
+cp /root/backups/zion-app-dev-&lt;TIMESTAMP&gt;.sqlite prisma/dev.sqlite
+pm2 start zion-app</pre>
+  <p class="small">22 October ke deploy se pehle ka poora backup: <code>/root/backups/zion-app-20261022-101638.tgz</code> (code), <code>zion-app-dev-20261022-101638.sqlite</code> (database), <code>zion-app-env-20261022-101638</code> (.env). Shopify extension ka purana version Partners dashboard → App → Versions se dobara release ho sakta hai.</p>
+  <h3>Code kahan hai</h3>
+  <table>
+    <tr><th style="width:42%">File / folder</th><th>Kaam</th></tr>
+    <tr><td><code>app/routes/app.help-desk.tsx</code></td><td>Admin: inbox, ticket, settings</td></tr>
+    <tr><td><code>app/routes/app.help-desk-pulse.tsx</code></td><td>Admin ka live update check (har ~4 second)</td></tr>
+    <tr><td><code>app/routes/webhooks.compliance.tsx</code></td><td>Privacy webhooks: customer/store data delete</td></tr>
+    <tr><td><code>app/routes/help-desk.tsx</code></td><td>Storefront: form, request page, lookup (app proxy <code>/apps/help-desk</code>)</td></tr>
+    <tr><td><code>app/services/help-desk*.ts</code></td><td>Tickets, emails ki queue, orders</td></tr>
+    <tr><td><code>app/services/image-scan/</code></td><td>AI Photo Check ki saari layers</td></tr>
+    <tr><td><code>extensions/help-desk/</code></td><td>Theme: Help Desk form block</td></tr>
+    <tr><td><code>prisma/schema.prisma</code>, <code>prisma/migrations/</code></td><td>Database tables</td></tr>
+    <tr><td><code>tests/</code></td><td>130+ automatic tests</td></tr>
+  </table>
+</section>
+
+<section>
+  <h2>9. Problem aaye toh kya karein</h2>
+  <table>
+    <tr><th style="width:36%">Problem</th><th>Kya check karein</th></tr>
+    <tr><td>Form "could not load" bol raha hai</td><td>Block setting "App proxy path" <code>/apps/help-desk</code> hai? Server chal raha hai? (<code>pm2 status</code>)</td></tr>
+    <tr><td>Koi email nahi ja raha</td><td>Server pe SMTP settings hain? (Section 8.) Ticket ke right side "Emails" mein status aur error dekho.</td></tr>
+    <tr><td>"Email failed"</td><td>Error message padho (galat password, limit). Theek karke <b>Retry</b> dabao.</td></tr>
+    <tr><td>Har photo "Can't confirm" aa rahi hai</td><td>AI detector key nahi daali. Settings → AI photo check mein Sightengine ya TruthScan key daalo; pichhli photos apne aap dobara check ho jaayengi.</td></tr>
+    <tr><td>Photo pe "Checking photo" atka hai</td><td>10 minute baad apne aap "Scan incomplete" ho jaata hai, phir <b>Re-scan</b>.</td></tr>
+    <tr><td>AI detector error ("rejected your credentials", "checks used up")</td><td>Settings → AI photo check mein key dobara daalo, ya provider ke dashboard mein plan/credits dekho.</td></tr>
+    <tr><td>Customer bol raha hai "reply ka box nahi hai"</td><td>Yeh rule hai: box sirf "Waiting on customer" status pe khulta hai. Customer ko kuch bhejna hai toh pehle aap reply karo (status khud badal jaayega).</td></tr>
+    <tr><td>Customer ko apni request nahi mil rahi</td><td>Use <code>/apps/help-desk?ticket=</code> pe number + email se dhoondhne ko kaho, ya admin se ticket ka "Customer's request page" link bhejo.</td></tr>
+    <tr><td>Admin mein naya feature nahi dikh raha</td><td>Server pe deploy hua? (Section 8 ke steps.) Browser hard refresh (Ctrl+Shift+R).</td></tr>
+    <tr><td>Server error</td><td><code>pm2 logs zion-app --lines 100 --nostream</code> dekho. Zaroorat ho toh rollback (Section 8).</td></tr>
+  </table>
+</section>
+
+<section>
+  <h2>10. Jaldi yaad rakhne wali baatein</h2>
+  <div class="two">
+    <div>
+      <h3>Roz</h3>
+      <ul>
+        <li>Inbox ka <b>Needs attention</b> view khaali karo.</li>
+        <li>Laal "No reply yet" wale tickets pehle.</li>
+        <li><span class="pill p-bad">AI photo</span> / <span class="pill p-warn">Reused photo</span> wale tickets dhyan se dekho.</li>
+        <li>Reply ke liye saved replies use karo.</li>
+      </ul>
+      <h3>Har hafte</h3>
+      <ul>
+        <li>Average first response time dekho.</li>
+      </ul>
+    </div>
+    <div>
+      <h3>Kabhi mat bhoolo</h3>
+      <ul>
+        <li>Internal note customer ko nahi dikhta, reply dikhta hai. Bhejne se pehle tab dekh lo.</li>
+        <li>Photo badge saboot hai, faisla nahi.</li>
+        <li>Server pe deploy se pehle database backup.</li>
+        <li>Dono stores ek hi server pe hain: server ka badlav dono pe lagta hai.</li>
+      </ul>
+      <h3>Abhi baaki</h3>
+      <ul>
+        <li>Dono stores pe AI detector key (Sightengine ya TruthScan).</li>
+        <li>Server pe SMTP settings (emails ke liye).</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+</body>
+</html>
