@@ -2,7 +2,7 @@
 
 client_id = "b48eb12d314da0aa0c7398a1bcf5c2a3"
 name = "Zion Cases Helpdesk"
-application_url = "https://example.com"
+application_url = "https://helpdesk.zioncases.com"
 embedded = true
 
 [access_scopes]
@@ -41,7 +41,7 @@ api_version = "2026-07"
   compliance_topics = [ "customers/data_request", "customers/redact", "shop/redact" ]
 
 [auth]
-redirect_urls = [ "https://example.com/api/auth" ]
+redirect_urls = [ "https://helpdesk.zioncases.com/api/auth" ]
 
 [build]
 automatically_update_urls_on_dev = true
