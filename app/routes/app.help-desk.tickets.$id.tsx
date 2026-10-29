@@ -239,8 +239,15 @@ function Message({ message, files, email, isNew, grouped, pending = false }: { m
 const LAYOUT_CSS = `
 .hd-ticket { display: grid; grid-template-columns: minmax(0, 1.04fr) minmax(360px, .96fr); gap: 18px; align-items: start; }
 .hd-ticket-main, .hd-ticket-side { display: grid; gap: 16px; min-width: 0; }
-.hd-chat { position: sticky; top: 12px; }
-@media (max-width: 960px) { .hd-ticket { grid-template-columns: minmax(0, 1fr); } .hd-chat { position: static; } }
+.hd-ticket-main { position: sticky; top: 70px; height: calc(100vh - 86px); min-height: 420px; align-self: start; }
+.hd-chat { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; height: 100%; min-height: 0; }
+.hd-chat-thread { min-height: 0; overflow: hidden; }
+.hd-chat-scroll { height: 100%; min-height: 0; }
+@media (max-width: 960px) {
+  .hd-ticket { grid-template-columns: minmax(0, 1fr); }
+  .hd-ticket-main { position: static; height: auto; min-height: 0; }
+  .hd-chat { height: min(860px, calc(100vh - 80px)); min-height: 420px; }
+}
 `;
 
 // A card in the right-hand column.
@@ -319,7 +326,7 @@ function ChatThread({ ticket, replyEmails, readAt }: { ticket: TicketData["ticke
   const toBottom = () => { const node = box.current; if (node) node.scrollTo({ top: node.scrollHeight, behavior: "smooth" }); setUnseen(0); };
   let lastDay = "";
   let lastAuthor = "";
-  return <div style={{ position: "relative" }}>
+  return <div className="hd-chat-thread" style={{ position: "relative", height: "100%" }}>
     <div ref={box} onScroll={(event) => {
       const node = event.currentTarget;
       pinned.current = node.scrollHeight - node.scrollTop - node.clientHeight < 80;
@@ -327,7 +334,7 @@ function ChatThread({ ticket, replyEmails, readAt }: { ticket: TicketData["ticke
     }} style={{
       // Fills the screen above the reply box, like a chat app.
       // (The whole window, reply box included, fits on screen: it stays in view as the right column scrolls.)
-      height: "clamp(240px, calc(100vh - 470px), 620px)", overflowY: "auto", scrollbarWidth: "thin", scrollbarColor: "#53638F transparent", padding: "12px 14px 14px",
+      height: "100%", minHeight: 0, overflowY: "auto", scrollbarWidth: "thin", scrollbarColor: "#53638F transparent", padding: "12px 14px 14px",
       // Deep Zion navy with a quiet blue glow and low-contrast texture.
       backgroundColor: "#111A35", backgroundImage: "radial-gradient(circle at 18% 0%, rgba(51,79,180,.26), transparent 48%), radial-gradient(rgba(255,255,255,.035) 1px, transparent 1px)", backgroundSize: "auto, 18px 18px",
     }}>
@@ -987,9 +994,6 @@ function TicketDetail({ screen }: { screen: TicketData }) {
     <style>{LAYOUT_CSS}</style>
     <div className="hd-ticket">
     <div className="hd-ticket-main">
-    <CancellationPanel screen={screen} />
-    <AddressPanel screen={screen} />
-
     {/* One chat window, like a messaging app: who and where it stands, the conversation, then the reply box. */}
     <div className="hd-chat" style={{ borderRadius: 12, overflow: "hidden", border: "1px solid #2A3965", boxShadow: "0 12px 30px rgba(12,20,43,.2)", background: "#172351" }}>
       <ChatHeader ticket={ticket} count={conversation.filter((message) => message.kind !== "event").length + (ticket.channel === "chat" ? 0 : 1)} />
@@ -1001,6 +1005,9 @@ function TicketDetail({ screen }: { screen: TicketData }) {
     <div className="hd-ticket-side">
 
     <TicketProperties ticket={ticket} team={screen.team} suggestions={screen.tagSuggestions} />
+
+    <CancellationPanel screen={screen} />
+    <AddressPanel screen={screen} />
 
     <SideCard heading="Customer">
       <s-stack gap="small-200">
