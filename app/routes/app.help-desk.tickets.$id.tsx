@@ -3,11 +3,11 @@ import type { LoaderFunctionArgs } from "react-router";
 import { useFetcher, useFetchers, useLoaderData, useNavigate } from "react-router";
 import { useAppBridge } from "@shopify/app-bridge-react";
 import {
-  addressBlockers, addressChangeChecks, addressCheckOrder, addressFromValues, addressLines, countries, countryName, fieldLabels as LABELS, fillMacro, MAX_MESSAGE_LENGTH, PLAYABLE_VIDEO, priorities, PROVINCES, ticketStatuses, type MacroOrder,
+  addressBlockers, addressChangeChecks, addressCheckOrder, shipStationCheck, addressFromValues, addressLines, countries, countryName, fieldLabels as LABELS, fillMacro, MAX_MESSAGE_LENGTH, PLAYABLE_VIDEO, priorities, PROVINCES, ticketStatuses, type MacroOrder,
 } from "../services/help-desk";
 import { adminContext, helpDeskAction, loadTicket } from "../services/help-desk-admin.server";
 import type { TicketProduct } from "../services/help-desk-email.server";
-import { categoryNames, describeCategory, groupMacros, macroScope, resolutionTypes, rootCauses, subcategoriesOf, teamFor } from "../services/help-desk-taxonomy";
+import { categoryNames, describeCategory, groupMacros, resolutionTypes, rootCauses, subcategoriesOf, teamFor } from "../services/help-desk-taxonomy";
 import { buildChecks, PHOTO_VERDICT, PhotoCheckButton, PhotoReportModal } from "../components/PhotoReport";
 import { AddressBadge, ago, CancelBadge, DAY, DeleteConfirm, duration, formatDate, StatusBadge, ticketHref, useLiveRefresh, useResultToast } from "../components/help-desk/shared";
 
@@ -410,6 +410,7 @@ function Composer({ ticket, macros, storeName, team, configured, me, order }: { 
   const [macro, setMacro] = useState("");
   const [channel, setChannel] = useState<"page" | "email">("page");
   const groups = groupMacros(macros, ticket);
+  const offered = groups.suggested.length ? groups.suggested : groups.general;
   const insert = (id: string) => {
     const chosen = macros.find((item) => item.id === id);
     // Choosing a saved reply swaps in its text, replacing the previous one.
@@ -459,15 +460,12 @@ function Composer({ ticket, macros, storeName, team, configured, me, order }: { 
     </div>
     <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 8 }}>
       <div>
-        <s-select label="Insert a saved reply" labelAccessibilityVisibility="exclusive" value={macro} disabled={!macros.length} onChange={(event) => insert(event.currentTarget.value ?? "")}>
-          <s-option value="">{macros.length ? "Insert a saved reply" : "No saved replies yet"}</s-option>
-          {[
-            [ticket.category ? `Suggested for ${ticket.subcategory || ticket.category}` : "", groups.suggested],
-            ["General replies", groups.general],
-            ["Other categories", groups.other],
-          ].filter(([label, list]) => label && (list as typeof macros).length).map(([label, list]) => <s-option-group key={label as string} label={label as string}>
-            {(list as typeof macros).map((item) => <s-option key={item.id} value={item.id}>{label === "Other categories" ? `${item.title} (${macroScope(item)})` : item.title}</s-option>)}
-          </s-option-group>)}
+        {/* Only the replies for this ticket's category; general ones when it has none. */}
+        <s-select label="Insert a saved reply" labelAccessibilityVisibility="exclusive" value={macro} disabled={!offered.length} onChange={(event) => insert(event.currentTarget.value ?? "")}>
+          <s-option value="">{offered.length ? "Insert a saved reply" : "No saved replies for this category"}</s-option>
+          <s-option-group label={groups.suggested.length ? `For ${ticket.subcategory || ticket.category}` : "General replies"}>
+            {offered.map((item) => <s-option key={item.id} value={item.id}>{item.title}</s-option>)}
+          </s-option-group>
         </s-select>
       </div>
       <div>
@@ -737,7 +735,7 @@ function OrderTracking({ screen }: { screen: TicketData }) {
 // Each step of a cancellation request, as the customer sees it too.
 const CANCEL_STEPS = ["Pending", "Approved", "Cancelled"];
 const CANCEL_COPY: Record<string, string> = {
-  Pending: "The customer asked to cancel their whole order. Approving cancels it in Shopify; rejecting keeps it. The customer sees the decision on their request page and by email.",
+  Pending: "The customer asked to cancel their whole order. Nothing has changed yet: approving cancels it in Shopify (and ShipStation); rejecting keeps it. The customer sees the decision on their request page and by email.",
   Approved: "Approved. Shopify is cancelling the order; this changes to Cancelled as soon as it's done. If it doesn't, cancel it in Shopify again.",
   Rejected: "Rejected. The customer was told the order can't be cancelled.",
   Cancelled: "The order is cancelled in Shopify. The customer has been told.",
@@ -745,7 +743,7 @@ const CANCEL_COPY: Record<string, string> = {
 
 // The customer's request to cancel their order, and the team's decision.
 function CancellationPanel({ screen }: { screen: TicketData }) {
-  const { ticket, order } = screen;
+  const { ticket, order, shipStation } = screen;
   const fetcher = useFetcher<typeof action>();
   const shopify = useAppBridge();
   const [note, setNote] = useState("");
@@ -756,7 +754,8 @@ function CancellationPanel({ screen }: { screen: TicketData }) {
     if (fetcher.state !== "idle" || !fetcher.data) return;
     const errors = Object.values(fetcher.data.errors);
     if (errors.length) { if (!fetcher.data.errors.note) shopify.toast.show(errors[0], { isError: true }); return; }
-    shopify.toast.show(fetcher.data.notice === "Cancelled" ? "Approved: order cancelled in Shopify"
+    if (fetcher.data.warning) shopify.toast.show(fetcher.data.warning, { isError: true, duration: 10000 });
+    else shopify.toast.show(fetcher.data.notice === "Cancelled" ? "Approved: order cancelled in Shopify"
       : fetcher.data.notice === "Approved" ? "Approved: Shopify is cancelling the order" : `Cancellation request ${(fetcher.data.notice || "updated").toLowerCase()}`);
     setNote("");
     setConfirming(false);
@@ -770,6 +769,9 @@ function CancellationPanel({ screen }: { screen: TicketData }) {
   }, { method: "post" });
   const shipped = order && order.fulfilled !== "none";
   const open = status === "Pending" || status === "Approved";
+  // Has the warehouse bought a label in ShipStation? (Only asked while the order can still be cancelled.)
+  const labelCheck = order && !order.cancelled && !shipped && status !== "Cancelled" ? shipStationCheck(shipStation, "cancel") : null;
+  const labelBlocked = Boolean(labelCheck && !labelCheck.ok && !labelCheck.warning);
   const stillOpen = status === "Cancelled" && order && !order.cancelled;
   const current = status === "Rejected" ? 1 : CANCEL_STEPS.indexOf(status);
   const reason = ticket.details.cancelReason;
@@ -806,6 +808,16 @@ function CancellationPanel({ screen }: { screen: TicketData }) {
       {open && shipped && <s-banner tone="warning" heading={`Order ${order.name} has already shipped`}>
         It can no longer be cancelled. Reject the request and offer a return instead.
       </s-banner>}
+      {labelCheck && <s-stack direction="inline" gap="small-200" alignItems="start">
+        <s-icon type={labelCheck.ok ? "check-circle" : labelCheck.warning ? "alert-triangle" : "x-circle"} tone={labelCheck.ok ? "success" : labelCheck.warning ? "warning" : "critical"} size="small" />
+        <s-stack gap="none">
+          <s-text>{labelCheck.label}</s-text>
+          {labelCheck.detail && <s-text color="subdued">{labelCheck.detail}</s-text>}
+        </s-stack>
+      </s-stack>}
+      {labelBlocked && <s-banner tone="warning" heading="Void the ShipStation label first">
+        {labelCheck!.detail} Or reject the request with a note for the customer.
+      </s-banner>}
       {open && order?.cancelled && <s-banner tone="info" heading={`Order ${order.name} is already cancelled in Shopify`}>
         Choose &ldquo;Approve &amp; cancel order&rdquo; to close the request and let the customer know.
       </s-banner>}
@@ -821,7 +833,7 @@ function CancellationPanel({ screen }: { screen: TicketData }) {
         {confirming ? <s-box border="base" borderRadius="base" padding="base" background="subdued">
           <s-stack gap="small-200">
             <s-text type="strong">Cancel {order ? `order ${order.name}` : "this order"} in Shopify?</s-text>
-            <s-text color="subdued">The whole order is cancelled. This can&apos;t be undone.</s-text>
+            <s-text color="subdued">The whole order is cancelled. This can&apos;t be undone.{shipStation?.state === "found" ? " The ShipStation order is cancelled too." : ""}</s-text>
             <s-checkbox label="Refund the customer to their original payment method" checked={options.refund} onChange={() => setOptions({ ...options, refund: !options.refund })} />
             <s-checkbox label="Restock the items" checked={options.restock} onChange={() => setOptions({ ...options, restock: !options.restock })} />
             <s-checkbox label="Also send Shopify's order cancellation email" details="The Help Desk already emails the customer about the decision." checked={options.notifyCustomer}
@@ -833,7 +845,7 @@ function CancellationPanel({ screen }: { screen: TicketData }) {
           </s-stack>
         </s-box>
         : <s-stack direction="inline" gap="small-200">
-          <s-button variant="primary" icon="check" disabled={busy || Boolean(shipped)} onClick={() => order?.cancelled ? decide("cancel-shopify") : setConfirming(true)}>
+          <s-button variant="primary" icon="check" disabled={busy || Boolean(shipped) || labelBlocked} onClick={() => order?.cancelled ? decide("cancel-shopify") : setConfirming(true)}>
             {stillOpen || status === "Approved" ? "Cancel order in Shopify" : status === "Rejected" ? "Approve instead & cancel order" : "Approve & cancel order"}
           </s-button>
           {(status === "Pending" || status === "Approved") && <s-button icon="x" tone="critical" disabled={busy} onClick={() => decide("reject")}>Reject</s-button>}
@@ -860,7 +872,7 @@ function AddressLines({ heading, lines }: { heading: string; lines: string[] }) 
 // The customer's request to ship their order somewhere else, checked against
 // the rules for when an address can still change.
 function AddressPanel({ screen }: { screen: TicketData }) {
-  const { ticket, order, orderError } = screen;
+  const { ticket, order, orderError, shipStation } = screen;
   const fetcher = useFetcher<typeof action>();
   const shopify = useAppBridge();
   const requested = addressFromValues(ticket.details);
@@ -873,18 +885,23 @@ function AddressPanel({ screen }: { screen: TicketData }) {
     const errors = fetcher.data.errors;
     if (errors.form) shopify.toast.show(errors.form, { isError: true });
     if (Object.keys(errors).length) return;
-    shopify.toast.show(fetcher.data.notice === "Updated" ? "Shipping address updated in Shopify" : "Address change rejected");
+    if (fetcher.data.warning) shopify.toast.show(fetcher.data.warning, { isError: true, duration: 10000 });
+    else shopify.toast.show(fetcher.data.notice === "Updated" ? "Shipping address updated" : "Address change rejected");
     setNote("");
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fetcher.state, fetcher.data]);
   if (!ticket.addressStatus) return null;
   const status = ticket.addressStatus;
   const open = status !== "Updated";
-  const checks = orderError ? [] : addressChangeChecks(order && addressCheckOrder(order, ticket.email), form.country);
+  // Shopify's rules, then whether ShipStation has bought a label for the old address.
+  const labelCheck = order ? shipStationCheck(shipStation) : null;
+  const checks = orderError ? [] : [...addressChangeChecks(order && addressCheckOrder(order, ticket.email), form.country), ...(labelCheck ? [labelCheck] : [])];
   const blocked = addressBlockers(checks);
   // The order itself can't change (shipped, cancelled...): only rejecting is left.
   // A different country is the address's problem, which staff can still correct.
   const orderBlocked = Boolean(orderError) || blocked.some((check) => check.id !== "country");
+  // Only a ShipStation label in the way: voiding it there opens the update again.
+  const labelOnly = blocked.length > 0 && blocked.every((check) => check.id === "label");
   const unverified = checks.some((check) => check.id === "verified" && !check.ok);
   const errors = fetcher.data?.errors ?? {};
   const set = (key: keyof AddressForm) => (event: Event) => setForm({ ...form, [key]: (event.currentTarget as HTMLInputElement).value ?? "" });
@@ -912,7 +929,7 @@ function AddressPanel({ screen }: { screen: TicketData }) {
           <s-text type="strong">Can this address still be changed?</s-text>
           {orderError ? <s-text color="subdued">Shopify couldn&apos;t be reached to check the order. Reload the page to try again.</s-text>
             : checks.map((check) => <s-stack key={check.id} direction="inline" gap="small-200" alignItems="start">
-              <s-icon type={check.ok ? "check-circle" : check.id === "verified" ? "alert-triangle" : "x-circle"} tone={check.ok ? "success" : check.id === "verified" ? "warning" : "critical"} size="small" />
+              <s-icon type={check.ok ? "check-circle" : check.id === "verified" || check.warning ? "alert-triangle" : "x-circle"} tone={check.ok ? "success" : check.id === "verified" || check.warning ? "warning" : "critical"} size="small" />
               <s-stack gap="none">
                 <s-text>{check.label}</s-text>
                 {check.detail && <s-text color="subdued">{check.detail}</s-text>}
@@ -920,8 +937,11 @@ function AddressPanel({ screen }: { screen: TicketData }) {
             </s-stack>)}
         </s-stack>
         <s-divider />
-        {orderBlocked && !orderError && <s-banner tone="critical" heading="This address can't be changed any more">
-          {blocked.filter((check) => check.id !== "country").map((check) => check.detail).join(" ")} Reject the request with a note for the customer.
+        {labelOnly && <s-banner tone="warning" heading="Void the ShipStation label first">
+          {blocked[0].detail} Or reject the request with a note for the customer.
+        </s-banner>}
+        {orderBlocked && !orderError && !labelOnly && <s-banner tone="critical" heading="This address can't be changed any more">
+          {blocked.filter((check) => check.id !== "country" && check.id !== "label").map((check) => check.detail).join(" ")} Reject the request with a note for the customer.
         </s-banner>}
         {!orderBlocked && <>
         <s-text type="strong">Address to send to Shopify</s-text>
@@ -951,7 +971,7 @@ function AddressPanel({ screen }: { screen: TicketData }) {
         {unverified && !blocked.length && <s-checkbox label="I've confirmed this change with the customer who placed the order" checked={confirmed} disabled={busy} onChange={() => setConfirmed(!confirmed)} />}
         <s-stack direction="inline" gap="small-200">
           {!orderBlocked && <s-button variant="primary" icon="location" loading={busy && fetcher.formData?.get("decision") === "update"}
-            disabled={busy || blocked.length > 0 || (unverified && !confirmed)} onClick={() => submit("update")}>Update address in Shopify</s-button>}
+            disabled={busy || blocked.length > 0 || (unverified && !confirmed)} onClick={() => submit("update")}>{shipStation?.state === "found" ? "Update address in Shopify and ShipStation" : "Update address in Shopify"}</s-button>}
           {status === "Pending" && <s-button icon="x" tone={orderBlocked ? undefined : "critical"} variant={orderBlocked ? "primary" : undefined} disabled={busy} onClick={() => submit("reject")}>Reject</s-button>}
         </s-stack>
         {!orderBlocked && blocked.length > 0 && <s-text color="subdued">Change the country to {order ? countryName(order.country) : "the order's country"}, or reject the request.</s-text>}

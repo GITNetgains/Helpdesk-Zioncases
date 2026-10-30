@@ -73,6 +73,13 @@ export async function submitTicket(db: PrismaClient, shop: string, form: FormDat
     const replacement = resolution === "Replacement" ? text("itemReplacement", 1000) : "";
     return { id, title: text("itemTitle"), note: text("itemNote", 5000) || (part ? "" : text("itemPart")), part, quantity, asked, resolution, replacement, images: fileList(`images:${id}`), videos: fileList(`videos:${id}`) };
   }).filter((item) => item.note || item.part || item.asked || item.images.length || item.videos.length) : [];
+  // Shipping products: how many of each they want, as the team reads it.
+  if (shipping && products.length && form.has(`itemQty:${products[0]}`)) {
+    values.quantities = [...new Set(products)].slice(0, 20).map((id) => {
+      const quantity = Math.min(99, Math.max(1, Math.trunc(Number(form.get(`itemQty:${id}`))) || 1));
+      return `${String(form.get(`itemTitle:${id}`) ?? "").trim().slice(0, 200) || "Product"} × ${quantity}`;
+    }).join("\n");
+  }
   if (perProduct.length) {
     const wants = (item: (typeof perProduct)[number]) => item.resolution && `${item.resolution}${item.replacement ? `: ${item.replacement}` : ""}`;
     values.details = perProduct.map((item) => `${item.title || "Product"}${item.part ? ` (${item.part})` : ""}${item.quantity > 1 ? ` × ${item.quantity}` : ""}: ${[item.asked, item.note].filter(Boolean).join(". ") || item.part}${item.resolution ? ` → ${wants(item)}` : ""}`).join("\n\n");

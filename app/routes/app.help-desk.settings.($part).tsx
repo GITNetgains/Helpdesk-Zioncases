@@ -11,7 +11,7 @@ import SectionNavigation from "../components/SectionNavigation";
 import { DAY, HelpDeskNavigation, useResultToast } from "../components/help-desk/shared";
 
 // Help Desk settings: /app/help-desk/settings/:part (emails by default).
-const SETTINGS_PARTS = ["email", "team", "replies", "categories", "photos", "shipping", "storefront"];
+const SETTINGS_PARTS = ["email", "team", "replies", "categories", "photos", "shipping", "shipstation", "storefront"];
 
 export const loader = async ({ request }: LoaderFunctionArgs) => loadSettings(await adminContext(request));
 
@@ -170,6 +170,87 @@ function AiSettings({ ai }: { ai: SettingsData["ai"] }) {
   </s-section>;
 }
 
+// ShipStation: address changes are checked for shipping labels bought there,
+// and the new address is set on the ShipStation order too.
+function ShipStationSettings({ shipStation }: { shipStation: SettingsData["shipStation"] }) {
+  const fetcher = useFetcher<typeof action>();
+  const shopify = useAppBridge();
+  const [values, setValues] = useState({ key: "", secret: "", storeId: shipStation.storeId });
+  useEffect(() => setValues((current) => ({ ...current, storeId: shipStation.storeId })), [shipStation.storeId]);
+  useEffect(() => {
+    if (fetcher.state !== "idle" || !fetcher.data) return;
+    if (Object.keys(fetcher.data.errors).length) shopify.toast.show(Object.values(fetcher.data.errors)[0], { isError: true });
+    else {
+      shopify.toast.show(fetcher.data.notice || "ShipStation saved");
+      setValues((current) => ({ ...current, key: "", secret: "" }));
+    }
+  }, [fetcher.state, fetcher.data, shopify]);
+  const set = (key: keyof typeof values, value: string) => setValues((current) => ({ ...current, [key]: value }));
+  const busy = fetcher.state !== "idle";
+  const disconnecting = busy && fetcher.formData?.get("disconnect") === "true";
+  return <s-section heading="ShipStation connection">
+    <s-stack gap="base">
+      <s-paragraph color="subdued">
+        Before your team changes an order&apos;s shipping address, the ticket checks whether a label has already been bought in ShipStation. A label for the
+        old address has to be voided there first. Once the address is updated in Shopify, it&apos;s also set on the ShipStation order, so the next label goes to the new address.
+      </s-paragraph>
+      <s-paragraph color="subdued">
+        Use the V1 API keys from ShipStation › Settings › Account › API Settings. Only the ShipStation account owner can create them.
+      </s-paragraph>
+      {shipStation.hasKeys && !shipStation.keysWork && <s-banner tone="critical" heading="ShipStation no longer accepts the saved keys">Enter a new API key and secret.</s-banner>}
+      <s-password-field label="API key" value={values.key} autocomplete="off" error={fetcher.data?.errors.credentials}
+        placeholder={shipStation.hasKeys ? "Saved. Enter a new key to replace it" : "Paste your API key"} onInput={(event) => set("key", event.currentTarget.value ?? "")} />
+      <s-password-field label="API secret" value={values.secret} autocomplete="off"
+        placeholder={shipStation.hasKeys ? "Saved. Enter a new secret to replace it" : "Paste your API secret"} onInput={(event) => set("secret", event.currentTarget.value ?? "")} />
+      {shipStation.stores.length > 0 && <s-select label="ShipStation store with this shop's orders" value={values.storeId}
+        details="One ShipStation account can hold several stores, and a test store may import the same orders. Choose the one your warehouse ships from."
+        onChange={(event) => set("storeId", event.currentTarget.value ?? "")}>
+        <s-option value="">Select a store</s-option>
+        {shipStation.stores.map((store) => <s-option key={store.id} value={store.id}>{store.name} ({store.marketplace})</s-option>)}
+      </s-select>}
+      {shipStation.hasKeys && !shipStation.reachable && shipStation.keysWork && <s-text color="subdued">ShipStation couldn&apos;t be reached to list its stores. Reload to try again.</s-text>}
+      <s-stack direction="inline" gap="small-200">
+        <s-button variant="primary" loading={busy && !disconnecting} disabled={busy || (!shipStation.hasKeys && !(values.key && values.secret))}
+          onClick={() => void fetcher.submit({ intent: "shipstation-settings", ...values }, { method: "post" })}>{shipStation.hasKeys ? "Save" : "Connect ShipStation"}</s-button>
+        {shipStation.hasKeys && <s-button tone="critical" loading={disconnecting} disabled={busy}
+          onClick={() => void fetcher.submit({ intent: "shipstation-settings", disconnect: "true" }, { method: "post" })}>Disconnect</s-button>}
+      </s-stack>
+    </s-stack>
+  </s-section>;
+}
+
+// Google Places key: address suggestions on the storefront form, like checkout.
+function AddressSuggestions({ enabled }: { enabled: boolean }) {
+  const fetcher = useFetcher<typeof action>();
+  const [key, setKey] = useState("");
+  useResultToast(fetcher, (result) => result.notice || "Saved");
+  useEffect(() => { if (fetcher.state === "idle" && fetcher.data && !Object.keys(fetcher.data.errors).length) setKey(""); }, [fetcher.state, fetcher.data]);
+  const busy = fetcher.state !== "idle";
+  const removing = busy && fetcher.formData?.get("remove") === "true";
+  return <s-section heading="Address suggestions">
+    <s-stack gap="base">
+      <s-paragraph color="subdued">
+        When customers type a street address (to change an order&apos;s address, or to check shipping), addresses in their country are suggested as they type,
+        like at checkout. Picking one fills in the city, state and ZIP code. It uses Google Places, the same service as Shopify&apos;s checkout, on your own Google account.
+      </s-paragraph>
+      <s-unordered-list>
+        <s-list-item>In Google Cloud Console, create or open a project with billing turned on.</s-list-item>
+        <s-list-item>Turn on <s-text type="strong">Places API (New)</s-text>, then create an API key under APIs &amp; Services › Credentials.</s-list-item>
+        <s-list-item>Restrict the key to Places API (New). Don&apos;t restrict it to websites: the app calls Google from its server.</s-list-item>
+      </s-unordered-list>
+      <s-password-field label="Google API key" value={key} autocomplete="off" error={fetcher.data?.errors.placesKey}
+        placeholder={enabled ? "Saved. Enter a new key to replace it" : "Paste your API key"} onInput={(event) => setKey(event.currentTarget.value ?? "")} />
+      <s-text color="subdued">{enabled ? "Using Google, like checkout." : "Using OpenStreetMap (free, no key). Add a Google key for checkout-quality addresses."} The key is checked with Google when you save, and never shown on your store.</s-text>
+      <s-stack direction="inline" gap="small-200">
+        <s-button variant="primary" loading={busy && !removing} disabled={busy || !key.trim()}
+          onClick={() => void fetcher.submit({ intent: "places-settings", key }, { method: "post" })}>{enabled ? "Replace key" : "Use Google"}</s-button>
+        {enabled && <s-button tone="critical" loading={removing} disabled={busy}
+          onClick={() => void fetcher.submit({ intent: "places-settings", remove: "true" }, { method: "post" })}>Remove key</s-button>}
+      </s-stack>
+    </s-stack>
+  </s-section>;
+}
+
 // Shopify staff who have opened the Help Desk, each one assignable or not.
 function StaffList({ staff, me }: { staff: SettingsData["staff"]; me: string }) {
   const fetcher = useFetcher<typeof action>();
@@ -207,7 +288,7 @@ function StaffList({ staff, me }: { staff: SettingsData["staff"]; me: string }) 
 
 // The top of each settings tab: what it's for and how it stands right now.
 function SettingsIntro({ icon, tone, title, description, status, statusTone }: {
-  icon: "email" | "team" | "chat" | "image" | "store" | "flag" | "clock"; tone: "blue" | "navy" | "green" | "red" | "amber"; title: string; description: string; status: string; statusTone: "success" | "warning" | "info" | "neutral";
+  icon: "email" | "team" | "chat" | "image" | "store" | "flag" | "clock" | "order"; tone: "blue" | "navy" | "green" | "red" | "amber"; title: string; description: string; status: string; statusTone: "success" | "warning" | "info" | "neutral";
 }) {
   return <s-section>
     <div style={{ display: "flex", flexWrap: "wrap", gap: 16, alignItems: "center", justifyContent: "space-between" }}>
@@ -458,6 +539,7 @@ function SettingsScreen({ screen }: { screen: SettingsData }) {
   const dirty = (Object.keys(settings) as (keyof typeof settings)[]).some((key) => settings[key] !== values[key]);
   const set = <K extends keyof typeof values>(key: K, value: (typeof values)[K]) => setValues((current) => ({ ...current, [key]: value }));
   const detectorConnected = screen.ai.provider === "truthscan" ? screen.ai.hasTruthscanKey : Boolean(screen.ai.sightengineUser && screen.ai.hasSightengineSecret);
+  const shipStationConnected = screen.shipStation.hasKeys && screen.shipStation.keysWork && Boolean(screen.shipStation.storeId);
   const formLive = Boolean(screen.storefront.formLastSeenAt && Date.now() - new Date(screen.storefront.formLastSeenAt).getTime() < 30 * DAY);
   return <s-page heading="Help Desk settings" inlineSize="large">
     <s-link slot="breadcrumb-actions" href="/app/help-desk">Help Desk</s-link>
@@ -472,6 +554,7 @@ function SettingsScreen({ screen }: { screen: SettingsData }) {
       { id: "categories", label: "Categories", href: "/app/help-desk/settings/categories" },
       { id: "photos", label: "AI photo check", href: "/app/help-desk/settings/photos" },
       { id: "shipping", label: "Shipping times", href: "/app/help-desk/settings/shipping" },
+      { id: "shipstation", label: "ShipStation", href: "/app/help-desk/settings/shipstation" },
       { id: "storefront", label: "Storefront form", href: "/app/help-desk/settings/storefront" },
     ]} />
     {part === "email" && <>
@@ -532,6 +615,12 @@ function SettingsScreen({ screen }: { screen: SettingsData }) {
 
     {part === "shipping" && <ShippingTimes shipping={screen.shipping} />}
 
+    {part === "shipstation" && <>
+      <SettingsIntro icon="order" tone="blue" title="ShipStation" description="Checks for shipping labels before an order's address changes, and keeps ShipStation's address in step."
+        status={shipStationConnected ? "Connected" : screen.shipStation.hasKeys ? "Choose a store" : "Not connected"} statusTone={shipStationConnected ? "success" : "warning"} />
+      <ShipStationSettings shipStation={screen.shipStation} />
+    </>}
+
     {part === "storefront" && <>
       <SettingsIntro icon="store" tone="red" title="Storefront form" description="The form customers use to send requests, and their private chat page."
         status={formLive ? "Live on your store" : "Not added yet"} statusTone={formLive ? "success" : "warning"} />
@@ -550,6 +639,7 @@ function SettingsScreen({ screen }: { screen: SettingsData }) {
           {screen.storefront.formLastSeenAt && <s-text color="subdued">Last opened by a customer {since(screen.storefront.formLastSeenAt)}.</s-text>}
         </s-stack>
       </s-section>
+      <AddressSuggestions enabled={screen.storefront.hasPlacesKey} />
       <s-section heading="What customers get">
         <s-unordered-list>
           <s-list-item>A request number and a private page where they chat with your team, live.</s-list-item>

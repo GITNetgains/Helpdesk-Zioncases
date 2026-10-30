@@ -1,32 +1,37 @@
 import type { PrismaClient } from "@prisma/client";
-import { MAX_MESSAGE_LENGTH, type CancelStatus } from "./help-desk";
+import { MAX_MESSAGE_LENGTH, shipStationCheck, type CancelStatus } from "./help-desk";
 import { updateTickets } from "./help-desk.server";
 import { findOrder, findOrderPatiently } from "./help-desk-orders.server";
 import { queueEmail } from "./help-desk-outbox.server";
+import { cancelShipStationOrders, shipStationAccount, shipStationStatus } from "./help-desk-shipstation.server";
 
-// Order cancellation requests. The customer asks to cancel their whole order
-// from the storefront form (the ticket starts Pending); the team rejects it, or
-// approves it, which cancels the order in Shopify. An order cancelled from the
-// Shopify admin closes its request too (orders/cancelled webhook and order
-// sync). Every decision is logged on the ticket, shown on the customer's
-// request page and emailed to them.
+// Order cancellation requests. The customer only asks to cancel their whole
+// order from the storefront form (the ticket starts Pending); nothing changes
+// in Shopify until the team decides. They reject it, or approve it, which
+// cancels the order in Shopify, but only while it hasn't shipped and
+// ShipStation has no label for it. The ShipStation order is then cancelled
+// too, so the warehouse doesn't send it. An order cancelled from the Shopify
+// admin closes its request too (orders/cancelled webhook and order sync).
+// Every decision is logged on the ticket, shown on the customer's request
+// page and emailed to them.
 
 type AdminClient = { graphql: (query: string, options?: { variables?: Record<string, unknown> }) => Promise<Response> };
-export type CancelDecision = "approve" | "reject" | "mark-cancelled";
-export type CancelResult = { errors: Record<string, string>; cancelStatus?: CancelStatus };
+// warning: the order is cancelled in Shopify, but staff still have something to do.
+export type CancelResult = { errors: Record<string, string>; cancelStatus?: CancelStatus; warning?: string };
 
-// Which statuses each decision can be made from. shopify: the order is now
-// cancelled in Shopify (also fixing a request only marked cancelled here);
-// shopify-started: Shopify accepted the cancellation but hasn't finished it.
-type Step = CancelDecision | "shopify" | "shopify-started";
+// Which statuses each step can be taken from. A request is only ever approved
+// or marked cancelled by cancelling the order in Shopify, never by hand, so the
+// customer is never told it's cancelled while it's still going out.
+// shopify: the order is now cancelled in Shopify (also fixing a request only
+// marked cancelled here in the past); shopify-started: Shopify accepted the
+// cancellation but hasn't finished it.
+type Step = "reject" | "shopify" | "shopify-started";
 const FROM: Record<Step, CancelStatus[]> = {
-  approve: ["Pending", "Rejected"],
   reject: ["Pending", "Approved"],
-  "mark-cancelled": ["Pending", "Approved"],
   shopify: ["Pending", "Approved", "Rejected", "Cancelled"],
   "shopify-started": ["Pending", "Approved", "Rejected", "Cancelled"],
 };
-const TO: Record<Step, CancelStatus> = { approve: "Approved", reject: "Rejected", "mark-cancelled": "Cancelled", shopify: "Cancelled", "shopify-started": "Approved" };
+const TO: Record<Step, CancelStatus> = { reject: "Rejected", shopify: "Cancelled", "shopify-started": "Approved" };
 
 const CANCEL_MUTATION = `#graphql
   mutation HelpDeskCancelOrder($orderId: ID!, $reason: OrderCancelReason!, $refundMethod: OrderCancelRefundMethodInput, $restock: Boolean!, $notifyCustomer: Boolean, $staffNote: String) {
@@ -67,16 +72,15 @@ async function applyDecision(
 
 const cleanNote = (note: string) => note.trim();
 
-// Approve, reject or mark as cancelled. A rejection needs a reason for the customer.
+// Rejects the request; the customer is told why. (Approving is cancelling the
+// order in Shopify: cancelOrderInShopify.)
 export async function decideCancellation(db: PrismaClient, shop: string, id: string, input: { decision: string; note: string; author: string }, admin?: AdminClient): Promise<CancelResult> {
-  const decision = input.decision as CancelDecision;
-  if (!["approve", "reject", "mark-cancelled"].includes(decision)) return { errors: { form: "Choose approve, reject or mark as cancelled." } };
+  if (input.decision !== "reject") return { errors: { form: "Reject the request, or approve it by cancelling the order in Shopify." } };
   const note = cleanNote(input.note);
   if (note.length > MAX_MESSAGE_LENGTH) return { errors: { note: `Use no more than ${MAX_MESSAGE_LENGTH.toLocaleString("en")} characters.` } };
-  if (decision === "reject" && !note) return { errors: { note: "Tell the customer why the order can't be cancelled." } };
+  if (!note) return { errors: { note: "Tell the customer why the order can't be cancelled." } };
   const author = input.author.trim().slice(0, 80) || "Staff";
-  const event = decision === "approve" ? "Cancellation request approved" : decision === "reject" ? "Cancellation request rejected" : "Order marked as cancelled";
-  return applyDecision(db, shop, id, decision, { note, author, event }, admin);
+  return applyDecision(db, shop, id, "reject", { note, author, event: "Cancellation request rejected" }, admin);
 }
 
 // How long to wait for Shopify to finish cancelling (it runs as a background
@@ -114,6 +118,12 @@ export async function cancelOrderInShopify(
     return applyDecision(db, shop, id, "shopify", { note, author, event: `Order ${order.name} was already cancelled in Shopify` }, admin);
   }
   if (order.fulfilled !== "none") return { errors: { form: `Order ${order.name} has already shipped, so it can't be cancelled. Reject the request and offer a return instead.` } };
+  // The warehouse may have bought a label in ShipStation before Shopify shows
+  // anything shipped: asked afresh, as one may have been bought since the page opened.
+  const account = shipStationAccount(await db.helpDeskSettings.findUnique({ where: { shop } }));
+  const shipStation = account ? await shipStationStatus(account, order) : null;
+  const labelCheck = account ? shipStationCheck(shipStation, "cancel") : null;
+  if (labelCheck && !labelCheck.ok && !labelCheck.warning) return { errors: { form: labelCheck.detail } };
   try {
     const response = await admin.graphql(CANCEL_MUTATION, {
       variables: {
@@ -135,12 +145,33 @@ export async function cancelOrderInShopify(
     return { errors: { form: /access|denied|scope|write_orders/i.test(text) ? NO_ACCESS : "Shopify couldn't cancel the order. Please try again." } };
   }
   const how = [input.refund ? "refunded to the original payment method" : "not refunded", input.restock ? "items restocked" : "items not restocked"].join(", ");
+  // The ShipStation order is cancelled too, so it drops off the warehouse's list now.
+  let warning = "";
+  let shipStationNote = "";
+  if (account && shipStation?.state === "found") {
+    try {
+      shipStationNote = await cancelShipStationOrders(account, order) ? "; ShipStation order cancelled" : "";
+    } catch (error) {
+      console.error("Help Desk could not cancel an order in ShipStation:", error instanceof Error ? error.message : error);
+      warning = `Order ${order.name} is cancelled in Shopify, but ShipStation couldn't be updated. Cancel it in ShipStation by hand so it isn't shipped.`;
+    }
+  } else if (account && shipStation?.state === "error") {
+    // (Not connected at all: the panel says so before cancelling; nothing failed here.)
+    warning = `Order ${order.name} is cancelled in Shopify, but ShipStation couldn't be reached. Cancel it in ShipStation by hand so it isn't shipped.`;
+  }
   // Shopify cancels in the background; usually it's done within a second or two.
+  let result: CancelResult | null = null;
   for (const delay of delays) {
     await sleep(delay);
     if ((await findOrder(admin, details.orderNumber, found.id))?.cancelled) {
-      return applyDecision(db, shop, id, "shopify", { note, author, event: `Approved: order ${order.name} cancelled in Shopify (${how})` }, admin);
+      result = await applyDecision(db, shop, id, "shopify", { note, author, event: `Approved: order ${order.name} cancelled in Shopify (${how}${shipStationNote})` }, admin);
+      break;
     }
   }
-  return applyDecision(db, shop, id, "shopify-started", { note, author, event: `Approved: Shopify is cancelling order ${order.name} (${how})` }, admin);
+  result ??= await applyDecision(db, shop, id, "shopify-started", { note, author, event: `Approved: Shopify is cancelling order ${order.name} (${how}${shipStationNote})` }, admin);
+  if (warning && result.cancelStatus) {
+    await db.helpDeskMessage.create({ data: { ticketId: id, kind: "note", author: "Help Desk", body: warning } });
+    return { ...result, warning };
+  }
+  return result;
 }

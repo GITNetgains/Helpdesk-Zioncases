@@ -248,34 +248,29 @@ describe("Help desk conversations", () => {
     });
     const load = (id: string) => db.helpDeskTicket.findUniqueOrThrow({ where: { id }, include: { messages: true, emails: true } });
 
-    it("starts pending with the reason, and moves through approve, reject and mark as cancelled", async () => {
+    it("starts pending with the reason; by hand it can only be rejected, never approved or marked cancelled", async () => {
       const { ticketId, errors } = await submitTicket(db, shop, cancelForm());
       expect(errors).toEqual({});
       let ticket = await load(ticketId!);
       expect(ticket).toMatchObject({ cancelStatus: "Pending", tags: "cancel", category: "Orders", subcategory: "Cancel Order" });
       expect(JSON.parse(ticket.details)).toMatchObject({ cancelReason: "Ordered by mistake" });
+      // Submitting only asks: nothing is approved or cancelled by hand, so the
+      // customer is never told it's cancelled while the order still ships.
+      for (const decision of ["approve", "mark-cancelled"]) {
+        expect((await decideCancellation(db, shop, ticketId!, { decision, note: "On it!", author: "Priya" })).errors.form).toBeTruthy();
+      }
+      expect((await load(ticketId!)).cancelStatus).toBe("Pending");
       // Only the owning shop, and a rejection says why.
-      expect((await decideCancellation(db, "other.myshopify.com", ticketId!, { decision: "approve", note: "", author: "Priya" })).errors.form).toBeTruthy();
+      expect((await decideCancellation(db, "other.myshopify.com", ticketId!, { decision: "reject", note: "No", author: "Priya" })).errors.form).toBeTruthy();
       expect((await decideCancellation(db, shop, ticketId!, { decision: "reject", note: " ", author: "Priya" })).errors.note).toBeTruthy();
-      expect(await decideCancellation(db, shop, ticketId!, { decision: "approve", note: "On it!", author: "Priya" })).toEqual({ errors: {}, cancelStatus: "Approved" });
-      ticket = await load(ticketId!);
-      expect(ticket).toMatchObject({ cancelStatus: "Approved", cancelNote: "On it!", cancelDecidedBy: "Priya", status: "In progress" });
-      // Approving twice isn't a decision.
-      expect((await decideCancellation(db, shop, ticketId!, { decision: "approve", note: "", author: "Sam" })).errors.form).toBeTruthy();
       expect((await decideCancellation(db, shop, ticketId!, { decision: "reject", note: "It already left the warehouse.", author: "Sam" })).cancelStatus).toBe("Rejected");
       ticket = await load(ticketId!);
-      expect(ticket).toMatchObject({ cancelStatus: "Rejected", status: "Resolved", resolutionType: "Request declined" });
-      expect((await decideCancellation(db, shop, ticketId!, { decision: "approve", note: "", author: "Sam" })).cancelStatus).toBe("Approved");
-      expect((await decideCancellation(db, shop, ticketId!, { decision: "mark-cancelled", note: "", author: "Sam" })).cancelStatus).toBe("Cancelled");
-      // Cancelled is final.
-      expect((await decideCancellation(db, shop, ticketId!, { decision: "reject", note: "No", author: "Sam" })).errors.form).toBeTruthy();
-      ticket = await load(ticketId!);
-      expect(ticket.status).toBe("Resolved");
-      expect(ticket.messages.filter((message) => message.kind === "event").map((message) => message.body)).toEqual(expect.arrayContaining([
-        "Cancellation request approved", "Cancellation request rejected", "Order marked as cancelled",
-      ]));
-      // The customer is emailed at every step.
-      await vi.waitFor(async () => expect((await load(ticketId!)).emails.filter((email) => email.kind === "cancellation")).toHaveLength(4));
+      expect(ticket).toMatchObject({ cancelStatus: "Rejected", cancelNote: "It already left the warehouse.", cancelDecidedBy: "Sam", status: "Resolved", resolutionType: "Request declined" });
+      // Rejecting twice isn't a decision.
+      expect((await decideCancellation(db, shop, ticketId!, { decision: "reject", note: "Still no", author: "Sam" })).errors.form).toBeTruthy();
+      expect(ticket.messages.filter((message) => message.kind === "event").map((message) => message.body)).toContain("Cancellation request rejected");
+      // The customer is emailed the decision.
+      await vi.waitFor(async () => expect((await load(ticketId!)).emails.filter((email) => email.kind === "cancellation")).toHaveLength(1));
     });
 
     // A Shopify that cancels the order when asked (cancelling: false leaves the job running).

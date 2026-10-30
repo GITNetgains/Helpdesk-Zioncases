@@ -25,7 +25,7 @@ const STEPS = [
 ];
 // Short facts go in the summary; what the customer wrote goes in their message.
 const SUMMARY_FIELDS = ["orderNumber", "orderType", "update", "cancelReason", "issue", "resolution", "existing", "registeredEmail", "country"];
-const MESSAGE_FIELDS = ["details", "query", "orderDetails", "productDetails", "address", "otherDetails"];
+const MESSAGE_FIELDS = ["details", "query", "orderDetails", "productDetails", "quantities", "address", "otherDetails"];
 
 const STYLES = `<style>
 .hdt{--ink:#172351;--muted:#5b6275;--line:#e6e8ee;--soft:#f3f3f3;--accent:#ef3a24;--accent-dark:#d22d18;--blue:#334fb4;--ok:#0c7a43;max-width:1040px;margin:clamp(24px,4vw,48px) auto clamp(48px,6vw,80px);padding:0 16px;color:var(--ink);font-size:15px;line-height:1.55;-webkit-font-smoothing:antialiased}
@@ -432,14 +432,14 @@ function shipmentCard(shipment: PageShipment | null | undefined) {
 }
 
 const CANCEL_COPY: Record<string, string> = {
-  Pending: "We've received your request to cancel your whole order. Our team will review it shortly and let you know here and by email.",
+  Pending: "Pending review: your order has not been cancelled yet. Our team will check that it hasn't shipped, then let you know here and by email.",
   Approved: "Your cancellation is approved. We're cancelling the order now and will confirm when it's done.",
   Rejected: "We weren't able to cancel this order.",
   Cancelled: "Your order has been cancelled. If you paid for it, the refund goes back to your original payment method and usually appears within 5-10 business days.",
 };
 
 const ADDRESS_COPY: Record<string, string> = {
-  Pending: "We've received your new address. We'll update your order if it hasn't shipped yet, and let you know here and by email.",
+  Pending: "Pending review: your shipping address has not been changed yet. Our team will check that your order hasn't been packed or labelled, then let you know here and by email.",
   Updated: "Your order's shipping address has been updated. It will be delivered to:",
   Rejected: "We weren't able to change the shipping address of this order.",
 };

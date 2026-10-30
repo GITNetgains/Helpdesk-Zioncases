@@ -13,6 +13,7 @@ import { loadShippingSetup, lookupShipping } from "../services/help-desk-shippin
 import { SHIPPING_TIMES_COUNTRIES } from "../services/help-desk-shipping";
 import { queueTicketScans } from "../services/image-scan/scan.server";
 import { blocked, clear, clientKey, hit } from "../services/rate-limit.server";
+import { addressDetails, suggestAddresses } from "../services/help-desk-places.server";
 
 const headers = { "Cache-Control": "no-store" };
 const privateHeaders = { "Cache-Control": "private, no-store" };
@@ -60,6 +61,8 @@ export async function loader({ request }: LoaderFunctionArgs) {
   if (check === "items") return orderItems(admin, params.get("order") || "", params.get("email") || "", clientKey(request, shop));
   // Wrong colour or size: the product's variants, to pick the one they wanted.
   if (check === "variants") return variants(shop, admin, params.get("product") || "", clientKey(request, shop));
+  // Address suggestions as the customer types a street address, then the one they picked.
+  if (params.get("places")) return places(shop, params, clientKey(request, shop));
   if (check === "cancel" || check === "address") return orderCheck(shop, admin, check, params.get("order") || "", params.get("email") || "", clientKey(request, shop));
 
   const token = params.get("ticket");
@@ -68,7 +71,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
   if (token !== null) return trackingPage(shop, admin, token, {}, params.get("live") === "1");
 
   void markSeen(shop, "formLastSeenAt");
-  const [orders, tickets, shippingSetup] = await Promise.all([
+  const [orders, tickets, shippingSetup, placesKey] = await Promise.all([
     customerOrders(admin, customerId),
     /^\d+$/.test(customerId) ? db.helpDeskTicket.findMany({
       where: { shop, customerId }, orderBy: { createdAt: "desc" }, take: 20,
@@ -76,9 +79,10 @@ export async function loader({ request }: LoaderFunctionArgs) {
     }) : null,
     // Where the store ships from, so Domestic and International Shipping offer the right countries.
     loadShippingSetup(admin, shop).catch(() => undefined),
+    placesKeyFor(shop),
   ]);
   return json({
-    home: shippingSetup?.home || "US", shippingCountries: SHIPPING_TIMES_COUNTRIES, countries, issues, orderTypes, topics, updates, deliveryIssues, productParts, cancelReasons, issueResolutions, purchasePlaces, provinces: PROVINCES, groups: formGroups, orders,
+    home: shippingSetup?.home || "US", addressSuggestions: true, addressProvider: placesKey ? "google" : "osm", shippingCountries: SHIPPING_TIMES_COUNTRIES, countries, issues, orderTypes, topics, updates, deliveryIssues, productParts, cancelReasons, issueResolutions, purchasePlaces, provinces: PROVINCES, groups: formGroups, orders,
     tickets: tickets && tickets.map(({ accessToken, lastActivityAt, ...ticket }) => ({ ...ticket, updatedAt: lastActivityAt ?? ticket.createdAt, token: accessToken })),
   }, 200, privateHeaders);
 }
@@ -184,6 +188,33 @@ async function track(admin: Parameters<typeof lookupTracking>[0], order: string,
 // "Check Shipping Times" on the form. The destination needs nothing else; an
 // order number is only answered with the email it was placed with, and misses
 // count toward the same lockout as tracking.
+// (Never in the way of the form: if it can't be read, suggestions use OpenStreetMap.)
+const placesKeyFor = (shop: string) => memo(`places-key|${shop}`, 5 * MINUTE, async () => {
+  try { return (await db.helpDeskSettings.findUnique({ where: { shop }, select: { googlePlacesKey: true } }))?.googlePlacesKey || ""; } catch { return ""; }
+});
+
+// Google Places through the app, so the store's key never reaches the browser.
+// places=suggest: up to five addresses for q in country; places=details: one, split into fields.
+async function places(shop: string, params: URLSearchParams, client: string) {
+  // No Google key: suggestions come from OpenStreetMap, each with its whole address.
+  const key = await placesKeyFor(shop);
+  const session = /^[\w-]{8,64}$/.test(params.get("session") || "") ? params.get("session")! : crypto.randomUUID();
+  try {
+    if (params.get("places") === "details") {
+      const id = params.get("id") || "";
+      if (!key) return json({ error: "unavailable" }, 200, privateHeaders);
+      if (!/^[\w-]{10,300}$/.test(id) || !hit(`places-details|${client}`, 30, MINUTE)) return json({ error: "unavailable" }, 200, privateHeaders);
+      return json({ address: await addressDetails(key, id, session) }, 200, privateHeaders);
+    }
+    const query = (params.get("q") || "").trim().slice(0, 120);
+    const country = (params.get("country") || "").toUpperCase();
+    if (query.length < 3 || !hit(`places|${client}`, 90, MINUTE)) return json({ suggestions: [] }, 200, privateHeaders);
+    return json({ suggestions: await suggestAddresses(key, query, countries.some((entry) => entry.code === country) ? country : "", session) }, 200, privateHeaders);
+  } catch (error) {
+    console.error("Help Desk address suggestions failed:", error instanceof Error ? error.message : error);
+    return json({ suggestions: [], error: "unavailable" }, 200, privateHeaders);
+  }
+}
 async function shipping(shop: string, admin: Parameters<typeof lookupTracking>[0], params: URLSearchParams, client: string) {
   const misses = `track-miss|${client}`;
   if (!hit(`shipping|${client}`, 20, MINUTE)) return json({ error: "Too many attempts. Please wait a minute and try again." }, 200, privateHeaders);
@@ -196,9 +227,14 @@ async function shipping(shop: string, admin: Parameters<typeof lookupTracking>[0
   const locked = Boolean(orderNumber) && blocked(misses, 5);
   if (locked) orderNumber = "";
   // The customer's products and address, for Shopify's exact rates.
-  const products = (params.get("products") || "").split(",").filter((id) => /^gid:\/\/shopify\/Product\/\d+$/.test(id)).slice(0, 10);
+  // quantities: how many of each, in the same order (1 when missing).
+  const counts = (params.get("quantities") || "").split(",");
+  const picked = (params.get("products") || "").split(",").map((id, index) => ({ id, quantity: Math.min(99, Math.max(1, Math.trunc(Number(counts[index])) || 1)) }))
+    .filter(({ id }) => /^gid:\/\/shopify\/Product\/\d+$/.test(id)).slice(0, 10);
+  const products = picked.map(({ id }) => id);
+  const quantities = picked.map(({ quantity }) => quantity);
   const part = (key: string) => (params.get(key) || "").trim().slice(0, 100);
-  const result = await lookupShipping(db, admin, shop, { country, province, orderNumber, email, ...(products.length ? { products, city: part("city"), zip: part("zip"), address1: part("address1") } : {}) });
+  const result = await lookupShipping(db, admin, shop, { country, province, orderNumber, email, ...(products.length ? { products, quantities, city: part("city"), zip: part("zip"), address1: part("address1") } : {}) });
   if ("error" in result) return json({ error: "Shipping times are unavailable right now. Please send us your question below." }, 200, privateHeaders);
   if (result.orderError === "notFound") hit(misses, 5, 15 * MINUTE);
   else if (result.order) clear(misses);

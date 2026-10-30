@@ -20,6 +20,9 @@ import { PAGE_SIZE, PERIODS, SORTS, TOPICS, VIEWS, type View } from "./help-desk
 import { forget, memo } from "./memo.server";
 import { forgetShippingSetup, loadShippingSetup } from "./help-desk-shipping.server";
 import { parseDays, readShippingSettings } from "./help-desk-shipping";
+import { listShipStationStores, shipStationAccount, shipStationStatus } from "./help-desk-shipstation.server";
+import { checkPlacesKey } from "./help-desk-places.server";
+import type { ShipStationStatus } from "./help-desk";
 
 // Server side of the Help Desk admin: one loader per screen (inbox, overview,
 // ticket, settings) and the action every screen posts to.
@@ -67,19 +70,27 @@ function setupStatus(settings: Context["settings"]) {
 }
 
 export async function loadSettings({ admin, shop, settings, staff, base }: Context) {
-  const [macros, store, shippingSetup] = await Promise.all([
+  const [macros, store, shippingSetup, shipStationStores] = await Promise.all([
     db.helpDeskMacro.findMany({ where: { shop }, orderBy: { createdAt: "asc" } }),
     loadShop(admin).catch(() => ({ name: "", email: "", url: "" })),
     loadShippingSetup(admin, shop),
+    // The account's stores, to choose from (null: the saved keys stopped working; undefined: not asked).
+    settings.shipstationKey && settings.shipstationSecret
+      ? memo(shipStationStoresKey(shop), 10 * MINUTE, () => listShipStationStores(settings.shipstationKey, settings.shipstationSecret).catch(() => undefined))
+      : Promise.resolve(undefined),
   ]);
   return data({
     ...base, macros: macros.map(({ id, title, body, category, subcategory }) => ({ id, title, body, category, subcategory })), storeEmail: store.email, staff,
-    storefront: { apiKey: process.env.SHOPIFY_API_KEY || "", formLastSeenAt: settings.formLastSeenAt },
+    storefront: { apiKey: process.env.SHOPIFY_API_KEY || "", formLastSeenAt: settings.formLastSeenAt, hasPlacesKey: Boolean(settings.googlePlacesKey) },
     settings: { notify: settings.notify, notifyEmail: settings.notifyEmail, autoReply: settings.autoReply, statusEmails: settings.statusEmails, signature: settings.signature, team: settings.team },
     // Secrets never go to the browser, only whether they're saved.
     ai: {
       enabled: settings.aiDetectionEnabled, mode: settings.aiDetectorMode, provider: settings.aiDetectionProvider,
       sightengineUser: settings.sightengineUser, hasSightengineSecret: Boolean(settings.sightengineSecret), hasTruthscanKey: Boolean(settings.truthscanKey),
+    },
+    shipStation: {
+      hasKeys: Boolean(settings.shipstationKey && settings.shipstationSecret), storeId: settings.shipstationStoreId,
+      stores: shipStationStores ?? [], keysWork: shipStationStores !== null, reachable: shipStationStores !== undefined,
     },
     // Shipping Times: the store's zones and rates from Shopify (null: read_shipping
     // not granted yet; undefined: Shopify couldn't be asked) and what the store set.
@@ -90,12 +101,15 @@ export async function loadSettings({ admin, shop, settings, staff, base }: Conte
 // The ticket's order and the customer's recent orders, cached briefly while the ticket is open.
 const ticketOrderKey = (shop: string, ticketId: string) => `order|${shop}|${ticketId}`;
 const emailOrdersKey = (shop: string, email: string) => `email-orders|${shop}|${email}`;
+const shipStationKey = (shop: string, ticketId: string) => `shipstation|${shop}|${ticketId}`;
+const shipStationStoresKey = (shop: string) => `shipstation-stores|${shop}`;
 export function forgetTicketOrder(shop: string, ticketId: string, ticket?: { email: string } | null) {
   forget(ticketOrderKey(shop, ticketId));
+  forget(shipStationKey(shop, ticketId));
   if (ticket) forget(emailOrdersKey(shop, ticket.email));
 }
 
-export async function loadTicket({ admin, shop, base, redirect }: Context, ticketId: string) {
+export async function loadTicket({ admin, shop, settings, base, redirect }: Context, ticketId: string) {
   // Deleted, or another store's ticket.
   const owned = await db.helpDeskTicket.findFirst({ where: { id: ticketId, shop }, select: { id: true } });
   if (!owned) throw redirect("/app/help-desk");
@@ -131,6 +145,12 @@ export async function loadTicket({ admin, shop, base, redirect }: Context, ticke
   const { accessToken, details, id, number, name, email, topic, status, priority, assignee, tags, category, subcategory, rootCause, resolutionType, customerId, channel, createdAt, firstResponseAt, resolvedAt, allowPhotos, allowVideos, cancelStatus, cancelNote, cancelDecidedBy, cancelDecidedAt,
     addressStatus, addressNote, addressApplied, addressDecidedBy, addressDecidedAt, attachments, messages, emails } = ticket;
   const files = attachments.map(({ scan, ...file }) => ({ ...file, scan: serializeScan(scan) }));
+  // An open address change: has ShipStation bought a label for the old address? null: not asked.
+  const account = shipStationAccount(settings);
+  const asksShipStation = ["Pending", "Rejected"].includes(addressStatus) || ["Pending", "Approved", "Rejected"].includes(ticket.cancelStatus);
+  const shipStation: ShipStationStatus | null = !asksShipStation || !liveOrder || liveOrder.cancelled ? null
+    : !account ? { state: "off" }
+    : await memo(shipStationKey(shop, id), 2 * MINUTE, async () => { const status = await shipStationStatus(account, liveOrder); return status.state === "error" ? undefined : status; }) ?? { state: "error" };
   const rest = {
     id, number, name, email, topic, status, priority, assignee, tags, category, subcategory, rootCause, resolutionType, customerId, channel, createdAt, firstResponseAt, resolvedAt, allowPhotos, allowVideos,
     cancelStatus, cancelNote, cancelDecidedBy, cancelDecidedAt, attachments: files, messages, emails, readAt,
@@ -139,7 +159,7 @@ export async function loadTicket({ admin, shop, base, redirect }: Context, ticke
   return data({
     ...base, macros, others, orders, storeName: store.name || shop,
     // order: the ticket's order (null: not found, or no order number). orderError: Shopify couldn't be reached.
-    order: liveOrder ?? null, orderError: liveOrder === undefined, orderNumber: values.orderNumber || "", orderVerified: ticket.orderVerified,
+    order: liveOrder ?? null, orderError: liveOrder === undefined, shipStation, orderNumber: values.orderNumber || "", orderVerified: ticket.orderVerified,
     trackingUrl: store.url ? trackingUrl(store.url, accessToken) : "",
     ticket: { ...rest, details: parseJson<Record<string, string>>(details, {}), products, receivedProducts },
     tagSuggestions: suggestTags({ topic, tags, details: parseJson<Record<string, string>>(details, {}) }, usedTags.map((row) => row.tags)),
@@ -224,7 +244,7 @@ export async function loadOverview({ shop, settings, base }: Context, url: URL) 
   return data({ ...base, dashboard: await loadDashboard(db, shop, range), overview: setupStatus(settings) }, { headers });
 }
 
-export type ActionResult = { errors: Record<string, string>; ticketId?: string; emailed?: boolean; updated?: number; notice?: string };
+export type ActionResult = { errors: Record<string, string>; ticketId?: string; emailed?: boolean; updated?: number; notice?: string; warning?: string };
 
 export const helpDeskAction = async ({ request }: ActionFunctionArgs) => {
   const { admin, session } = await authenticate.admin(request);
@@ -295,7 +315,7 @@ export const helpDeskAction = async ({ request }: ActionFunctionArgs) => {
         // The ticket reloads next: show the order as Shopify has it now, not the cached copy.
         forgetTicketOrder(shop, text("id"), await db.helpDeskTicket.findFirst({ where: { id: text("id"), shop }, select: { email: true } }));
         if (!result.cancelStatus) return data<ActionResult>({ errors: result.errors }, { status: 400 });
-        return data<ActionResult>({ errors: {}, ticketId: text("id"), notice: result.cancelStatus });
+        return data<ActionResult>({ errors: {}, ticketId: text("id"), notice: result.cancelStatus, warning: result.warning });
       }
       // A shipping address change request: update the address in Shopify, or reject it.
       case "address": {
@@ -308,7 +328,7 @@ export const helpDeskAction = async ({ request }: ActionFunctionArgs) => {
           : await rejectAddressChange(db, shop, text("id"), input, admin);
         forgetTicketOrder(shop, text("id"), await db.helpDeskTicket.findFirst({ where: { id: text("id"), shop }, select: { email: true } }));
         if (!result.addressStatus) return data<ActionResult>({ errors: result.errors }, { status: 400 });
-        return data<ActionResult>({ errors: {}, ticketId: text("id"), notice: result.addressStatus });
+        return data<ActionResult>({ errors: {}, ticketId: text("id"), notice: result.addressStatus, warning: result.warning });
       }
       case "message": {
         const result = await addStaffMessage(db, shop, text("id"), { kind: text("kind"), body: text("body"), author: text("author"), status: text("status") || undefined });
@@ -353,6 +373,46 @@ export const helpDeskAction = async ({ request }: ActionFunctionArgs) => {
         // Photos scanned before a key was added get the detector now.
         if (hasCredentials && next.aiDetectionEnabled) await rescanMissingKeyScans(db, shop);
         return data<ActionResult>({ errors: {}, notice });
+      }
+      // ShipStation keys (blank fields keep the saved ones) and the store that holds this shop's orders.
+      case "shipstation-settings": {
+        const current = await db.helpDeskSettings.findUnique({ where: { shop } }) || { shipstationKey: "", shipstationSecret: "", shipstationStoreId: "" };
+        forget(shipStationStoresKey(shop));
+        if (text("disconnect") === "true") {
+          const off = { shipstationKey: "", shipstationSecret: "", shipstationStoreId: "" };
+          await db.helpDeskSettings.upsert({ where: { shop }, update: off, create: { shop, ...off } });
+          return data<ActionResult>({ errors: {}, notice: "ShipStation disconnected" });
+        }
+        const key = text("key").trim().slice(0, 200) || current.shipstationKey;
+        const secret = text("secret").trim().slice(0, 200) || current.shipstationSecret;
+        if (!key || !secret) return fail("Enter the ShipStation API key and API secret.", 400, "credentials");
+        let stores;
+        try { stores = await listShipStationStores(key, secret); } catch { return fail("ShipStation couldn't be reached. Please try again."); }
+        if (!stores) return fail("ShipStation didn't accept these keys. Check the API key and secret.", 400, "credentials");
+        // The chosen store, or the one Shopify store named like this shop.
+        let storeId = stores.some((store) => store.id === text("storeId")) ? text("storeId") : "";
+        if (!storeId) {
+          const name = (await loadShop(admin).catch(() => ({ name: "" }))).name.trim().toLowerCase();
+          const named = stores.filter((store) => store.marketplace === "Shopify" && store.name.trim().toLowerCase() === name);
+          if (named.length === 1) storeId = named[0].id;
+        }
+        const next = { shipstationKey: key, shipstationSecret: secret, shipstationStoreId: storeId };
+        await db.helpDeskSettings.upsert({ where: { shop }, update: next, create: { shop, ...next } });
+        return data<ActionResult>({ errors: {}, notice: storeId ? "ShipStation connected" : "Keys saved. Now choose the ShipStation store that holds this shop's orders." });
+      }
+      // Google Places key for address suggestions (checked with Google first), or removing it.
+      case "places-settings": {
+        forget(`places-key|${shop}`);
+        if (text("remove") === "true") {
+          await db.helpDeskSettings.upsert({ where: { shop }, update: { googlePlacesKey: "" }, create: { shop, googlePlacesKey: "" } });
+          return data<ActionResult>({ errors: {}, notice: "Google key removed. Suggestions now come from OpenStreetMap" });
+        }
+        const key = text("key").trim().slice(0, 200);
+        if (!key) return fail("Paste your Google API key.", 400, "placesKey");
+        const problem = await checkPlacesKey(key);
+        if (problem) return fail(problem, 400, "placesKey");
+        await db.helpDeskSettings.upsert({ where: { shop }, update: { googlePlacesKey: key }, create: { shop, googlePlacesKey: key } });
+        return data<ActionResult>({ errors: {}, notice: "Address suggestions now use Google" });
       }
       case "delete": {
         const ids = form.getAll("ids").map(String).filter(Boolean);

@@ -192,7 +192,7 @@ const flowFor = (category: string, subcategory: string) => {
 // isn't already offered under Orders.
 const ORDERS_TOPIC: [label: string, category: string, subcategory: string, description: string][] = [
   ["Track Order", SHIPPING, "Track My Order", "See where your package is right now."],
-  ["Cancel Order", ORDERS, "Cancel Order", "Ask us to cancel your whole order before it ships. You can follow the request on your request page."],
+  ["Cancel Order", ORDERS, "Cancel Order", "Request a cancellation of your whole order before it ships. Our team reviews it, and you can follow it on your request page."],
   ["Modify Address", ORDERS, "Change Shipping Address", "Change where your order is going, before it ships. The new address must be in the same country."],
   ["Lost Package", SHIPPING, "Lost Package", "Your tracking stopped, or the package never arrived."],
 ];
@@ -201,7 +201,6 @@ const SHIPPING_TOPIC: typeof ORDERS_TOPIC = [
   ["Domestic Shipping", SHIPPING, "Domestic Shipping", "Shipping cost and delivery time anywhere in the U.S., including Hawaii, Alaska and U.S. territories."],
   ["International Shipping", SHIPPING, "International Shipping", "Shipping cost and delivery time to an address outside the U.S."],
   ["Shipping Times", SHIPPING, "Shipping Times", "How long delivery takes, with our shipping options and prices."],
-  ["International Pre-Order", SHIPPING, "International Pre-Order", "Pre-order a product for delivery outside the U.S."],
   ["Taxes, Customs & Duties", SHIPPING, "Customs & Duties", "Sales tax, customs and import duties for where you are."],
 ];
 // Product Issues, the way Shopify sorts return reasons (damaged or defective,
@@ -230,9 +229,10 @@ const PRODUCT_CATEGORIES = ["Product Damage", "Shipping Damage", "Manufacturing 
 
 // Sub-categories the team can still set on a ticket, but customers don't pick:
 // Domestic Shipping covers Hawaii, Alaska and the territories, and a faster
-// delivery is asked about with the order (Track Order, Shipping Times).
-// and every product issue other than the broad choices above.
-export const STAFF_ONLY = [[SHIPPING, "Hawaii, Alaska & U.S. Territories"], [SHIPPING, "Expedited Shipping"], [SHIPPING, "Signature Required"],
+// delivery is asked about with the order (Track Order, Shipping Times),
+// pre-orders are no longer offered on the form, and every product issue
+// other than the broad choices above.
+export const STAFF_ONLY = [[SHIPPING, "Hawaii, Alaska & U.S. Territories"], [SHIPPING, "Expedited Shipping"], [SHIPPING, "Signature Required"], [SHIPPING, "International Pre-Order"],
   ...PRODUCT_CATEGORIES.flatMap((name) => categories.find((entry) => entry.name === name)!.subcategories
     .filter((sub) => !PRODUCT_TOPIC.some(([, category, subcategory]) => category === name && subcategory === sub)).map((sub) => [name, sub]))];
 const staffOnly = (category: string, subcategory: string) => STAFF_ONLY.some(([name, sub]) => name === category && sub === subcategory);

@@ -87,7 +87,8 @@ const NOT_STARTED = ["UNFULFILLED", "ON_HOLD", "SCHEDULED", "OPEN", "REQUEST_DEC
 export type AddressCheckOrder = {
   cancelled: boolean; fulfillmentStatus: string; shipments: number; requiresShipping: boolean; hasShippingAddress: boolean; country: string; verified: boolean;
 };
-export type AddressCheck = { id: string; label: string; ok: boolean; detail: string };
+// warning: shown, but staff may go ahead anyway.
+export type AddressCheck = { id: string; label: string; ok: boolean; detail: string; warning?: boolean };
 
 // When a shipping address can be changed. Every check must pass, except
 // "verified", which staff may confirm with the customer themselves.
@@ -143,8 +144,35 @@ export const CUSTOMER_BLOCKED: Record<"cancel" | "address", Record<string, strin
   },
 };
 
-// Blocking checks: everything except the email, which staff can confirm by hand.
-export const addressBlockers = (checks: AddressCheck[]) => checks.filter((check) => !check.ok && check.id !== "verified");
+// Where the order stands in ShipStation, where the warehouse buys its labels
+// (help-desk-shipstation.server.ts). off: ShipStation isn't connected; error:
+// it couldn't be asked; missing: the order isn't in ShipStation (yet).
+export type ShipStationLabel = { trackingNumber: string; carrier: string; service: string; shipDate: string };
+export type ShipStationStatus = { state: "off" } | { state: "error" } | { state: "missing" } | { state: "found"; orderStatuses: string[]; labels: ShipStationLabel[] };
+
+// The ShipStation check before an address change or a cancellation: a label
+// already bought must be voided there first, or the parcel still goes out.
+// null: nothing to check.
+export function shipStationCheck(status: ShipStationStatus | null | undefined, purpose: "address" | "cancel" = "address"): AddressCheck | null {
+  if (!status) return null;
+  const label = "No shipping label in ShipStation";
+  const before = purpose === "cancel" ? "cancelling" : "updating";
+  if (status.state === "off") return { id: "label", label, ok: false, warning: true, detail: "ShipStation isn't connected, so labels can't be checked. Check the order in ShipStation, or connect it in Settings › ShipStation." };
+  if (status.state === "error") return { id: "label", label, ok: false, warning: true, detail: `ShipStation couldn't be reached. Check the order in ShipStation before ${before}, or reload to try again.` };
+  if (status.state === "missing") return { id: "label", label, ok: true, detail: "The order isn't in ShipStation yet, so no label has been bought." };
+  if (status.labels.length) {
+    const [first] = status.labels;
+    const which = `${status.labels.length === 1 ? "a label" : `${status.labels.length} labels`} (${[first.carrier, first.trackingNumber].filter(Boolean).join(" ")})`;
+    return { id: "label", label, ok: false, detail: purpose === "cancel"
+      ? `ShipStation has ${which} for this order, so the warehouse may already be packing it. Void the label in ShipStation and make sure the parcel isn't sent, then reload this page.`
+      : `ShipStation has ${which} for the old address. Void it in ShipStation, then reload this page. Buy the new label after the address is updated.` };
+  }
+  if (status.orderStatuses.includes("shipped")) return { id: "label", label, ok: false, detail: `ShipStation shows the order as shipped. Check it there before ${before}.` };
+  return { id: "label", label, ok: true, detail: "" };
+}
+
+// Blocking checks: everything except warnings and the email, which staff can confirm by hand.
+export const addressBlockers = (checks: AddressCheck[]) => checks.filter((check) => !check.ok && !check.warning && check.id !== "verified");
 // Delivery problems, the most common order question.
 export const deliveryIssues = [
   "Order status inquiry", "Marked as delivered, not received", "Partial delivery received", "Expedited shipping request", "Delivered to an incorrect address",
@@ -337,7 +365,7 @@ export const fieldLabels: Record<string, string> = {
   issue: "Issue", part: "Part with the problem", resolution: "Requested resolution", replacement: "Replacement wanted", purchasedFrom: "Bought from", purchaseDate: "Bought in (month)",
   orderDetails: "Order details", productDetails: "Product details",
   details: "Details", existing: "Existing partner", registeredEmail: "Registered email", query: "Query",
-  country: "Country", address: "Address", otherDetails: "Other details", transcript: "Chat transcript",
+  country: "Country", address: "Address", otherDetails: "Other details", transcript: "Chat transcript", quantities: "Quantities",
 };
 export const countryName = (code: string) => countries.find(country => country.code === code)?.name || code;
 

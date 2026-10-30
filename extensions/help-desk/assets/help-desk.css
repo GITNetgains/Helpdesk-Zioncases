@@ -743,14 +743,9 @@
 .help-desk .help-desk-section-details .help-desk-contact-fields, .help-desk .help-desk-section-details .help-desk-login,
 .help-desk .help-desk-section-request .help-desk-upload, .help-desk .help-desk-aside .help-desk-signed { max-width: none; }
 
-/* Country: ours first, then "Another country" with its own picker and a coming-soon note. */
+/* Country: ours first, then "Another country" with its own picker. */
 .help-desk .help-desk-country, .help-desk .help-desk-elsewhere { display: grid; gap: 14px; min-width: 0; }
 .help-desk .help-desk-elsewhere[hidden] { display: none; }
-.help-desk .help-desk-coming-soon {
-  display: grid; gap: 4px; padding: 14px 16px; border: 1px solid #f3d9a8; border-left: 3px solid #b54708; border-radius: 0 10px 10px 0; background: #fdf6e9;
-}
-.help-desk .help-desk-coming-soon strong { color: var(--hd-text); font-size: 15px; font-weight: 650; }
-.help-desk .help-desk-coming-soon span { color: #5d4a2a; font-size: 14px; line-height: 1.5; }
 
 /* Product issues: the item from the order, photo tips, and what they'd like done. */
 .help-desk .help-desk-pick { display: grid; gap: 10px; min-width: 0; }
@@ -885,4 +880,119 @@
   .help-desk .help-desk-selected button { min-height: 44px; font-size: 14px; }
   .help-desk .help-desk-suggestions li { min-height: 48px; }
   .help-desk .help-desk-photo-tips { font-size: 13px; }
+}
+
+/* Back sits above each step's heading; Next and Submit stay under the step. */
+.help-desk .help-desk-section > button.help-desk-back {
+  justify-self: start; display: inline-flex; align-items: center; gap: 6px; min-height: 36px; margin: 0 0 -10px; padding: 6px 14px 6px 10px;
+  border: 1px solid #d4d7de; border-radius: 999px; background: #fff; box-shadow: none; color: var(--hd-text);
+  font-size: 14px; font-weight: 600; letter-spacing: 0; text-transform: none;
+}
+.help-desk .help-desk-section > button.help-desk-back::before { content: "\2190"; font-size: 16px; line-height: 1; }
+.help-desk .help-desk-section > button.help-desk-back:hover:not(:disabled) { border-color: var(--hd-text); filter: none; transform: none; box-shadow: none; }
+.help-desk .help-desk-section > button.help-desk-back[hidden] { display: none; }
+.help-desk .help-desk-nav { justify-content: flex-end; }
+.help-desk .help-desk-nav:not(:has(> button:not([hidden]))) { display: none; }
+.help-desk .help-desk-footer { grid-template-columns: minmax(0, 1fr) auto; }
+
+/* Products to ship, each with how many they want. */
+.help-desk .help-desk-quantities { display: grid; gap: 10px; }
+.help-desk .help-desk-quantities:empty { display: none; }
+.help-desk .help-desk-quantity-title { color: var(--hd-text); font-size: 14px; font-weight: 600; }
+.help-desk .help-desk-quantity-row {
+  display: grid; grid-template-columns: 52px minmax(0, 1fr) auto auto; align-items: center; gap: 14px;
+  padding: 10px 12px 10px 10px; border: 1px solid #e6e8ed; border-radius: 14px; background: #fff;
+  box-shadow: 0 1px 2px rgba(25, 33, 61, .04); transition: border-color .15s, box-shadow .15s;
+}
+.help-desk .help-desk-quantity-row:hover { border-color: #d4d7de; box-shadow: 0 4px 14px rgba(25, 33, 61, .06); }
+.help-desk .help-desk-quantity-row .help-desk-thumb { width: 52px; height: 52px; border-radius: 10px; border: 1px solid #eef0f3; object-fit: cover; }
+.help-desk .help-desk-quantity-name { min-width: 0; overflow-wrap: anywhere; color: var(--hd-text); font-size: 15px; font-weight: 600; line-height: 1.35; }
+
+/* The stepper: one soft pill, round − and + buttons, the number in between. */
+.help-desk .help-desk-quantity-row .help-desk-stepper {
+  display: inline-flex; align-items: center; gap: 2px; padding: 4px; border: 1px solid #e3e5ea; border-radius: 999px; background: #f5f6f8;
+}
+.help-desk .help-desk-quantity-row .help-desk-stepper:focus-within { border-color: var(--hd-text); box-shadow: 0 0 0 3px var(--hd-ring); }
+.help-desk .help-desk-quantity-row .help-desk-stepper button {
+  display: grid; place-items: center; width: 34px; height: 34px; min-height: 0; margin: 0; padding: 0; border: 0; border-radius: 50%;
+  background: #fff; box-shadow: 0 1px 2px rgba(25, 33, 61, .12); color: var(--hd-text); font-size: 18px; font-weight: 600; line-height: 1;
+  transition: background-color .15s, color .15s, transform .1s;
+}
+.help-desk .help-desk-quantity-row .help-desk-stepper button:hover:not(:disabled) { background: var(--hd-text); color: #fff; filter: none; transform: none; box-shadow: none; }
+.help-desk .help-desk-quantity-row .help-desk-stepper button:active:not(:disabled) { transform: scale(.94); }
+.help-desk .help-desk-quantity-row .help-desk-stepper button:disabled { background: transparent; box-shadow: none; color: #b4b8c4; cursor: default; }
+.help-desk .help-desk-quantity-row .help-desk-stepper input[type=number]:not([type=checkbox]) {
+  display: block; width: 40px; min-width: 0; height: 34px; min-height: 0; margin: 0; padding: 0; border: 0; border-radius: 0;
+  background: transparent; box-shadow: none; color: var(--hd-text); text-align: center; font-size: 16px; font-weight: 700; line-height: 34px;
+  -moz-appearance: textfield; appearance: textfield;
+}
+.help-desk .help-desk-quantity-row .help-desk-stepper input[type=number]:not([type=checkbox]):focus,
+.help-desk .help-desk-quantity-row .help-desk-stepper input[type=number]:not([type=checkbox]):hover { border: 0; background: transparent; box-shadow: none; }
+.help-desk .help-desk-quantity-row .help-desk-stepper input::-webkit-inner-spin-button,
+.help-desk .help-desk-quantity-row .help-desk-stepper input::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+
+.help-desk .help-desk-quantity-row button.help-desk-quantity-remove {
+  display: grid; place-items: center; width: 34px; height: 34px; min-height: 0; margin: 0; padding: 0; border: 0; border-radius: 50%;
+  background: transparent; box-shadow: none; color: #8a91a5; font-size: 22px; font-weight: 400; line-height: 1;
+}
+.help-desk .help-desk-quantity-row button.help-desk-quantity-remove:hover:not(:disabled) { background: #fdecea; color: #b42318; filter: none; transform: none; box-shadow: none; }
+@media (max-width: 479px) {
+  .help-desk .help-desk-quantity-row { grid-template-columns: 48px minmax(0, 1fr) auto; row-gap: 10px; }
+  .help-desk .help-desk-quantity-row .help-desk-thumb { width: 48px; height: 48px; }
+  .help-desk .help-desk-quantity-row .help-desk-stepper { grid-column: 2; justify-self: start; }
+  .help-desk .help-desk-quantity-row .help-desk-quantity-remove { grid-column: 3; grid-row: 1; }
+}
+
+/* Address suggestions under the street field, like checkout. */
+.help-desk .help-desk-address-search { position: relative; }
+.help-desk .help-desk-address-suggestions { padding: 6px; border-radius: 12px; }
+.help-desk .help-desk-address-suggestions li[role=option] { align-items: flex-start; gap: 12px; padding: 10px 12px; }
+.help-desk .help-desk-address-suggestions li[aria-selected=true] { background: var(--hd-field); }
+.help-desk .help-desk-place-pin {
+  flex: none; width: 30px; height: 30px; margin-top: 1px; border-radius: 50%; background: #f1f2f5 no-repeat center / 16px
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2319213d' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 21s-7-6.2-7-11.5a7 7 0 0 1 14 0C19 14.8 12 21 12 21z'/%3E%3Ccircle cx='12' cy='9.5' r='2.5'/%3E%3C/svg%3E");
+}
+.help-desk .help-desk-place-text { display: grid; gap: 1px; min-width: 0; }
+.help-desk .help-desk-place-text strong { color: var(--hd-text); font-size: 15px; font-weight: 600; line-height: 1.35; overflow-wrap: anywhere; }
+.help-desk .help-desk-place-text span { color: var(--hd-muted); font-size: 13px; line-height: 1.35; overflow-wrap: anywhere; }
+.help-desk .help-desk-address-suggestions li.help-desk-places-credit {
+  justify-content: flex-end; padding: 6px 10px 2px; color: #8a91a5; font-size: 11px; cursor: default;
+}
+.help-desk .help-desk-address-suggestions li.help-desk-places-credit:hover { background: none; }
+
+/* Type: the device's own interface font (crisp, nothing to download). */
+.help-desk {
+  font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI Variable Text", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; text-rendering: optimizeLegibility;
+  font-feature-settings: "cv11", "ss01";
+}
+.help-desk h2, .help-desk h3, .help-desk h4 { font-family: inherit; letter-spacing: -.02em; }
+.help-desk .help-desk-section-heading h3 { font-size: 24px; font-weight: 700; }
+.help-desk .help-desk-section-heading p { font-size: 15px; }
+.help-desk label > span:first-child { color: #252d43; font-size: 14px; font-weight: 600; letter-spacing: -.005em; }
+.help-desk input:not([type=checkbox]):not([type=radio]):not([type=file]), .help-desk select, .help-desk textarea { font-size: 16px; font-weight: 450; color: var(--hd-text); }
+.help-desk input::placeholder, .help-desk textarea::placeholder { color: #8a91a5; font-weight: 400; }
+.help-desk button { font-weight: 600; letter-spacing: -.005em; }
+.help-desk .help-desk-address > h4 { font-size: 16px; font-weight: 700; letter-spacing: -.01em; }
+
+/* Wrong colour or size: the product's own options as chips. */
+.help-desk .help-desk-variants { display: grid; gap: 12px; }
+.help-desk .help-desk-variants-title { color: #252d43; font-size: 14px; font-weight: 600; }
+.help-desk .help-desk-variants-title::after { content: " *"; color: var(--hd-accent); }
+.help-desk .help-desk-variant-row { display: grid; gap: 8px; min-width: 0; margin: 0; padding: 0; border: 0; }
+.help-desk .help-desk-variant-row legend { padding: 0; margin-bottom: 8px; color: var(--hd-muted); font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; }
+.help-desk .help-desk-variant-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.help-desk .help-desk-variant-chip { position: relative; display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
+.help-desk .help-desk-variant-chip input[type=radio] { position: absolute; opacity: 0; width: 1px; height: 1px; pointer-events: none; }
+.help-desk .help-desk-variant-chip > span {
+  display: inline-flex; align-items: center; min-height: 40px; padding: 8px 16px; border: 1px solid #d4d7de; border-radius: 999px; background: #fff;
+  color: var(--hd-text); font-size: 14px; font-weight: 500; line-height: 1.2; transition: border-color .15s, background-color .15s, box-shadow .15s;
+}
+.help-desk .help-desk-variant-chip:hover > span { border-color: var(--hd-text); }
+.help-desk .help-desk-variant-chip input:checked + span { border-color: var(--hd-accent); background: color-mix(in srgb, var(--hd-accent) 8%, #fff); box-shadow: 0 0 0 1px var(--hd-accent); font-weight: 600; }
+.help-desk .help-desk-variant-chip input:focus-visible + span { box-shadow: 0 0 0 3px var(--hd-ring); }
+.help-desk .help-desk-variant-chip[data-soldout] { cursor: not-allowed; }
+.help-desk .help-desk-variant-chip[data-soldout] > span { border-style: dashed; background: #f6f7f9; color: #9aa0b0; text-decoration: line-through; }
+.help-desk .help-desk-variant-chip > small {
+  position: absolute; top: -8px; right: 6px; padding: 1px 6px; border-radius: 999px; background: var(--hd-text); color: #fff; font-size: 10px; font-weight: 600; line-height: 1.5;
 }

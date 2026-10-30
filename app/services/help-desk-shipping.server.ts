@@ -112,12 +112,13 @@ const QUOTE_MUTATION = `#graphql
   }
 `;
 export type QuoteAddress = { country: string; province: string; city: string; zip: string; address1: string };
-export async function quoteRates(admin: AdminClient | undefined, productIds: string[], address: QuoteAddress) {
+export async function quoteRates(admin: AdminClient | undefined, productIds: string[], address: QuoteAddress, quantities: number[] = []) {
   if (!admin || !productIds.length) return null;
   try {
     const variants = await (await admin.graphql(VARIANTS_QUERY, { variables: { ids: productIds } })).json();
+    // nodes come back in the order asked, so each keeps its quantity.
     const lineItems = ((variants.data?.nodes ?? []) as ({ variants?: { nodes: { id: string }[] } } | null)[])
-      .map((product) => product?.variants?.nodes[0]?.id).filter(Boolean).map((variantId) => ({ variantId, quantity: 1 }));
+      .map((product, index) => ({ variantId: product?.variants?.nodes[0]?.id, quantity: quantities[index] || 1 })).filter((item) => item.variantId);
     if (!lineItems.length) return null;
     const json = await (await admin.graphql(QUOTE_MUTATION, { variables: { input: {
       lineItems,
@@ -149,13 +150,13 @@ export type ShippingLookup =
   | { error: "unavailable" };
 export async function lookupShipping(
   db: PrismaClient, admin: AdminClient | undefined, shop: string,
-  request: { country: string; province: string; orderNumber: string; email: string; products?: string[]; city?: string; zip?: string; address1?: string },
+  request: { country: string; province: string; orderNumber: string; email: string; products?: string[]; quantities?: number[]; city?: string; zip?: string; address1?: string },
 ): Promise<ShippingLookup> {
   const [setup, settings] = await Promise.all([loadShippingSetup(admin, shop), shippingSettings(db, shop)]);
   if (!setup) return { error: "unavailable" };
   // Products chosen: Shopify's own checkout rates for them; else the zone's rates.
   if (request.products?.length) {
-    const rates = await quoteRates(admin, request.products, { country: request.country, province: request.province, city: request.city ?? "", zip: request.zip ?? "", address1: request.address1 ?? "" });
+    const rates = await quoteRates(admin, request.products, { country: request.country, province: request.province, city: request.city ?? "", zip: request.zip ?? "", address1: request.address1 ?? "" }, request.quantities);
     if (rates) return { answer: quotedAnswer(setup, settings, request.country, request.province, rates) };
   }
   if (!request.orderNumber.trim()) return { answer: shippingAnswer(setup, settings, request.country, request.province) };

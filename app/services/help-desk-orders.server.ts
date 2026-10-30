@@ -317,21 +317,26 @@ const VARIANTS_QUERY = `#graphql
   query HelpDeskVariants($id: ID!) {
     product(id: $id) {
       variants(first: 100) {
-        nodes { title availableForSale }
+        nodes { title availableForSale selectedOptions { name value } }
       }
     }
   }`;
 
 // A product's variants (colour, size...), for "Wrong colour or size": the
-// customer picks the one they wanted. A product with one variant has none to
-// pick. undefined when Shopify couldn't be reached.
-export async function productVariants(admin: AdminClient | undefined, id: string): Promise<{ title: string; available: boolean }[] | undefined> {
+// customer picks the one they wanted, option by option (options: each
+// variant's value for each option, like { Color: "Blue" }). A product with one
+// variant has none to pick. undefined when Shopify couldn't be reached.
+export type ProductVariant = { title: string; available: boolean; options: Record<string, string> };
+export async function productVariants(admin: AdminClient | undefined, id: string): Promise<ProductVariant[] | undefined> {
   if (!/^gid:\/\/shopify\/Product\/\d+$/.test(id)) return [];
   if (!admin) return undefined;
   try {
     const json = await (await admin.graphql(VARIANTS_QUERY, { variables: { id } })).json();
-    const nodes: { title: string; availableForSale: boolean }[] = json.data?.product?.variants?.nodes ?? [];
-    return nodes.filter((node) => node.title && node.title !== "Default Title").map((node) => ({ title: node.title, available: node.availableForSale }));
+    const nodes: { title: string; availableForSale: boolean; selectedOptions?: { name: string; value: string }[] }[] = json.data?.product?.variants?.nodes ?? [];
+    return nodes.filter((node) => node.title && node.title !== "Default Title").map((node) => ({
+      title: node.title, available: node.availableForSale,
+      options: Object.fromEntries((node.selectedOptions ?? []).map((option) => [option.name, option.value])),
+    }));
   } catch { return undefined; }
 }
 

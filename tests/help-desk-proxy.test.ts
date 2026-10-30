@@ -52,7 +52,7 @@ describe("Storefront help desk endpoint", () => {
   it("exposes only form choices to logged-out shoppers, never tickets", async () => {
     const data = await (await loader(args("GET"))).json();
     expect(data.topics).toHaveLength(6);
-    expect(Object.keys(data).sort()).toEqual(["cancelReasons", "countries", "deliveryIssues", "groups", "home", "issueResolutions", "issues", "orderTypes", "orders", "productParts", "provinces", "purchasePlaces", "shippingCountries", "tickets", "topics", "updates"]);
+    expect(Object.keys(data).sort()).toEqual(["addressProvider", "addressSuggestions", "cancelReasons", "countries", "deliveryIssues", "groups", "home", "issueResolutions", "issues", "orderTypes", "orders", "productParts", "provinces", "purchasePlaces", "shippingCountries", "tickets", "topics", "updates"]);
     // Orders and tickets are only looked up for a signed-in shopper (logged_in_customer_id).
     expect(data.orders).toBeNull();
     expect(data.tickets).toBeNull();

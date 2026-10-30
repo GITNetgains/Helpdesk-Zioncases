@@ -279,6 +279,15 @@ model HelpDeskSettings {
   // Shipping times shown on the storefront form (JSON: processing days, transit
   // days by rate name, a note). See app/services/help-desk-shipping.ts.
   shippingTimes       String  @default("")
+  // ShipStation (V1 API key and secret, the store's own; never sent back to the
+  // browser) and which ShipStation store holds this shop's orders. Address
+  // changes are checked against its shipping labels (help-desk-shipstation.server.ts).
+  shipstationKey      String  @default("")
+  shipstationSecret   String  @default("")
+  shipstationStoreId  String  @default("")
+  // Google Places API key for address suggestions on the storefront form
+  // (help-desk-places.server.ts). Never sent back to the browser.
+  googlePlacesKey     String  @default("")
 }
 
 // Shopify staff who have opened the Help Desk, so tickets can be assigned to

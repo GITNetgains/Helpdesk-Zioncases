@@ -58,8 +58,11 @@ describe("Ticket orders from Shopify", () => {
 
   it("lists a product's variants for a wrong colour or size, without Shopify's Default Title", async () => {
     const admin = (nodes: unknown[]) => ({ graphql: vi.fn(async () => new Response(JSON.stringify({ data: { product: { variants: { nodes } } } }))) });
-    expect(await productVariants(admin([{ title: "Black", availableForSale: true }, { title: "Blue", availableForSale: false }]), "gid://shopify/Product/1"))
-      .toEqual([{ title: "Black", available: true }, { title: "Blue", available: false }]);
+    expect(await productVariants(admin([
+      { title: "Black", availableForSale: true, selectedOptions: [{ name: "Color", value: "Black" }] },
+      { title: "Blue", availableForSale: false, selectedOptions: [{ name: "Color", value: "Blue" }] },
+    ]), "gid://shopify/Product/1"))
+      .toEqual([{ title: "Black", available: true, options: { Color: "Black" } }, { title: "Blue", available: false, options: { Color: "Blue" } }]);
     expect(await productVariants(admin([{ title: "Default Title", availableForSale: true }]), "gid://shopify/Product/1")).toEqual([]);
     // Not a product ID: nothing asked of Shopify.
     const unused = admin([]);

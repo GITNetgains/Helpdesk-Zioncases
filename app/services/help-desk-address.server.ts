@@ -1,17 +1,20 @@
 import type { PrismaClient } from "@prisma/client";
-import { addressBlockers, addressChangeChecks, addressCheckOrder, addressLines, addressProblems, MAX_MESSAGE_LENGTH, sameAddress, type AddressStatus, type ShippingAddress } from "./help-desk";
+import { addressBlockers, addressChangeChecks, addressCheckOrder, addressLines, addressProblems, MAX_MESSAGE_LENGTH, sameAddress, shipStationCheck, type AddressStatus, type ShippingAddress } from "./help-desk";
 import { updateTickets } from "./help-desk.server";
 import { findOrderPatiently } from "./help-desk-orders.server";
 import { queueEmail } from "./help-desk-outbox.server";
+import { shipStationAccount, shipStationStatus, updateShipStationAddress } from "./help-desk-shipstation.server";
 
 // Shipping address change requests. The customer sends the new address from
 // the storefront form (the ticket starts Pending). Staff check it against the
 // rules in addressChangeChecks (help-desk.ts), may correct it, and update the
-// order's shipping address in Shopify, or reject the request with a reason.
+// order's shipping address in Shopify (and in ShipStation, once no label has
+// been bought there), or reject the request with a reason.
 // Each decision is logged, shown on the customer's request page and emailed.
 
 type AdminClient = { graphql: (query: string, options?: { variables?: Record<string, unknown> }) => Promise<Response> };
-export type AddressResult = { errors: Record<string, string>; addressStatus?: AddressStatus };
+// warning: the address changed in Shopify, but staff still have something to do.
+export type AddressResult = { errors: Record<string, string>; addressStatus?: AddressStatus; warning?: string };
 
 const UPDATE_MUTATION = `#graphql
   mutation HelpDeskUpdateAddress($input: OrderInput!) {
@@ -88,7 +91,11 @@ export async function updateAddressInShopify(
   // The checks run on the order as Shopify has it right now.
   const order = await findOrderPatiently(admin, details.orderNumber, ticket.orderId, delays);
   if (order === undefined) return { errors: { form: "Shopify couldn't be reached. Please try again." } };
-  const checks = addressChangeChecks(order && addressCheckOrder(order, ticket.email), address.country);
+  // ShipStation is asked afresh: a label may have been bought since the ticket opened.
+  const account = shipStationAccount(await db.helpDeskSettings.findUnique({ where: { shop } }));
+  const shipStation = order && account ? await shipStationStatus(account, order) : null;
+  const labelCheck = order ? shipStationCheck(account ? shipStation : { state: "off" }) : null;
+  const checks = [...addressChangeChecks(order && addressCheckOrder(order, ticket.email), address.country), ...(labelCheck ? [labelCheck] : [])];
   const blocked = addressBlockers(checks);
   if (blocked.length) return { errors: { form: `${blocked[0].label}: no. ${blocked[0].detail}` } };
   if (order?.shippingAddress && sameAddress(address, order.shippingAddress)) return { errors: { form: `${order.name} already ships to this address. Nothing to change.` } };
@@ -123,7 +130,22 @@ export async function updateAddressInShopify(
   }
   const author = input.author.trim().slice(0, 80) || "Staff";
   const previous = order!.shippingAddress ? addressLines(order!.shippingAddress).join(", ") : "none";
-  return decide(db, shop, id, "Updated", ["Pending", "Rejected"], {
-    note, author, applied: address, event: `Shipping address of ${order!.name} updated in Shopify to ${addressLines(address).join(", ")} (was ${previous})`,
+  // ShipStation may not pick up an address changed in Shopify, so it's set there too.
+  let warning = "";
+  let synced = "";
+  if (account && shipStation?.state === "found") {
+    try {
+      const changed = await updateShipStationAddress(account, order!, address);
+      synced = changed ? " and in ShipStation" : "";
+      if (!changed) warning = "The ShipStation order isn't waiting for a label, so its address wasn't changed. Check it in ShipStation.";
+    } catch (error) {
+      console.error("Help Desk could not update a shipping address in ShipStation:", error instanceof Error ? error.message : error);
+      warning = "Updated in Shopify, but ShipStation couldn't be updated. Change the address in ShipStation by hand before buying the label.";
+    }
+  }
+  const result = await decide(db, shop, id, "Updated", ["Pending", "Rejected"], {
+    note, author, applied: address, event: `Shipping address of ${order!.name} updated in Shopify${synced} to ${addressLines(address).join(", ")} (was ${previous})`,
   }, admin);
+  if (warning && result.addressStatus) await db.helpDeskMessage.create({ data: { ticketId: id, kind: "note", author: "Help Desk", body: warning } });
+  return warning && result.addressStatus ? { ...result, warning } : result;
 }

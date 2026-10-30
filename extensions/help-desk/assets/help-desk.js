@@ -131,18 +131,23 @@
         panels[index].querySelector('h3').focus({ preventScroll: true });
       }
     }
-    // Back (and Next) under a step.
-    function nav(panel, back, next) {
-      const bar = node('div', '', { class: 'help-desk-nav' });
-      const previous = node('button', 'Back', { type: 'button', class: 'help-desk-secondary' });
+    // Back at the top of a step, where it's easy to reach.
+    function backButton(panel, back) {
+      const previous = node('button', 'Back', { type: 'button', class: 'help-desk-back' });
       previous.onclick = back;
-      bar.append(previous);
-      if (next) {
-        const forward = node('button', 'Next', { type: 'button' });
-        forward.onclick = next;
-        bar.append(forward);
-      }
+      panel.prepend(previous);
+      return previous;
+    }
+    // Back above a step and, if it has one, Next under it.
+    function nav(panel, back, next) {
+      const previous = backButton(panel, back);
+      if (!next) return previous;
+      const bar = node('div', '', { class: 'help-desk-nav' });
+      const forward = node('button', 'Next', { type: 'button' });
+      forward.onclick = next;
+      bar.append(forward);
       panel.append(bar);
+      return previous;
     }
     // A big clickable choice: its name and, if it has one, a line about it.
     function tile(title, text, icon) {
@@ -180,6 +185,204 @@
       wrap.append(input);
       parent.append(wrap);
       return input;
+    }
+
+    // OpenStreetMap suggestions straight from the browser (Photon allows it),
+    // which skips the trip through Shopify and the app: much faster. Each one
+    // carries its whole address; same rules as help-desk-places.server.ts.
+    // Countries that don't use postal codes, and the format where it's well known.
+    const NO_POSTAL_CODE = ['AE', 'AG', 'AO', 'AW', 'BF', 'BI', 'BJ', 'BO', 'BS', 'BW', 'BZ', 'CD', 'CF', 'CG', 'CI', 'CK', 'CM', 'DJ', 'DM', 'ER', 'FJ', 'GA', 'GD', 'GH', 'GM', 'GQ', 'GY', 'HK', 'KI', 'KM', 'KN', 'KP', 'LC', 'LY', 'ML', 'MO', 'MR', 'MW', 'NR', 'NU', 'QA', 'RW', 'SB', 'SC', 'SL', 'SO', 'SR', 'ST', 'SY', 'TF', 'TG', 'TK', 'TL', 'TO', 'TT', 'TV', 'UG', 'VU', 'YE', 'ZW'];
+    const POSTAL_FORMATS = {
+      US: ['\\d{5}(-\\d{4})?', '12345'], CA: ['[A-Za-z]\\d[A-Za-z] ?\\d[A-Za-z]\\d', 'K1A 0B1'], IN: ['\\d{6}', '560001'], AU: ['\\d{4}', '2000'],
+      GB: ['[A-Za-z]{1,2}\\d[A-Za-z\\d]? ?\\d[A-Za-z]{2}', 'SW1A 1AA'], DE: ['\\d{5}', '10115'], FR: ['\\d{5}', '75001'], MX: ['\\d{5}', '06000'],
+    };
+    const PHOTON = 'https://photon.komoot.io/api/';
+    const NUMBER_LAST = ['DE', 'AT', 'CH', 'NL', 'BE', 'IT', 'ES', 'PT', 'PL', 'CZ', 'DK', 'NO', 'SE', 'FI', 'MX', 'BR', 'AR'];
+    const placeCache = new Map();
+    // Opens the connection early (the handshake is half the wait), once.
+    let warmed = false;
+    function warmPlaces() {
+      if (warmed || config.addressProvider === 'google') return;
+      warmed = true;
+      document.head.append(node('link', '', { rel: 'preconnect', href: 'https://photon.komoot.io', crossorigin: '' }));
+    }
+    async function photonSuggest(query, country, signal) {
+      const params = new URLSearchParams({ q: query, limit: '6', lang: 'en' });
+      if (country) params.set('countrycode', country);
+      params.append('layer', 'house');
+      params.append('layer', 'street');
+      const response = await fetch(`${PHOTON}?${params}`, { signal });
+      if (!response.ok) throw new Error(`Photon answered ${response.status}`);
+      const { features = [] } = await response.json();
+      const seen = new Set();
+      const results = [];
+      for (const { properties: place = {} } of features) {
+        const code = String(place.countrycode || country || '').toUpperCase();
+        if (country && code !== country) continue;
+        const ordered = NUMBER_LAST.includes(code) ? [place.street, place.housenumber] : [place.housenumber, place.street];
+        const line = place.type === 'street' ? place.name || '' : ordered.filter(Boolean).join(' ');
+        const named = place.type !== 'street' && place.name && !place.housenumber ? place.name : '';
+        // Wards and mandals aren't cities: the city is left blank, the neighbourhood goes on the street line.
+        const city = place.city || place.town || place.village || '';
+        const area = !['US', 'CA'].includes(code) && place.locality && place.locality !== city
+          && !`${named} ${line}`.toLowerCase().includes(place.locality.toLowerCase()) ? place.locality : '';
+        const parts = [...new Set([named, line, area].filter(Boolean))];
+        const address1 = parts.filter(part => !parts.some(other => other !== part && other.includes(part))).join(', ').slice(0, 200);
+        if (!address1) continue;
+        const main = named || line;
+        const secondary = [named ? line : '', area, city, place.state, place.postcode].filter(Boolean).join(', ');
+        if (seen.has(`${main}|${secondary}`)) continue;
+        seen.add(`${main}|${secondary}`);
+        results.push({ id: `osm:${place.osm_type || ''}${place.osm_id || ''}`, main, secondary,
+          address: { address1, address2: '', city, province: '', provinceName: place.state || '', zip: place.postcode || '', country: code } });
+      }
+      return results.slice(0, 5);
+    }
+
+    // Address suggestions under a grid's street field, in the chosen country,
+    // like checkout: Google Places through the app (config.addressSuggestions
+    // is off until the store adds a key). Picking one fills in the street,
+    // city, state and postal code; the customer can still type it all by hand.
+    function addressSuggest(grid, getCountry) {
+      const street = grid.querySelector('[name=shipAddress1]');
+      if (!config.addressSuggestions || !street) return;
+      const holder = street.parentElement;
+      holder.classList.add('help-desk-address-search');
+      const listId = `help-desk-places-${Math.random().toString(36).slice(2)}`;
+      const list = node('ul', '', { class: 'help-desk-suggestions help-desk-address-suggestions', role: 'listbox', id: listId, hidden: '' });
+      holder.append(list);
+      // The browser's own autofill list would cover ours. Chrome ignores "off"
+      // on address fields but skips a field with a token it doesn't know.
+      street.setAttribute('autocomplete', 'help-desk-address-search');
+      street.placeholder = 'Start typing your address';
+      street.setAttribute('role', 'combobox');
+      street.setAttribute('aria-autocomplete', 'list');
+      street.setAttribute('aria-controls', listId);
+      street.setAttribute('aria-expanded', 'false');
+      // One search (typing, then picking) is one Google session.
+      let session = crypto.randomUUID(), timer, version = 0, active = -1, found = [];
+      const request = async params => {
+        const url = new URL(endpoint);
+        for (const [key, value] of Object.entries({ ...params, session })) url.searchParams.set(key, value);
+        const response = await fetch(url, { headers: { Accept: 'application/json' } });
+        return response.ok ? response.json() : {};
+      };
+      const close = () => {
+        list.hidden = true;
+        list.replaceChildren();
+        found = [];
+        active = -1;
+        street.setAttribute('aria-expanded', 'false');
+        street.removeAttribute('aria-activedescendant');
+      };
+      const highlight = index => {
+        active = index;
+        [...list.querySelectorAll('[role=option]')].forEach((item, at) => item.setAttribute('aria-selected', String(at === index)));
+        if (index >= 0) street.setAttribute('aria-activedescendant', `${listId}-${index}`);
+        else street.removeAttribute('aria-activedescendant');
+      };
+      const show = suggestions => {
+        list.replaceChildren();
+        found = suggestions;
+        active = -1;
+        if (!suggestions.length) { close(); return; }
+        suggestions.forEach((suggestion, index) => {
+          const item = node('li', '', { role: 'option', id: `${listId}-${index}`, 'aria-selected': 'false' });
+          const text = node('span', '', { class: 'help-desk-place-text' });
+          text.append(node('strong', suggestion.main), ...(suggestion.secondary ? [node('span', suggestion.secondary)] : []));
+          item.append(node('span', '', { class: 'help-desk-place-pin', 'aria-hidden': 'true' }), text);
+          // mousedown, so it's picked before the field loses focus.
+          item.onmousedown = event => { event.preventDefault(); pick(suggestion); };
+          item.onmouseenter = () => highlight(index);
+          list.append(item);
+        });
+        list.append(node('li', config.addressProvider === 'google' ? 'Powered by Google' : '© OpenStreetMap contributors', { class: 'help-desk-places-credit', 'aria-hidden': 'true' }));
+        list.hidden = false;
+        street.setAttribute('aria-expanded', 'true');
+      };
+      // Sets a field the way typing would, so the form's own listeners see it.
+      const fill = (name, value) => {
+        const input = grid.querySelector(`[name=${name}]`);
+        if (!input || value === undefined) return;
+        if (input.tagName === 'SELECT') {
+          const option = [...input.options].find(entry => entry.value && (entry.value.toUpperCase() === String(value.code || '').toUpperCase() || entry.textContent.trim().toLowerCase() === String(value.name || '').toLowerCase()));
+          if (!option) return;
+          input.value = option.value;
+        } else input.value = typeof value === 'object' ? (value.name || value.code || '') : value;
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+        input.dispatchEvent(new Event('change', { bubbles: true }));
+      };
+      async function pick(suggestion) {
+        close();
+        street.value = suggestion.address?.address1 || suggestion.main;
+        try {
+          // OpenStreetMap suggestions carry their address; Google's is asked for once picked.
+          const address = suggestion.address || (await request({ places: 'details', id: suggestion.id })).address;
+          if (!address) return;
+          fill('shipAddress1', address.address1 || suggestion.main);
+          if (address.address2) fill('shipAddress2', address.address2);
+          fill('shipCity', address.city);
+          fill('shipProvince', { code: address.province, name: address.provinceName });
+          fill('shipZip', address.zip);
+        } catch { /* what they picked stays in the street field */ }
+        finally {
+          session = crypto.randomUUID();
+          street.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+      }
+      let inflight = null;
+      // Suggestions for a query: remembered, else OpenStreetMap from the
+      // browser (the app as a fallback), or Google through the app.
+      const lookup = async (query, country, signal) => {
+        const key = `${country}|${query.toLowerCase()}`;
+        if (placeCache.has(key)) return placeCache.get(key);
+        let suggestions;
+        if (config.addressProvider !== 'google') {
+          try { suggestions = await photonSuggest(query, country, signal); } catch (error) { if (error.name === 'AbortError') throw error; }
+        }
+        if (!suggestions) {
+          const result = await request({ places: 'suggest', q: query, country });
+          if (result.error) console.warn('Help desk: address suggestions are unavailable.', result.error);
+          suggestions = Array.isArray(result.suggestions) ? result.suggestions : [];
+        }
+        if (placeCache.size > 200) placeCache.delete(placeCache.keys().next().value);
+        placeCache.set(key, suggestions);
+        return suggestions;
+      };
+      street.addEventListener('focus', warmPlaces);
+      street.addEventListener('input', event => {
+        if (!event.isTrusted) return;
+        clearTimeout(timer);
+        inflight?.abort();
+        const query = street.value.trim();
+        const current = ++version;
+        if (query.length < 3) { close(); return; }
+        const country = getCountry() || '';
+        const cached = placeCache.get(`${country}|${query.toLowerCase()}`);
+        if (cached) { show(cached); return; }
+        // Meanwhile, keep showing what still matches every word typed so far.
+        const words = query.toLowerCase().split(/\s+/).filter(Boolean);
+        const still = found.filter(item => words.every(word => `${item.main} ${item.secondary}`.toLowerCase().includes(word)));
+        if (still.length) show(still);
+        timer = setTimeout(async () => {
+          const controller = new AbortController();
+          inflight = controller;
+          try {
+            const suggestions = await lookup(query, country, controller.signal);
+            if (current === version && document.activeElement === street) show(suggestions);
+          } catch (error) {
+            if (error.name !== 'AbortError') { console.warn('Help desk: address suggestions failed.', error); close(); }
+          } finally { if (inflight === controller) inflight = null; }
+        }, 120);
+      });
+      street.addEventListener('keydown', event => {
+        if (list.hidden || !found.length) return;
+        if (event.key === 'ArrowDown') { event.preventDefault(); highlight((active + 1) % found.length); }
+        else if (event.key === 'ArrowUp') { event.preventDefault(); highlight(active <= 0 ? found.length - 1 : active - 1); }
+        else if (event.key === 'Enter' && active >= 0) { event.preventDefault(); pick(found[active]); }
+        else if (event.key === 'Escape') { event.preventDefault(); close(); }
+      });
+      street.addEventListener('blur', () => setTimeout(close, 150));
     }
 
     // Step 1: the topic. The cards set the (hidden) topic dropdown.
@@ -261,7 +464,7 @@
     const reviewSection = section('Review and submit', 'Check your request before sending it to our team.', 'Review');
     chosenLine(reviewSection);
     reviewSection.append(review);
-    nav(requestSection, () => (stageBack ? stageBack() : go(known ? issueStep() : 2)), () => {
+    const requestBack = nav(requestSection, () => (stageBack ? stageBack() : go(known ? issueStep() : 2)), () => {
       if (!current) { message('Choose the issue that best describes your request.', true); return; }
       // The flow's own check first (the item comes first on the screen), then the fields.
       if (nextCheck && !nextCheck()) return;
@@ -283,7 +486,8 @@
     function stage(name, title = '', text = '', back = null) {
       fields.dataset.stage = name;
       stageBack = back;
-      requestNav.hidden = name === 'answer';
+      // An answer screen has its own Back.
+      requestNav.hidden = requestBack.hidden = name === 'answer';
       requestTitle.textContent = title || current?.label || 'Your request';
       requestText.textContent = title ? text : current?.description || 'A few details and we’ll take it from here.';
       if (form.isConnected) {
@@ -308,9 +512,8 @@
     }
     const submit = node('button', 'Submit Request', { type: 'submit' });
     const footer = node('div', '', { class: 'help-desk-footer' });
-    const back = node('button', 'Back', { type: 'button', class: 'help-desk-secondary' });
-    back.onclick = () => go(3);
-    footer.append(back, node('p', 'You’ll get a private page to follow your request and reply to our team.'), submit);
+    backButton(reviewSection, () => go(3));
+    footer.append(node('p', 'You’ll get a private page to follow your request and reply to our team.'), submit);
     reviewSection.append(footer);
     if (known) progress.children[2].hidden = true;
     go(0);
@@ -498,8 +701,8 @@
     // Multi-select product list. With a fixed source (one order's items) it's
     // a list to tick; otherwise a search box that suggests products as the
     // customer types, and each one picked shows as a chip below.
-    function productPicker(parent, title = 'Select Products', source = null, selection = selected) {
-      if (!source) return productSearch(parent, title, selection);
+    function productPicker(parent, title = 'Select Products', source = null, selection = selected, options = {}) {
+      if (!source) return productSearch(parent, title, selection, () => {}, options);
       const dropdown = node('details');
       const summary = node('summary');
       const results = node('div', '', { class: 'help-desk-results' });
@@ -531,13 +734,14 @@
     // Type a name, pick from the suggestions: the theme's products match
     // straight away, then the store's search adds the rest.
     // chips: false when the caller shows the picked products itself.
-    function productSearch(parent, title, selection, onChange = () => {}, { chips: showChips = true, required = true } = {}) {
+    // quantities: each picked product is a row with how many they want.
+    function productSearch(parent, title, selection, onChange = () => {}, { chips: showChips = true, required = true, quantities = false } = {}) {
       const wrap = node('div', '', { class: 'help-desk-product-search' });
       const input = field(wrap, '', title, { type: 'search', optional: true, placeholder: 'Start typing a product name' });
       if (required) input.parentElement.querySelector('span').append(' ', node('span', '*', { class: 'help-desk-required', 'aria-hidden': 'true' }));
       input.autocomplete = 'off';
       const list = node('ul', '', { class: 'help-desk-suggestions', role: 'listbox', hidden: '' });
-      const chips = node('div', '', { class: 'help-desk-selected' });
+      const chips = node('div', '', { class: quantities ? 'help-desk-quantities' : 'help-desk-selected' });
       wrap.append(list);
       parent.append(wrap, chips);
       const local = catalog();
@@ -557,8 +761,38 @@
         list.hidden = false;
       };
       chips.hidden = !showChips;
+      // A product row: its picture and name, how many (− and +, or typed), and Remove.
+      const quantityRow = (id, product) => {
+        const row = node('div', '', { class: 'help-desk-quantity-row' });
+        const stepper = node('div', '', { class: 'help-desk-stepper', role: 'group', 'aria-label': `Quantity of ${product.title}` });
+        const less = node('button', '−', { type: 'button', 'aria-label': 'One less' });
+        const more = node('button', '+', { type: 'button', 'aria-label': 'One more' });
+        const count = node('input', '', { type: 'number', min: '1', max: '99', inputmode: 'numeric', 'aria-label': `Quantity of ${product.title}` });
+        const set = value => {
+          product.qty = Math.min(99, Math.max(1, Math.trunc(Number(value)) || 1));
+          count.value = String(product.qty);
+          less.disabled = product.qty <= 1;
+          more.disabled = product.qty >= 99;
+          onChange();
+        };
+        less.onclick = () => set((product.qty || 1) - 1);
+        more.onclick = () => set((product.qty || 1) + 1);
+        count.onchange = () => set(count.value);
+        stepper.append(less, count, more);
+        const remove = node('button', '×', { type: 'button', class: 'help-desk-quantity-remove', 'aria-label': `Remove ${product.title}` });
+        remove.onclick = () => { selection.delete(id); chipsRender(); onChange(); };
+        row.append(thumb(product.image), node('span', product.title, { class: 'help-desk-quantity-name' }), stepper, remove);
+        count.value = String(product.qty || 1);
+        less.disabled = (product.qty || 1) <= 1;
+        return row;
+      };
       const chipsRender = () => {
         chips.replaceChildren();
+        if (quantities) {
+          if (selection.size) chips.append(node('div', 'How many of each?', { class: 'help-desk-quantity-title' }));
+          for (const [id, product] of selection) chips.append(quantityRow(id, product));
+          return;
+        }
         for (const [id, { title: name, image }] of selection) {
           const remove = node('button', '', { type: 'button', 'aria-label': `Remove ${name}` });
           remove.append(thumb(image), node('span', name), node('span', '×', { 'aria-hidden': 'true' }));
@@ -567,7 +801,7 @@
         }
       };
       function add(product) {
-        selection.set(product.id, product);
+        selection.set(product.id, quantities ? { ...product, qty: 1 } : product);
         input.value = '';
         close();
         chipsRender();
@@ -715,6 +949,8 @@
       const asking = () => { stage('ask'); requestNext.hidden = true; };
       const answering = () => { stage('answer', answerTitle, answerText); requestNext.hidden = true; };
       const showRequest = (fromAnswer, error) => {
+        // Nothing more to ask (request: null): on to Review, where they send it.
+        if (!request) { updateReview(); go(4); return; }
         if (!more.querySelector('[name]')) request(more);
         more.querySelector('.help-desk-track-error')?.remove();
         if (error) more.prepend(node('p', error, { class: 'help-desk-track-error', role: 'alert' }));
@@ -728,6 +964,8 @@
         const params = ask();
         if (!params) return;
         if (params.local) { result.replaceChildren(); params.local(result); answering(); return; }
+        // Nothing to look up (say, a country we quote by hand): straight to the request.
+        if (params.request) { showRequest(false); return; }
         check.disabled = true;
         check.textContent = 'Checking...';
         message('', false, false);
@@ -737,22 +975,21 @@
           const response = await fetch(url, { headers: { Accept: 'application/json' } });
           const data = await response.json();
           result.replaceChildren();
-          if (!response.ok || !render(result, data)) { showRequest(false, data.error || unavailable); return; }
+          // No answer to show: the request opens, with why only when there's something to say.
+          if (!response.ok || !render(result, data)) { showRequest(false, unavailable === '' ? '' : data.error || unavailable); return; }
           answering();
         } catch (error) {
           console.warn('Help desk: the check failed.', error);
-          showRequest(false, unavailable);
+          showRequest(false, unavailable || '');
         } finally {
           check.disabled = false;
           check.textContent = label;
         }
       };
     }
-    // Where it ships: the United States and Canada for now (config.shippingCountries),
-    // then "Another country", which asks which one and says shipping there is
-    // coming soon. The chosen country's code is sent as `name`.
+    // Where it ships: the countries with rates set up first (config.shippingCountries),
+    // then "Another country", which asks which one. The chosen country's code is sent as `name`.
     const served = Array.isArray(config.shippingCountries) ? config.shippingCountries : ['US', 'CA'];
-    const COMING_SOON = 'Right now we ship to the United States and Canada. We\'re working on shipping to more countries soon.';
     function countryPicker(parent, name, label, { only = null, other = true } = {}) {
       const wrap = node('div', '', { class: 'help-desk-country' });
       const ours = countries.filter(entry => served.includes(entry.code) && (!only || only.includes(entry.code)));
@@ -760,9 +997,6 @@
       const input = node('input', '', { type: 'hidden', name });
       const elsewhere = node('div', '', { class: 'help-desk-elsewhere', hidden: '' });
       const which = field(elsewhere, '', 'Which country?', { choices: countries.filter(entry => !served.includes(entry.code)).map(entry => [entry.code, entry.name]), placeholder: 'Select your country' });
-      const note = node('div', '', { class: 'help-desk-coming-soon', role: 'note' });
-      note.append(node('strong', 'Coming soon to more countries'), node('span', `${COMING_SOON} You can still send us your request and we'll get back to you.`));
-      elsewhere.append(note);
       wrap.append(input, elsewhere);
       parent.append(wrap);
       const sync = () => {
@@ -781,9 +1015,6 @@
         name: () => countries.find(entry => entry.code === input.value)?.name || '',
       };
     }
-    // Shown instead of prices for a country we don't ship to yet.
-    const comingSoon = result => answerCard(result, 'warning', 'Shipping to your country', 'Coming soon', 'We\'re coming to more countries soon',
-      `${COMING_SOON} Select "I Still Need Help" to tell us what you'd like, and we'll let you know as soon as we ship to you.`);
     // Order status: shown only when the order number and email match.
     function trackingCheck(option) {
       selfCheck('Check Order Status', () => {
@@ -840,7 +1071,7 @@
       if (ship.quoted) lead[1] = `Live prices for your products from our checkout. ${lead[1]}`;
       const card = ship.ships
         ? answerCard(parent, 'progress', `Shipping to ${place}`, ship.quoted ? 'Your products' : 'We ship here', ...lead)
-        : answerCard(parent, 'warning', `Shipping to ${place}`, 'Not available', `We don't ship to ${ship.countryName} yet`, 'Ask us below and we\'ll see what we can do.');
+        : answerCard(parent, 'progress', `Shipping to ${place}`, 'Quote', `We ship to ${ship.countryName}`, 'Prices aren\'t shown online for this country. Select "I Still Need Help" and our team will reply with a shipping quote.');
       const list = node('ul', '', { class: 'help-desk-ship-rates' });
       for (const rate of ship.rates) {
         const item = node('li');
@@ -887,7 +1118,7 @@
           result.hidden = true;
           // The order checked out: say so, then its fields, as the next screen.
           const verified = node('div', '', { class: 'help-desk-verified' });
-          verified.append(node('strong', `Order ${orderNumber}`), node('span', kind === 'cancel' ? 'This order can still be cancelled.' : 'This order\'s address can still be changed.'));
+          verified.append(node('strong', `Order ${orderNumber}`), node('span', kind === 'cancel' ? 'This order hasn\'t shipped yet, so you can send a cancellation request.' : 'This order\'s address can still be changed.'));
           more.append(verified);
           reveal(more, data.country || '');
           stage('request', '', '', close);
@@ -1009,7 +1240,7 @@
       // The team approves or rejects it; the request page shows where it stands.
       cancel(option) {
         const notice = node('div', '', { class: 'help-desk-cancel-notice', role: 'note' });
-        notice.append(node('strong', 'This cancels your whole order.'), node('span', 'Orders can only be cancelled before they ship. Enter your order number and continue: we\'ll check your order first. You can follow the request (Pending, Approved, Rejected or Cancelled) on your request page.'));
+        notice.append(node('strong', 'This sends a cancellation request. It doesn\'t cancel your order.'), node('span', 'Our team reviews every request and cancels the whole order only if it hasn\'t shipped yet. Enter your order number and continue: we\'ll check your order first. You can follow the request (Pending, Approved, Rejected or Cancelled) on your request page.'));
         fields.append(notice);
         orderGate('cancel', more => {
           const reason = field(more, 'cancelReason', 'Reason for Cancellation', { choices: cancelReasons, placeholder: 'Select a reason' });
@@ -1038,7 +1269,7 @@
           const wide = input => input.parentElement.classList.add('help-desk-wide');
           field(grid, 'shipName', 'Recipient Name', { autocomplete: 'shipping name' }).value = customer?.name || '';
           field(grid, 'shipPhone', 'Phone (optional)', { type: 'tel', optional: true, autocomplete: 'shipping tel' });
-          wide(field(grid, 'shipAddress1', 'Street Address', { placeholder: 'House number and street', autocomplete: 'shipping address-line1' }));
+          wide(field(grid, 'shipAddress1', 'Street Address', { placeholder: 'Start typing your address', autocomplete: 'shipping address-line1' }));
           wide(field(grid, 'shipAddress2', 'Apartment, Suite (optional)', { optional: true, autocomplete: 'shipping address-line2' }));
           // Only the order's own country: a new country means a new order.
           const own = countries.filter(entry => entry.code === country);
@@ -1048,7 +1279,9 @@
           const states = config.provinces?.[code];
           field(grid, 'shipProvince', states ? (code === 'CA' ? 'Province' : 'State') : 'State / Province (optional)', states ? { choices: states } : { optional: true, autocomplete: 'shipping address-level1' });
           field(grid, 'shipZip', 'ZIP / Postal Code', { autocomplete: 'shipping postal-code' });
-          field(grid, 'shipCountry', 'Country', { choices: (own.length ? own : countries).map(entry => [entry.code, entry.name]) }).value = code;
+          const shipCountry = field(grid, 'shipCountry', 'Country', { choices: (own.length ? own : countries).map(entry => [entry.code, entry.name]) });
+          shipCountry.value = code;
+          addressSuggest(grid, () => shipCountry.value);
           field(more, 'details', option.detailsLabel || 'Anything Else? (optional)', { multiline: true, optional: true, placeholder: option.placeholder || '' });
         });
       },
@@ -1120,6 +1353,68 @@
           }
           return variantLists.get(id);
         };
+        // The variant they want, as Shopify sells it: one row of choices per
+        // option (Color, Size...). Values with nothing in stock for what's already
+        // picked can't be chosen; the one they ordered is marked. The variant's
+        // name goes in itemVariant:<id> for the team.
+        function variantPicker(slot, product, id, variants) {
+          const names = [...new Set(variants.flatMap(variant => Object.keys(variant.options || {})))];
+          // Older answers without options: one row of whole variant names.
+          const rows = names.length ? names : ['Option'];
+          const optionsOf = variant => (names.length ? variant.options : { Option: variant.title });
+          const ordered = variants.find(variant => variant.title === product.variant);
+          const chosen = {};
+          const hidden = node('input', '', { type: 'hidden', name: `itemVariant:${id}` });
+          const wrap = node('div', '', { class: 'help-desk-variants' });
+          wrap.append(node('span', 'Which colour or size do you want?', { class: 'help-desk-variants-title' }));
+          const inputs = [];
+          rows.forEach((name, row) => {
+            const set = node('fieldset', '', { class: 'help-desk-variant-row' });
+            set.append(node('legend', rows.length > 1 || names.length ? name : 'Choose one'));
+            const chips = node('div', '', { class: 'help-desk-variant-chips' });
+            for (const value of [...new Set(variants.map(variant => optionsOf(variant)[name]).filter(Boolean))]) {
+              const label = node('label', '', { class: 'help-desk-variant-chip' });
+              const radio = node('input', '', { type: 'radio', name: `variantOption:${id}:${row}`, value });
+              radio.required = true;
+              radio.dataset.review = `${product.title} · ${names.length ? name : 'Wants'}`;
+              radio.dataset.option = name;
+              label.append(radio, node('span', value));
+              if (ordered && optionsOf(ordered)[name] === value) label.append(node('small', 'Ordered'));
+              chips.append(label);
+              inputs.push(radio);
+            }
+            set.append(chips);
+            wrap.append(set);
+          });
+          // Like a product page: a value nothing in stock has can't be picked; one
+          // that doesn't go with what's already chosen is dimmed but can be, and
+          // then the choices that don't fit it are cleared.
+          const inStock = (name, value, others) => variants.some(variant => variant.available && optionsOf(variant)[name] === value
+            && others.every(([other, picked]) => optionsOf(variant)[other] === picked));
+          const refresh = () => {
+            for (const radio of inputs) {
+              const others = Object.entries(chosen).filter(([name]) => name !== radio.dataset.option);
+              radio.disabled = !inStock(radio.dataset.option, radio.value, []);
+              radio.closest('label').toggleAttribute('data-soldout', !inStock(radio.dataset.option, radio.value, others));
+            }
+            const match = rows.every(name => chosen[name]) && variants.find(variant => variant.available && rows.every(name => optionsOf(variant)[name] === chosen[name]));
+            hidden.value = match ? match.title : '';
+          };
+          for (const radio of inputs) {
+            radio.addEventListener('change', () => {
+              chosen[radio.dataset.option] = radio.value;
+              for (const other of inputs) {
+                const name = other.dataset.option;
+                if (name === radio.dataset.option || !other.checked) continue;
+                if (!inStock(name, other.value, [[radio.dataset.option, radio.value]])) { other.checked = false; delete chosen[name]; }
+              }
+              refresh();
+            });
+          }
+          refresh();
+          wrap.append(hidden);
+          slot.append(wrap);
+        }
         // What arrived and, by answer: nothing more (another product is added under
         // Replacement), the variant they wanted, or how many arrived and how many they want.
         function askWrong(area, product, id) {
@@ -1143,18 +1438,19 @@
             field(area, `itemNote:${id}`, 'What did you receive instead?', { multiline: true, placeholder: wrongKind === 'Wrong colour or variant' ? 'e.g. Black instead of Blue' : 'e.g. a different case' }).dataset.review = product.title;
             if (wrongKind === 'Wrong colour or variant') {
               if (ordered) area.append(node('p', `You ordered: ${ordered}`, { class: 'help-desk-hint' }));
-              // The product's own variants when the store has them, else a few words.
+              // The product's own colours and sizes, option by option, else a few words.
               const slot = node('div', '', { 'data-fields': '' });
               area.append(slot);
-              const pick = field(slot, `itemVariant:${id}`, 'Which colour or size do you want?', { choices: [], placeholder: 'Loading options...' });
-              pick.disabled = true;
+              slot.append(node('p', 'Loading colours and sizes...', { class: 'help-desk-hint' }));
               loadVariants(id).then(list => {
-                if (!pick.isConnected) return;
+                if (!slot.isConnected) return;
                 slot.replaceChildren();
-                const input = list?.length
-                  ? field(slot, `itemVariant:${id}`, 'Which colour or size do you want?', { choices: list.map(entry => [entry.title, entry.available ? entry.title : `${entry.title} (sold out)`]), placeholder: 'Select one' })
-                  : field(slot, `itemVariant:${id}`, 'Which colour or size do you want?', { placeholder: 'e.g. Blue, Large' });
-                input.dataset.review = `${product.title} · Wants`;
+                if (list?.some(variant => variant.available)) { variantPicker(slot, product, id, list); return; }
+                // One variant only, or everything sold out: a few words instead.
+                const single = Boolean(list) && !list.length;
+                if (list) slot.append(node('p', single ? 'This product comes in one colour and size only.' : 'Every colour and size of this product is sold out right now. Tell us what you wanted and we\'ll help.', { class: 'help-desk-hint' }));
+                field(slot, `itemVariant:${id}`, single ? 'What did you expect instead? (optional)' : 'Which colour or size do you want?', { optional: single, placeholder: 'e.g. Blue, Large' })
+                  .dataset.review = `${product.title} · Wants`;
               });
             }
           }
@@ -1294,7 +1590,7 @@
       international(option) {
         const home = config.home || 'US';
         const list = countries.filter(entry => option.region === 'domestic' ? entry.code === home : option.region === 'international' ? entry.code !== home : true);
-        productPicker(fields, 'Products You Want Shipped');
+        productPicker(fields, 'Products You Want Shipped', null, selected, { quantities: true });
         const grid = node('div', '', { class: 'help-desk-address', role: 'group', 'aria-label': 'Shipping address' });
         grid.append(node('h4', 'Shipping Address'));
         fields.append(grid);
@@ -1304,11 +1600,14 @@
         picker.wrap.classList.add('help-desk-wide');
         const country = picker.input;
         if (option.region !== 'international') picker.set(option.region === 'domestic' ? home : 'US');
-        const street = wide(field(grid, 'shipAddress1', 'Street Address (optional)', { optional: true, autocomplete: 'shipping address-line1' }));
+        const street = wide(field(grid, 'shipAddress1', 'Street Address', { placeholder: 'Start typing your address', autocomplete: 'shipping address-line1' }));
         const city = field(grid, 'shipCity', 'City', { autocomplete: 'shipping address-level2' });
         const area = node('div');
         grid.append(area);
-        const zip = field(grid, 'shipZip', 'ZIP / Postal Code (optional)', { optional: true, autocomplete: 'shipping postal-code' });
+        const zip = field(grid, 'shipZip', 'ZIP / Postal Code', { autocomplete: 'shipping postal-code' });
+        // The country's name on Review (the picker sends its code).
+        const countryReview = node('input', '', { type: 'hidden', 'data-review': 'Country' });
+        fields.append(countryReview);
         // The address is sent as one line, as the team reads it.
         const address = node('input', '', { type: 'hidden', name: 'address' });
         fields.append(address);
@@ -1317,6 +1616,14 @@
         const compose = () => { address.value = [street.value, city.value, named(state()), zip.value].map(part => part.trim()).filter(Boolean).join(', '); };
         const states = () => {
           const provinces = config.provinces?.[country.value];
+          countryReview.value = countries.find(entry => entry.code === country.value)?.name || '';
+          // Countries without postal codes don't need one; the rest in their own format.
+          const postal = !NO_POSTAL_CODE.includes(country.value);
+          zip.required = postal;
+          zip.parentElement.querySelector('span').replaceChildren(postal ? 'ZIP / Postal Code' : 'ZIP / Postal Code (optional)',
+            ...(postal ? [' ', node('span', '*', { class: 'help-desk-required', 'aria-hidden': 'true' })] : []));
+          const format = POSTAL_FORMATS[country.value];
+          if (format) { zip.pattern = format[0]; zip.title = `Enter a valid postal code, like ${format[1]}.`; } else { zip.removeAttribute('pattern'); zip.removeAttribute('title'); }
           area.replaceChildren();
           if (provinces) field(area, 'shipProvince', country.value === 'CA' ? 'Province' : 'State', { choices: provinces, placeholder: 'Select one' });
           else field(area, 'shipProvince', 'State / Province (optional)', { optional: true, autocomplete: 'shipping address-level1' });
@@ -1326,22 +1633,24 @@
         grid.addEventListener('input', compose);
         grid.addEventListener('change', compose);
         states();
+        addressSuggest(grid, () => country.value);
 
-        // First the answer: what shipping these products there costs and how
-        // long it takes. Only if we can't tell them (we don't ship there, no
-        // rates, or an error) does the request open straight away, for a quote.
-        selfCheck('Check Shipping Cost & Time', () => {
-          if (picker.isElsewhere()) return { local: comingSoon };
+        // No prices on the form: once the products and address are in, the
+        // request is sent, and our team replies with shipping options and costs.
+        selfCheck('Review Request', () => {
+          message('', false, false);
           if (!selected.size) { message('Select the products you want shipped first.', true); return; }
-          if (!country.value) { message('Please select the country.', true); return; }
-          const missing = [city, state()].find(input => input?.required && !String(input.value).trim());
-          if (missing) { message('Please fill in the city and state first.', true); missing.focus(); return; }
-          // With the products chosen, the prices are Shopify's own checkout rates for them.
-          return { shipping: '1', country: country.value, province: state()?.value || '', products: [...selected.keys()].join(','), city: city.value, zip: zip.value, address1: street.value };
-        }, (result, data) => Boolean(data.shipping?.ships) && renderShipping(result, data),
-        more => field(more, 'otherDetails', 'Anything Else? (optional)', { multiline: true, optional: true, placeholder: option.placeholder || 'For example: can it arrive before the 20th?' }),
-        'We can\'t show shipping for this address online. Send your request and our team will reply with a quote.',
-        'Shipping options', 'For the products and address you entered.');
+          if ([...selected.values()].some(product => !(product.qty >= 1 && product.qty <= 99))) { message('Enter a quantity from 1 to 99 for each product.', true); return; }
+          if (!country.value) { message('Please select the country.', true); picker.wrap.querySelector('select')?.focus(); return; }
+          for (const input of [street, city]) input.value = input.value.trim();
+          zip.value = zip.value.trim().toUpperCase();
+          // The browser's own checks (required, the postal format) on every field, in order.
+          const invalid = [...grid.querySelectorAll('input, select, textarea')].find(input => input.willValidate && !input.checkValidity());
+          if (invalid) { invalid.reportValidity(); invalid.focus(); return; }
+          if (street.value.length < 5) { message('Please enter the full street address, with the house or building number.', true); street.focus(); return; }
+          compose();
+          return { request: true };
+        }, () => false, null, '');
       },
       partner(option) {
         const wholesale = option.preset.topic === topics[1];
@@ -1416,15 +1725,15 @@
         const value = name => String(form.elements[name]?.value || '').trim();
         const elsewhere = () => country.value === 'OTHER';
         selfCheck('Check Shipping Times', () => {
-          // Not shipping there yet: say so kindly, and let them leave their details.
-          if (elsewhere()) return { local: comingSoon };
+          // Another country: no rates online, so straight to their question.
+          if (elsewhere()) return { request: true };
           if (value('orderNumber') && !value('email')) message('Please enter your email address to check your order.', true);
           else if (value('shipTo')) return { shipping: '1', country: value('shipTo'), province: value('shipToState'), order: value('orderNumber'), email: value('email') };
           message('Please select the country we\'re shipping to.', true);
         }, renderShipping, more => {
           const named = select => select?.value ? select.options[select.selectedIndex].textContent : '';
           const place = [named(area.querySelector('select')), named(country)].filter(Boolean).join(', ');
-          if (elsewhere()) field(more, 'query', 'Your Country and Question', { multiline: true, placeholder: 'Which country are you in, and what would you like to order? We\'ll let you know when we ship there.' });
+          if (elsewhere()) field(more, 'query', 'Your Country and Question', { multiline: true, placeholder: 'Which country are you shipping to, and what would you like to order? We\'ll reply with shipping options and prices.' });
           else field(more, 'query', 'Your Question', { multiline: true, placeholder: option.placeholder || 'How can we help?' }).value = place ? `Shipping to ${place}.\n` : '';
         }, 'Shipping times are unavailable right now. Please send us your question below.', 'Shipping options');
       },
@@ -1471,9 +1780,9 @@
       for (const input of fields.querySelectorAll('input:not([type=hidden]):not([type=file]):not([type=checkbox]):not([type=radio]), select, textarea')) {
         if (!input.name || !input.value.trim()) continue;
         const label = input.dataset.review || input.closest('label')?.querySelector('span')?.textContent?.replace('*', '').trim() || input.name;
-        addRow(label, input.value.trim());
+        addRow(label, input.tagName === 'SELECT' ? input.options[input.selectedIndex]?.textContent.trim() || input.value : input.value.trim());
       }
-      if (selected.size) addRow('Products', [...selected.values()].map(product => product.title).join(', '));
+      if (selected.size) addRow('Products', [...selected.values()].map(product => product.qty ? `${product.title} × ${product.qty}` : product.title).join(', '));
       const count = selector => [...form.querySelectorAll(selector)].reduce((sum, input) => sum + (input.files?.length || 0), 0);
       const photos = count('input[type=file][accept^="image"]');
       if (photos) addRow('Photos', `${photos} attached`);
@@ -1537,7 +1846,11 @@
       if (!requestKey) requestKey = crypto.randomUUID();
       const body = new FormData(form);
       body.set('requestKey', requestKey);
-      for (const id of selected.keys()) body.append('products', id);
+      for (const [id, product] of selected) {
+        body.append('products', id);
+        // How many they want shipped, by product.
+        if (product.qty) { body.set(`itemQty:${id}`, String(product.qty)); body.set(`itemTitle:${id}`, product.title); }
+      }
       controls.disabled = true;
       submit.textContent = 'Submitting...';
       message('', false, false);
@@ -1548,12 +1861,18 @@
           message(Object.values(result.errors || {}).join(' ') || 'Your request could not be saved. Please try again.', true);
           return;
         }
+        const sentFlow = current?.flow;
         form.reset();
         prefill();
         group.onchange();
         requestKey = '';
         const label = result.number ? `#${result.number}` : result.ticketId;
-        message(`Thank you. Your request ${label} has been received. Our team will respond by email, and you can track its progress on your request page. `);
+        // An address change isn't made yet: the team reviews it first.
+        message(sentFlow === 'address'
+          ? `Address change request ${label} submitted. It's pending review: your shipping address has not been changed yet. We'll email you once our team has reviewed it, and you can follow it on your request page. `
+          : sentFlow === 'cancel'
+          ? `Cancellation request ${label} submitted. It's pending review: your order has not been cancelled yet. We'll email you once our team has reviewed it, and you can follow it on your request page. `
+          : `Thank you. Your request ${label} has been received. Our team will respond by email, and you can track its progress on your request page. `);
         if (result.token) status.append(node('a', 'View Request', { href: trackingLink(result.token) }));
       } catch { message('We could not confirm your submission. Please try again. Your information is still in the form.', true); }
       finally { controls.disabled = false; submit.textContent = 'Submit Request'; }

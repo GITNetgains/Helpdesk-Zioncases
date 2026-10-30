@@ -155,7 +155,7 @@ describe("Storefront Help Desk form", () => {
     expect(shown()).toEqual(["Taxes, Customs & Duties"]);
     expect(progress()).toEqual(["done", "done", "done", "current", ""]);
     // Back keeps what was filled in.
-    (document.querySelector(".help-desk-section-request .help-desk-nav button") as HTMLButtonElement).click();
+    (document.querySelector(".help-desk-section-request > .help-desk-back") as HTMLButtonElement).click();
     expect(shown()).toEqual(["Your details"]);
     expect(control("Full name").value).toBe("Jordan Lee");
     button("Next").click();
@@ -175,7 +175,7 @@ describe("Storefront Help Desk form", () => {
     card("Shipping").click();
     card("Taxes, Customs & Duties").click();
     expect(shown()).toEqual(["Taxes, Customs & Duties"]);
-    (document.querySelector(".help-desk-section-request .help-desk-nav button") as HTMLButtonElement).click();
+    (document.querySelector(".help-desk-section-request > .help-desk-back") as HTMLButtonElement).click();
     expect(shown()).toEqual(["What do you need help with?"]);
     card("Taxes, Customs & Duties").click();
     type("Your Question", "Will I pay duties?");
@@ -209,7 +209,7 @@ describe("Storefront Help Desk form", () => {
       choose("How can we help?", "Orders");
       expect(choices("What do you need help with?")).toEqual(["Track Order", "Cancel Order", "Modify Address", "Lost Package"]);
       choose("How can we help?", "Shipping");
-      expect(choices("What do you need help with?")).toEqual(["Domestic Shipping", "International Shipping", "Shipping Times", "International Pre-Order", "Taxes, Customs & Duties"]);
+      expect(choices("What do you need help with?")).toEqual(["Domestic Shipping", "International Shipping", "Shipping Times", "Taxes, Customs & Duties"]);
       choose("How can we help?", "Orders");
       // Nothing to fill in until an option is picked.
       expect(document.querySelector('input[name="category"]')).toBeNull();
@@ -362,20 +362,18 @@ describe("Storefront Help Desk form", () => {
       expect(validateHelpDesk(sent, [], [])).toEqual({});
     });
 
-    it("Shipping Times says other countries are coming soon, and takes their details", async () => {
+    it("Shipping Times sends another country straight to their question (we ship worldwide)", async () => {
       const posts = await mount();
       fillContact();
       choose("How can we help?", "Shipping");
       choose("What do you need help with?", "Shipping Times");
       choose("Shipping To", "Another country");
       button("Check Shipping Times").click();
-      // Answered on the spot: nothing to look up.
+      // Nothing to look up, no "coming soon": their question, to send.
       expect(posts.lookups).toHaveLength(0);
-      const card = document.querySelector(".help-desk-track-card")!;
-      expect(card.textContent).toContain("Coming soon");
-      expect(card.textContent).toContain("Right now we ship to the United States and Canada.");
-      expect(document.querySelector(".help-desk-section-request [data-fields]")?.getAttribute("data-stage")).toBe("answer");
-      button("I Still Need Help").click();
+      expect(document.querySelector(".help-desk-track-card")).toBeNull();
+      expect(document.querySelector(".help-desk-section-request [data-fields]")?.getAttribute("data-stage")).toBe("request");
+      expect((control("Your Country and Question") as HTMLTextAreaElement).placeholder).toContain("We'll reply with shipping options and prices.");
       type("Your Country and Question", "I'm in Germany. Can you ship the Slab Case X here?");
       expect(await submit(posts)).toMatchObject({ subcategory: "Shipping Times", query: "I'm in Germany. Can you ship the Slab Case X here?" });
     });
@@ -404,10 +402,10 @@ describe("Storefront Help Desk form", () => {
       expect(hints()).toContain("We'll answer about the sales tax on your order.");
       choose("Shipping To", "Canada");
       expect(hints()).toContain("Import duties and taxes depend on the country. We'll check what applies to orders shipped to you.");
-      // Another country: which one, and that shipping there is coming soon.
+      // Another country: which one (we ship worldwide, so no "coming soon").
       choose("Shipping To", "Another country");
       expect((document.querySelector(".help-desk-elsewhere") as HTMLElement).hidden).toBe(false);
-      expect(document.querySelector(".help-desk-coming-soon")?.textContent).toContain("Right now we ship to the United States and Canada.");
+      expect(document.querySelector(".help-desk-coming-soon")).toBeNull();
       choose("Which country?", "United Kingdom");
       type("Your Question", "Will I pay import duties?");
       const sent = await submit(posts);
@@ -415,61 +413,60 @@ describe("Storefront Help Desk form", () => {
       expect(validateHelpDesk(sent, [], [])).toEqual({});
     });
 
-    it("International Pre-Order uses the shipping request, with its own hint", async () => {
-      await mount();
-      choose("How can we help?", "Shipping");
-      choose("What do you need help with?", "International Pre-Order");
-      expect(choices("Country")).toEqual(["Canada", "United States", "Another country"]);
-      pickProduct("Products You Want Shipped", "slab");
-      choose("Country", "Canada");
-      type("City", "Toronto");
-      choose("Province", "Ontario");
-      button("Check Shipping Cost & Time").click();
-      await vi.waitFor(() => expect(submitButton().hidden).toBe(false));
-      expect((control("Anything Else? (optional)") as HTMLTextAreaElement).placeholder).toContain("back in stock");
-    });
+    // Domestic and International Shipping: products (with how many), the
+    // address, every field checked, then Review. No prices on the form: the
+    // team replies with shipping options.
+    const reviewShown = () => !(document.querySelector(".help-desk-section-review") as HTMLElement).hidden;
+    const reviewRows = () => Object.fromEntries([...document.querySelectorAll(".help-desk-review-row")].map((row) => [row.querySelector("span")!.textContent, row.querySelector("strong")!.textContent]));
+    async function send(posts: Record<string, string>[]) {
+      document.querySelector("form")!.dispatchEvent(new Event("submit", { cancelable: true }));
+      await vi.waitFor(() => expect(posts).toHaveLength(1));
+      return posts[0];
+    }
 
-    it("International Shipping answers with the shipping cost first, and opens a request only if still needed", async () => {
-      const shipping = { country: "CA", countryName: "Canada", province: "ON", ships: true, quoted: true, processing: [1, 2], shipsBy: ["2026-11-03", "2026-11-04"], note: "",
-        rates: [{ name: "Standard International", price: "$40.00", condition: "", days: [6, 12], arrives: ["2026-11-11", "2026-11-19"] }] };
-      const posts = await mount(undefined, undefined, { shipping, order: null });
+    it("International Shipping checks every field, then goes to Review, with no prices on the form", async () => {
+      const posts = await mount();
       fillContact();
       choose("How can we help?", "Shipping");
       choose("What do you need help with?", "International Shipping");
-      expect(labels()).toEqual(expect.arrayContaining(["Country", "Street Address (optional)", "City", "ZIP / Postal Code (optional)"]));
-      // The United States and Canada for now, then any other country.
+      expect(labels()).toEqual(expect.arrayContaining(["Country", "Street Address", "City", "ZIP / Postal Code"]));
+      expect(labels()).not.toContain("Anything Else? (optional)");
       expect(choices("Country")).toEqual(["Canada", "United States", "Another country"]);
-      // The answer comes first: no request to send yet.
       expect(submitButton().hidden).toBe(true);
+      const status = () => document.querySelector("[data-help-desk-status]")?.textContent;
+      // A product first.
+      button("Review Request").click();
+      expect(status()).toContain("Select the products you want shipped first.");
+      pickProduct("Products You Want Shipped", "slab");
+      // Each product with how many they want.
+      const count = document.querySelector(".help-desk-quantity-row input") as HTMLInputElement;
+      expect(count.value).toBe("1");
+      (document.querySelector('.help-desk-stepper button[aria-label="One more"]') as HTMLButtonElement).click();
+      expect(count.value).toBe("2");
+      // Then the country, and the whole address.
+      button("Review Request").click();
+      expect(status()).toContain("Please select the country.");
       choose("Country", "Canada");
       type("City", "Toronto");
       choose("Province", "Ontario");
-      button("Check Shipping Cost & Time").click();
-      expect(document.querySelector("[data-help-desk-status]")?.textContent).toContain("Select the products you want shipped first.");
-      expect(posts.lookups).toHaveLength(0);
-      // No list until they type; then suggestions to pick from.
-      expect(document.querySelector(".help-desk-suggestions")?.hasAttribute("hidden")).toBe(true);
-      pickProduct("Products You Want Shipped", "slab");
-      expect(document.querySelector(".help-desk-selected")?.textContent).toContain("Slab Case X");
-      button("Check Shipping Cost & Time").click();
-      await vi.waitFor(() => expect(document.querySelector(".help-desk-ship-rates")?.textContent).toContain("Standard International"));
-      expect(Object.fromEntries(posts.lookups[0].searchParams)).toMatchObject({ shipping: "1", country: "CA", province: "ON", city: "Toronto", products: "gid://shopify/Product/1" });
-      // The answer is its own screen, with no request yet.
-      expect(document.querySelector(".help-desk-section-request [data-fields]")?.getAttribute("data-stage")).toBe("answer");
-      expect(document.querySelector(".help-desk-section-request h3")?.textContent).toBe("Shipping options");
-      expect(posts).toHaveLength(0);
-      button("I Still Need Help").click();
-      expect(submitButton().hidden).toBe(false);
-      type("Street Address (optional)", "1 King St W");
-      type("ZIP / Postal Code (optional)", "M5H 1A1");
+      button("Review Request").click();
+      expect(reviewShown()).toBe(false);
+      type("Street Address", "1 King St W");
+      type("ZIP / Postal Code", "M5H 1A1");
       control("City").dispatchEvent(new Event("input", { bubbles: true }));
-      type("Anything Else? (optional)", "Can it arrive by the 20th?");
-      const sent = await submit(posts);
-      expect(sent).toMatchObject({ category: "Shipping & Delivery", subcategory: "International Shipping", topic: "Shipping Inquiry", country: "CA", address: "1 King St W, Toronto, Ontario, M5H 1A1", otherDetails: "Can it arrive by the 20th?" });
+      button("Review Request").click();
+      // Everything on Review, by name; nothing was looked up or sent yet.
+      expect(reviewShown()).toBe(true);
+      expect(reviewRows()).toMatchObject({ Country: "Canada", Province: "Ontario", Products: "Slab Case X × 2" });
+      expect(posts.lookups).toHaveLength(0);
+      expect(posts).toHaveLength(0);
+      const sent = await send(posts);
+      expect(sent).toMatchObject({ category: "Shipping & Delivery", subcategory: "International Shipping", topic: "Shipping Inquiry", country: "CA",
+        address: "1 King St W, Toronto, Ontario, M5H 1A1", "itemQty:gid://shopify/Product/1": "2", products: "gid://shopify/Product/1" });
       expect(validateHelpDesk(sent, ["gid://shopify/Product/1"], [])).toEqual({});
     });
 
-    it("International Shipping to another country says it's coming soon, and still takes the request", async () => {
+    it("International Shipping takes any country in the world", async () => {
       const posts = await mount();
       fillContact();
       choose("How can we help?", "Shipping");
@@ -477,39 +474,39 @@ describe("Storefront Help Desk form", () => {
       pickProduct("Products You Want Shipped", "slab");
       choose("Country", "Another country");
       choose("Which country?", "Germany");
+      expect(document.querySelector(".help-desk-coming-soon")).toBeNull();
+      type("Street Address", "Hauptstrasse 12");
       type("City", "Berlin");
-      button("Check Shipping Cost & Time").click();
-      // Answered on the spot, without asking for prices.
-      expect(posts.lookups).toHaveLength(0);
-      expect(document.querySelector(".help-desk-section-request [data-fields]")?.getAttribute("data-stage")).toBe("answer");
-      expect(document.querySelector(".help-desk-track-card")?.textContent).toContain("Coming soon");
-      button("I Still Need Help").click();
+      type("ZIP / Postal Code", "10115");
       control("City").dispatchEvent(new Event("input", { bubbles: true }));
-      const sent = await submit(posts);
-      expect(sent).toMatchObject({ subcategory: "International Shipping", country: "DE", address: "Berlin" });
+      button("Review Request").click();
+      expect(reviewShown()).toBe(true);
+      expect(reviewRows()).toMatchObject({ Country: "Germany" });
+      expect(posts.lookups).toHaveLength(0);
+      expect(await send(posts)).toMatchObject({ subcategory: "International Shipping", country: "DE", address: "Hauptstrasse 12, Berlin, 10115" });
     });
 
-    it.each([
-      ["we don't ship there", { shipping: { country: "US", countryName: "United States", province: "TX", ships: false, quoted: true, processing: null, shipsBy: null, note: "", rates: [] }, order: null }],
-      ["shipping can't be worked out", { error: "Shipping times are unavailable right now." }],
-    ])("Domestic Shipping opens the request for a quote when %s", async (_, answer) => {
-      const posts = await mount(undefined, undefined, answer);
+    it("Domestic Shipping: the store's own country, the state, then Review", async () => {
+      const posts = await mount();
       fillContact();
       choose("How can we help?", "Shipping");
       choose("What do you need help with?", "Domestic Shipping");
       expect(choices("Country")).toEqual(["United States"]);
       expect((control("Country") as HTMLSelectElement).value).toBe("US");
       pickProduct("Products You Want Shipped", "slab");
+      type("Street Address", "500 Congress Ave");
       type("City", "Austin");
+      type("ZIP / Postal Code", "78701");
+      // The state is required.
+      button("Review Request").click();
+      expect(reviewShown()).toBe(false);
       choose("State", "Texas");
       control("State").dispatchEvent(new Event("change", { bubbles: true }));
-      // State is required before checking.
-      button("Check Shipping Cost & Time").click();
-      await vi.waitFor(() => expect(submitButton().hidden).toBe(false));
-      expect(document.querySelector(".help-desk-section-request [data-fields]")?.getAttribute("data-stage")).toBe("request");
-      expect(document.querySelector(".help-desk-track-error")?.textContent).toBe(("error" in answer ? answer.error : undefined) ?? "We can't show shipping for this address online. Send your request and our team will reply with a quote.");
-      const sent = await submit(posts);
-      expect(sent).toMatchObject({ subcategory: "Domestic Shipping", topic: "Shipping Inquiry", country: "US", address: "Austin, Texas" });
+      button("Review Request").click();
+      expect(reviewShown()).toBe(true);
+      expect(reviewRows()).toMatchObject({ State: "Texas", Products: "Slab Case X × 1" });
+      expect(posts.lookups).toHaveLength(0);
+      expect(await send(posts)).toMatchObject({ subcategory: "Domestic Shipping", topic: "Shipping Inquiry", country: "US", address: "500 Congress Ave, Austin, Texas, 78701" });
     });
 
     it.each([
@@ -646,7 +643,7 @@ describe("Storefront Help Desk form", () => {
     expect((document.querySelector(".help-desk-section-review") as HTMLElement).hidden).toBe(true);
     expect(posts).toHaveLength(0);
     // Back returns to the order.
-    (document.querySelector(".help-desk-section-request .help-desk-nav button") as HTMLButtonElement).click();
+    (document.querySelector(".help-desk-section-request > .help-desk-back") as HTMLButtonElement).click();
     expect(stageOf()).toBe("ask");
   });
 
@@ -860,18 +857,25 @@ describe("Storefront Help Desk form", () => {
     kindRadio("Wrong colour or size").click();
     item("Slab Case X").click();
     expect(document.querySelector(".help-desk-product-issue .help-desk-hint")?.textContent).toBe("You ordered: Black · Qty 1");
-    // The variants come from the app, sold-out ones marked.
-    await vi.waitFor(() => expect(choices("Which colour or size do you want?")).toEqual(["Black", "Blue (sold out)"]));
+    // The variants come from the app, as chips: the ordered one marked, sold-out ones off.
+    const chips = () => [...document.querySelectorAll(".help-desk-variant-chip")].map((chip) => ({
+      value: chip.querySelector("span")!.textContent, off: (chip.querySelector("input") as HTMLInputElement).disabled, ordered: Boolean(chip.querySelector("small")),
+    }));
+    await vi.waitFor(() => expect(chips()).toEqual([{ value: "Black", off: false, ordered: true }, { value: "Blue", off: true, ordered: false }]));
+    expect(document.querySelector(".help-desk-variants-title")?.textContent).toBe("Which colour or size do you want?");
     expect(posts.lookups.some((url) => url.searchParams.get("check") === "variants" && url.searchParams.get("product") === "gid://shopify/Product/1")).toBe(true);
-    choose("Which colour or size do you want?", "Blue (sold out)");
-    expect((control("Which colour or size do you want?") as HTMLSelectElement).name).toBe("itemVariant:gid://shopify/Product/1");
+    const black = document.querySelector(".help-desk-variant-chip input") as HTMLInputElement;
+    expect(black.required).toBe(true);
+    black.checked = true;
+    black.dispatchEvent(new Event("change"));
+    expect((document.querySelector('input[name="itemVariant:gid://shopify/Product/1"]') as HTMLInputElement).value).toBe("Black");
     // The replacement is that variant: no other product to add.
     pickResolution("Replacement");
     expect(addProductOpen()).toBe(false);
     // Switching to Wrong product asks again, and keeps what they wrote.
     type("What did you receive instead?", "A black one");
     kindRadio("Wrong product").click();
-    expect(labels()).not.toContain("Which colour or size do you want?");
+    expect(document.querySelector(".help-desk-variants")).toBeNull();
     expect((control("What did you receive instead?") as HTMLTextAreaElement).value).toBe("A black one");
     expect(addProductOpen()).toBe(true);
   });
