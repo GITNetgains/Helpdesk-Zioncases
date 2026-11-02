@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { addressBlockers, addressChangeChecks, addressProblems, cancelReasons, sameAddress, countries, deliveryIssues, imagesRequired, issues, looksLikeVideo, orderTypes, productParts, topics, updates, validateHelpDesk, videoFormat } from "../app/services/help-desk";
+import { addressBlockers, addressChangeChecks, isReturnClaim, returnBlocker, addressProblems, cancelReasons, cancelReview, cancelScopes, sameAddress, countries, deliveryIssues, imagesRequired, issues, looksLikeVideo, orderTypes, productParts, topics, updates, validateHelpDesk, videoFormat } from "../app/services/help-desk";
 
 const contact = { name: "Test Customer", email: "customer@example.com" };
 const image = { name: "damage.jpg", size: 1024, type: "image/jpeg" };
@@ -24,11 +24,36 @@ describe("Help desk validation", () => {
     expect(validateHelpDesk({ ...values, cancelReason: cancelReasons[0] }, [], [])).toEqual({});
     expect(validateHelpDesk({ ...values, cancelReason: "Other" }, [], [])).toHaveProperty("details");
     expect(validateHelpDesk({ ...values, cancelReason: "Other", details: "Moving house" }, [], [])).toEqual({});
+    // Some items only: at least one picked.
+    const some = { ...values, cancelReason: cancelReasons[0], cancelScope: cancelScopes[1] };
+    expect(validateHelpDesk(some, [], [])).toHaveProperty("products");
+    expect(validateHelpDesk(some, ["gid://shopify/LineItem/1"], [])).toEqual({});
+    expect(validateHelpDesk({ ...some, cancelScope: "Half" }, ["gid://shopify/LineItem/1"], [])).toHaveProperty("cancelScope");
   });
-  it("requires update details for a product or quantity change", () => {
+
+  it("checks payment, returns and shipping before staff cancel in Shopify", () => {
+    const order = { cancelled: false, fulfilled: "none" as "none" | "partial" | "full", fulfillmentStatus: "UNFULFILLED", financialStatus: "PAID", returnStatus: "NO_RETURN", refunded: 0, capturable: false, currency: "USD" };
+    const review = (changes: Partial<typeof order> = {}) => Object.fromEntries(cancelReview({ ...order, ...changes }).map((check) => [check.id, check]));
+    expect(Object.values(review()).every((check) => check.ok)).toBe(true);
+    // Weighed by staff: an authorization, a refund already made, an order being fulfilled.
+    expect(review({ financialStatus: "AUTHORIZED", capturable: true }).payment).toMatchObject({ ok: false, warning: true, detail: expect.stringContaining("authorized") });
+    expect(review({ financialStatus: "PENDING" }).payment).toMatchObject({ ok: false, warning: true });
+    expect(review({ financialStatus: "REFUNDED", refunded: 59 }).payment.detail).toContain("without a refund");
+    expect(review({ financialStatus: "PARTIALLY_REFUNDED", refunded: 10 }).payment.detail).toContain("$10.00");
+    expect(review({ fulfillmentStatus: "IN_PROGRESS" }).shipped).toMatchObject({ ok: false, warning: true });
+    // Stopping Shopify's cancellation: a return, or anything shipped.
+    expect(review({ returnStatus: "RETURN_REQUESTED" }).return).toMatchObject({ ok: false });
+    expect(review({ returnStatus: "RETURN_REQUESTED" }).return.warning).toBeUndefined();
+    expect(review({ fulfilled: "partial", fulfillmentStatus: "PARTIALLY_FULFILLED" }).shipped.detail).toContain("Edit order");
+    expect(review({ fulfilled: "full", fulfillmentStatus: "FULFILLED" }).shipped.warning).toBeUndefined();
+  });
+  it("editing an order needs the items or products to add, and the price difference accepted", () => {
     const values = { ...contact, topic: topics[3], orderType: orderTypes[0], orderNumber: "#1001", update: updates[0] };
-    expect(validateHelpDesk(values, [], [])).toHaveProperty("details");
-    expect(validateHelpDesk({ ...values, details: "Requested change" }, [], [])).toEqual({});
+    expect(Object.keys(validateHelpDesk(values, [], [])).sort()).toEqual(["chargesAccepted", "products"]);
+    const filled = { ...values, details: "Blue instead of Black", chargesAccepted: "Yes" };
+    expect(validateHelpDesk(filled, ["gid://shopify/LineItem/1"], [])).toEqual({});
+    expect(validateHelpDesk({ ...filled, addedProducts: "Slab Case Y" }, [], [])).toEqual({});
+    expect(validateHelpDesk({ ...filled, chargesAccepted: "No" }, ["gid://shopify/LineItem/1"], [])).toHaveProperty("chargesAccepted");
   });
   it("asks for the new shipping address part by part", () => {
     const values = { ...contact, topic: topics[3], orderType: orderTypes[0], orderNumber: "#1001", update: updates[1] };
@@ -81,8 +106,9 @@ describe("Help desk validation", () => {
   });
   it.each(issues.slice(0, 3))("enforces the image rule for order issue %s", issue => {
     const values = { ...contact, topic: topics[3], orderType: orderTypes[1], orderNumber: "#1001", details: "Details", issue, part: productParts[2] };
-    expect(imagesRequired(values)).toBe(issue !== issues[2]);
-    expect(Boolean(validateHelpDesk(values, [], []).images)).toBe(issue !== issues[2]);
+    // Every product issue needs photos, a missing part too (the Procedure Guidelines).
+    expect(imagesRequired(values)).toBe(true);
+    expect(Boolean(validateHelpDesk(values, [], []).images)).toBe(true);
     expect(validateHelpDesk(values, [], [image])).toEqual({});
     // The part is optional (customers describe the problem), but must be a real one when given.
     expect(validateHelpDesk({ ...values, part: "" }, [], [image])).toEqual({});
@@ -127,5 +153,24 @@ describe("Help desk validation", () => {
   it("includes countries and territories with unique codes", () => {
     expect(countries).toHaveLength(249);
     expect(new Set(countries.map(country => country.code)).size).toBe(249);
+  });
+});
+
+describe("Damaged or defective returns", () => {
+  const now = new Date("2026-11-02T12:00:00Z");
+  const order = { placedAt: "2026-05-10T10:00:00Z", shipped: true, cancelled: false };
+  it("are accepted within 6 months of purchase, once the order has shipped", () => {
+    expect(returnBlocker(order, now)).toBeNull();
+    // Counted from the order date, not the delivery.
+    expect(returnBlocker({ ...order, placedAt: "2026-04-20T10:00:00Z" }, now)).toMatch(/within 6 months of purchase.*placed on Apr 20, 2026.*Warranty Claim/);
+    expect(returnBlocker({ ...order, shipped: false }, now)).toMatch(/hasn't shipped yet/);
+    expect(returnBlocker({ ...order, cancelled: true }, now)).toMatch(/cancelled/);
+  });
+  it("are only damaged or defective items, not missing parts or warranty claims", () => {
+    const values = { topic: topics[3], orderType: orderTypes[1], issue: issues[0] };
+    expect(isReturnClaim(values, "Product Damage")).toBe(true);
+    expect(isReturnClaim(values, "Shipping Damage")).toBe(true);
+    expect(isReturnClaim(values, "Warranty")).toBe(false);
+    expect(isReturnClaim({ ...values, issue: issues[2] }, "Missing Parts")).toBe(false);
   });
 });

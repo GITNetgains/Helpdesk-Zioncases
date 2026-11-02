@@ -32,7 +32,7 @@
               "items": [
                 {%- for item in order.line_items -%}
                   {
-                    "id": {% if item.product_id %}{{ item.product_id | prepend: 'gid://shopify/Product/' | json }}{% else %}""{% endif %},
+                    "id": {% if item.product_id %}{{ item.product_id | prepend: 'gid://shopify/Product/' | json }}{% else %}{{ item.id | prepend: 'gid://shopify/LineItem/' | json }}{% endif %},
                     "title": {{ item.product.title | default: item.title | json }},
                     "variant": {% if item.variant.title != 'Default Title' %}{{ item.variant.title | json }}{% else %}""{% endif %},
                     "quantity": {{ item.quantity | json }},

@@ -19,7 +19,7 @@ import { deliveryIssues, issues, orderTypes, productParts, topics, updates } fro
 // shippingTimes: destination (and optional order) answered with the store's rates and
 // delivery dates, then a question only if that didn't answer it; customs: the country
 // it ships to + optional order + question.
-export type Flow = "customs" | "delivery" | "orderUpdate" | "cancel" | "address" | "productIssue" | "wrongItem" | "return" | "international" | "partner" | "question" | "shippingTimes";
+export type Flow = "customs" | "delivery" | "lost" | "orderUpdate" | "edit" | "cancel" | "address" | "productIssue" | "wrongItem" | "return" | "international" | "partner" | "question" | "shippingTimes";
 
 export type FormOption = {
   label: string;
@@ -82,7 +82,7 @@ const partner = (label: string, category: string, subcategory: string, topic: st
 
 const formOptions: FormOption[] = [
   { ...update("Cancel Order", updates[2], "Reason for Cancellation", "Anything else we should know? For example: I ordered the 9-pocket case instead of the 4-pocket one."), flow: "cancel" },
-  update("Edit Items, Color or Quantity", updates[0], "Requested Change", "For example: Blue instead of Black, or a quantity of 2 instead of 1."),
+  { ...update("Edit Items, Color or Quantity", updates[0], "Describe Changes", "For example: Blue instead of Black, or a quantity of 2 instead of 1."), flow: "edit" },
   { ...update("Change Shipping Address", updates[1], "Anything Else? (optional)", "For example: please leave it with the front desk."), flow: "address" },
   orderQuestion("Payment Issue", "For example: payment declined, pending or charged twice."),
   orderQuestion("Order on Hold", "Please include your order number and any message you received."),
@@ -95,7 +95,7 @@ const formOptions: FormOption[] = [
   delivery("Delivered but Not Received", deliveryIssues[1]),
   delivery("Partial Delivery", deliveryIssues[2]),
   delivery("Delivered to Wrong Address", deliveryIssues[4]),
-  delivery("Lost Package", deliveryIssues[8], undefined, "For example: the tracking hasn't moved in a week, or the carrier says the package is lost."),
+  { ...delivery("Lost Package", deliveryIssues[8], "Additional Details", "For example: the tracking hasn't moved in a week, or the carrier says the package is lost."), flow: "lost" },
   delivery("Signature Required", deliveryIssues[9], "Tell Us About the Delivery", "For example: I missed the delivery because a signature was needed, or I'd like a signature added to my delivery."),
   delivery("Expedited Shipping", deliveryIssues[3]),
   { ...question("Shipping Times", SHIPPING, "Shipping Times", "For example: will it arrive before Saturday?"), flow: "shippingTimes" },
@@ -194,13 +194,13 @@ const ORDERS_TOPIC: [label: string, category: string, subcategory: string, descr
   ["Track Order", SHIPPING, "Track My Order", "See where your package is right now."],
   ["Cancel Order", ORDERS, "Cancel Order", "Request a cancellation of your whole order before it ships. Our team reviews it, and you can follow it on your request page."],
   ["Modify Address", ORDERS, "Change Shipping Address", "Change where your order is going, before it ships. The new address must be in the same country."],
+  ["Edit Existing Order", ORDERS, "Edit Items, Color or Quantity", "Change an item, its color or the quantity, before your order ships."],
   ["Lost Package", SHIPPING, "Lost Package", "Your tracking stopped, or the package never arrived."],
 ];
 // Shipping: what it costs and how long it takes to ship products to an address.
 const SHIPPING_TOPIC: typeof ORDERS_TOPIC = [
   ["Domestic Shipping", SHIPPING, "Domestic Shipping", "Shipping cost and delivery time anywhere in the U.S., including Hawaii, Alaska and U.S. territories."],
   ["International Shipping", SHIPPING, "International Shipping", "Shipping cost and delivery time to an address outside the U.S."],
-  ["Shipping Times", SHIPPING, "Shipping Times", "How long delivery takes, with our shipping options and prices."],
   ["Taxes, Customs & Duties", SHIPPING, "Customs & Duties", "Sales tax, customs and import duties for where you are."],
 ];
 // Product Issues, the way Shopify sorts return reasons (damaged or defective,
@@ -232,7 +232,7 @@ const PRODUCT_CATEGORIES = ["Product Damage", "Shipping Damage", "Manufacturing 
 // delivery is asked about with the order (Track Order, Shipping Times),
 // pre-orders are no longer offered on the form, and every product issue
 // other than the broad choices above.
-export const STAFF_ONLY = [[SHIPPING, "Hawaii, Alaska & U.S. Territories"], [SHIPPING, "Expedited Shipping"], [SHIPPING, "Signature Required"], [SHIPPING, "International Pre-Order"],
+export const STAFF_ONLY = [[SHIPPING, "Shipping Times"], [SHIPPING, "Hawaii, Alaska & U.S. Territories"], [SHIPPING, "Expedited Shipping"], [SHIPPING, "Signature Required"], [SHIPPING, "International Pre-Order"],
   ...PRODUCT_CATEGORIES.flatMap((name) => categories.find((entry) => entry.name === name)!.subcategories
     .filter((sub) => !PRODUCT_TOPIC.some(([, category, subcategory]) => category === name && subcategory === sub)).map((sub) => [name, sub]))];
 const staffOnly = (category: string, subcategory: string) => STAFF_ONLY.some(([name, sub]) => name === category && sub === subcategory);

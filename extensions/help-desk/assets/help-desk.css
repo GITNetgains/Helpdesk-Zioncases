@@ -270,6 +270,15 @@
 /* Cancel Order: the whole order is cancelled, only before it ships */
 .help-desk-cancel-notice { display: grid; gap: 2px; padding: 12px 14px; border: 1px solid #f3d9a4; border-left: 4px solid #f0b400; border-radius: 0 10px 10px 0; background: #fffaf0; font-size: 13px; line-height: 1.5; color: var(--hd-muted); }
 .help-desk-cancel-notice strong { color: var(--hd-text); font-size: 14px; }
+.help-desk-cancel-notice ol { display: grid; gap: 4px; margin: 4px 0 0; padding-left: 20px; }
+.help-desk-cancel-notice ul { margin: 2px 0 0; padding-left: 18px; list-style: disc; }
+/* Process guidelines: the same light grey card as the picked topic above it. */
+.help-desk-cancel-notice.help-desk-guide {
+  padding: 14px 16px 14px 18px; border: 1px solid #e1e4ea; border-left: 4px solid var(--hd-accent); border-radius: 10px;
+  background: #f8f9fb; box-shadow: 0 1px 3px rgba(25, 33, 61, .06);
+}
+.help-desk-guide li::marker { color: var(--hd-text); font-weight: 600; }
+.help-desk-guide b { color: var(--hd-text); font-weight: 600; }
 /* Modify Address: the new address in its own panel, like the topic picker;
    street lines full width, the rest two to a row on wider screens */
 .help-desk-address { display: grid; gap: 20px; min-width: 0; padding: 20px; border: 1px solid #e9ebef; border-radius: 14px; background: #f8f9fb; }
@@ -996,3 +1005,29 @@
 .help-desk .help-desk-variant-chip > small {
   position: absolute; top: -8px; right: 6px; padding: 1px 6px; border-radius: 999px; background: var(--hd-text); color: #fff; font-size: 10px; font-weight: 600; line-height: 1.5;
 }
+
+/* Edit Existing Order: products to add, and the charges accepted, as full-width cards. */
+.help-desk-edit-add { display: grid; gap: 8px; }
+.help-desk-consent { display: flex !important; align-items: flex-start; gap: 12px; padding: 14px 16px; border: 1px solid var(--hd-border); border-radius: 10px; background: #fff; cursor: pointer; }
+.help-desk-consent:has(input:checked) { border-color: var(--hd-accent); box-shadow: 0 0 0 3px var(--hd-ring); }
+.help-desk-consent input { margin-top: 2px !important; }
+.help-desk-consent span { display: grid; gap: 2px; }
+.help-desk-consent strong { color: var(--hd-text); font-size: 14px; font-weight: 600; }
+.help-desk-consent small { color: var(--hd-muted); font-size: 13px; font-weight: 400; line-height: 1.5; }
+
+/* Lost Package: the order's status in Shopify, before the details. */
+.help-desk-lost-status { display: grid; gap: 4px; padding: 14px 16px; border: 1px solid #e1e4ea; border-radius: 10px; background: #f8f9fb; font-size: 13px; color: var(--hd-muted); }
+.help-desk-lost-status h4 { margin: 0 0 2px; color: var(--hd-text); font-size: 14px; }
+
+/* Breadcrumbs above the steps: what the customer chose, earlier steps clickable. */
+.help-desk .help-desk-crumbs { margin: 0 0 14px; }
+.help-desk .help-desk-crumbs[hidden] { display: none; }
+.help-desk .help-desk-crumbs ol { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 0; margin: 0; padding: 8px 14px; list-style: none; border: 1px solid #eceef2; border-radius: 999px; background: #fff; width: fit-content; max-width: 100%; font-size: 13px; line-height: 1.4; }
+.help-desk .help-desk-crumbs li { display: inline-flex; align-items: center; min-width: 0; }
+.help-desk .help-desk-crumbs li + li::before { content: ""; width: 6px; height: 6px; margin: 0 10px; border: solid #a3a9b8; border-width: 1.5px 1.5px 0 0; transform: rotate(45deg); flex: none; }
+.help-desk .help-desk-crumbs button { all: unset; color: var(--hd-muted); font-weight: 500; cursor: pointer; border-radius: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 220px; }
+.help-desk .help-desk-crumbs button:hover { color: var(--hd-accent); text-decoration: underline; text-underline-offset: 3px; }
+.help-desk .help-desk-crumbs button:focus-visible { outline: 2px solid var(--hd-text); outline-offset: 2px; }
+.help-desk .help-desk-crumbs [aria-current] { color: var(--hd-text); font-weight: 650; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 260px; }
+.help-desk .help-desk-crumbs li:first-child button::before { content: "⌂"; margin-right: 6px; font-size: 14px; }
+@media (max-width: 600px) { .help-desk .help-desk-crumbs ol { border-radius: 12px; } }

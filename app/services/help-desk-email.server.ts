@@ -1,6 +1,6 @@
 import nodemailer from "nodemailer";
 import type { PrismaClient } from "@prisma/client";
-import { addressLines, countryName, fieldLabels, type ShippingAddress } from "./help-desk";
+import { addressLines, cancelScopes, countryName, fieldLabels, type ShippingAddress } from "./help-desk";
 import { memo } from "./memo.server";
 
 // SMTP settings live in the server .env; without them notifications are skipped.
@@ -15,7 +15,10 @@ const SHOP_QUERY = `#graphql
 `;
 const PRODUCTS_QUERY = `#graphql
   query HelpDeskProducts($ids: [ID!]!) {
-    nodes(ids: $ids) { ... on Product { id title featuredImage { url(transform: { maxWidth: 160 }) } } }
+    nodes(ids: $ids) {
+      ... on Product { id title featuredImage { url(transform: { maxWidth: 160 }) } }
+      ... on LineItem { id title image { url(transform: { maxWidth: 160 }) } }
+    }
   }
 `;
 
@@ -40,8 +43,9 @@ async function fetchProducts(admin: AdminClient, ids: string[]): Promise<TicketP
   const json = await (await admin.graphql(PRODUCTS_QUERY, { variables: { ids } })).json();
   if (!json.data?.nodes) throw new Error("No products returned");
   const found = new Map<string, TicketProduct>();
-  for (const node of json.data.nodes as ({ id: string; title: string; featuredImage?: { url: string } | null } | null)[]) {
-    if (node?.id) found.set(node.id, { id: node.id, title: node.title, image: node.featuredImage?.url || "" });
+  // A LineItem: an ordered product since deleted, named as on the order.
+  for (const node of json.data.nodes as ({ id: string; title: string; featuredImage?: { url: string } | null; image?: { url: string } | null } | null)[]) {
+    if (node?.id) found.set(node.id, { id: node.id, title: node.title, image: node.featuredImage?.url || node.image?.url || "" });
   }
   return placeholders(ids).map(product => found.get(product.id) ?? { ...product, title: `Deleted product (${product.title})` });
 }
@@ -288,10 +292,14 @@ export async function sendStatusEmail(db: PrismaClient, shop: string, admin: Adm
 }
 
 // What the customer is told at each step of an order cancellation request.
-const CANCEL_EMAIL: Record<string, { heading: string; text: (order: string) => string }> = {
-  Approved: { heading: "Your cancellation request is approved", text: (order) => `Good news: we've approved your request to cancel ${order}. We're cancelling it now and will confirm once it's done.` },
-  Rejected: { heading: "We couldn't cancel your order", text: (order) => `We've looked at your request to cancel ${order}, but unfortunately we're not able to cancel it.` },
-  Cancelled: { heading: "Your order has been cancelled", text: (order) => `${order[0].toUpperCase()}${order.slice(1)} has been cancelled. If you paid for it, the refund goes back to your original payment method, which usually takes 5-10 business days to appear.` },
+// order: "order #1001", or "the selected items on order #1001" (items: true).
+const CANCEL_EMAIL: Record<string, { heading: (items: boolean) => string; text: (order: string, items: boolean) => string }> = {
+  Approved: { heading: () => "Your cancellation request is approved", text: (order) => `Good news: we've approved your request to cancel ${order}. We're cancelling it now and will confirm once it's done.` },
+  Rejected: { heading: () => "We couldn't cancel your order", text: (order) => `We've looked at your request to cancel ${order}, but unfortunately we're not able to cancel it.` },
+  Cancelled: {
+    heading: (items) => items ? "Items cancelled from your order" : "Your order has been cancelled",
+    text: (order, items) => `${order[0].toUpperCase()}${order.slice(1)} ${items ? "have" : "has"} been cancelled. If a refund is due, it's on its way: refunds to a card usually take 5-10 business days to appear.`,
+  },
 };
 
 // Tells the customer where their cancellation request stands.
@@ -300,9 +308,149 @@ export async function sendCancellationEmail(db: PrismaClient, shop: string, admi
   const copy = context && CANCEL_EMAIL[context.ticket.cancelStatus];
   if (!context || !copy) return "skipped";
   const { ticket, storeName, url, first, replyTo } = context;
-  let orderNumber = ticket.orderName;
-  try { orderNumber ||= (JSON.parse(ticket.details) as Record<string, string>).orderNumber || ""; } catch { /* no details */ }
-  const order = orderNumber ? `order ${orderNumber}` : "your order";
+  let details: Record<string, string> = {};
+  try { details = JSON.parse(ticket.details) as Record<string, string>; } catch { /* no details */ }
+  const orderNumber = ticket.orderName || details.orderNumber || "";
+  const items = details.cancelScope === cancelScopes[1];
+  const order = `${items ? "the selected items on " : ""}${orderNumber ? `order ${orderNumber}` : "your order"}`;
+  const text = copy.text(order, items);
+  const heading = copy.heading(items);
+  await transport().sendMail({
+    from: sender(storeName),
+    to: { name: ticket.name, address: ticket.email },
+    replyTo,
+    subject: `[#${ticket.number}] ${heading}`,
+    html: renderCustomerEmail({
+      storeName, heading, paragraphs: [`Hi ${first},`, text], quote: ticket.cancelNote || undefined,
+      buttonUrl: url, buttonLabel: "View your request", footer: `Ticket #${ticket.number} · Cancellation request`,
+    }),
+    text: `Hi ${first},\n\n${text}${ticket.cancelNote ? `\n\n${ticket.cancelNote}` : ""}\n\nView your request #${ticket.number}: ${url}`,
+  });
+  return "sent";
+}
+
+// What the customer is told about a missing part (help-desk-replacement.server.ts).
+const REPLACEMENT_EMAIL: Record<string, { heading: string; text: (order: string) => string }> = {
+  Approved: { heading: "Your replacement part is approved", text: (order) => `We've checked ${order} and approved a replacement for the missing part. We're arranging the shipment and will send you the tracking details as soon as it's on its way.` },
+  Shipped: { heading: "Your replacement part is on its way", text: (order) => `The replacement part for ${order} has shipped. You can follow it with the tracking details below.` },
+  Rejected: { heading: "We couldn't send a replacement part", text: (order) => `We've looked at your request about a missing part on ${order}, but unfortunately we're not able to send a replacement.` },
+};
+
+const LOST_EMAIL: Record<string, { heading: string; text: (order: string, solution: string) => string }> = {
+  Approved: { heading: "Your lost package request is approved", text: (order, solution) => solution === "Refund"
+    ? `We've checked the shipment of ${order} and approved a refund for the missing products. We'll confirm once it's done.`
+    : `We've checked the shipment of ${order} and we'll send the missing products again. We'll share the tracking as soon as they ship.` },
+  Shipped: { heading: "Next steps for your lost package", text: (order) => `Here are the next steps for the missing products from ${order}.` },
+  Rejected: { heading: "About your lost package", text: (order) => `We've looked at your request about ${order}, but unfortunately we're not able to approve it.` },
+};
+const WARRANTY_EMAIL: Record<string, { heading: string; text: (order: string, solution: string) => string }> = {
+  Approved: { heading: "Your warranty claim is approved", text: (order, solution) => `We've verified your purchase${order === "your order" ? "" : ` (${order})`} and your warranty claim is approved${solution ? `: ${solution.toLowerCase()}` : ""}. We'll send you the instructions and shipping details shortly.` },
+  Shipped: { heading: "Next steps for your warranty claim", text: () => "Here are the next steps for your warranty claim." },
+  Rejected: { heading: "We couldn't approve your warranty claim", text: () => "We've reviewed your warranty claim, but unfortunately it isn't covered by our warranty." },
+};
+
+// Tells the customer where their missing part stands, with the tracking once it ships.
+export async function sendReplacementEmail(db: PrismaClient, shop: string, admin: AdminClient, ticketId: string): Promise<SendResult> {
+  const context = await customerContext(db, shop, admin, ticketId);
+  const warranty = context?.ticket.replacementKind === "warranty";
+  const lost = context?.ticket.replacementKind === "lost";
+  const found = context && (warranty ? WARRANTY_EMAIL : lost ? LOST_EMAIL : REPLACEMENT_EMAIL)[context.ticket.replacementStatus];
+  if (!context || !found) return "skipped";
+  const copy = { heading: found.heading, text: (order: string) => found.text(order, context.ticket.replacementSolution) };
+  const { ticket, storeName, url, first, replyTo } = context;
+  let values: Record<string, string> = {};
+  try { values = JSON.parse(ticket.details) as Record<string, string>; } catch { /* no details */ }
+  const order = ticket.orderName || values.orderNumber ? `order ${ticket.orderName || values.orderNumber}` : "your order";
+  const text = copy.text(order);
+  const tracking = ticket.replacementStatus === "Shipped" && ticket.replacementTracking
+    ? [ticket.replacementCarrier && `Carrier: ${ticket.replacementCarrier}`, `Tracking number: ${ticket.replacementTracking}`, ticket.replacementTrackingUrl && `Track it: ${ticket.replacementTrackingUrl}`].filter(Boolean).join("\n") : "";
+  const quote = [tracking, ticket.replacementNote].filter(Boolean).join("\n\n");
+  await transport().sendMail({
+    from: sender(storeName),
+    to: { name: ticket.name, address: ticket.email },
+    replyTo,
+    subject: `[#${ticket.number}] ${copy.heading}`,
+    html: renderCustomerEmail({
+      storeName, heading: copy.heading, paragraphs: [`Hi ${first},`, text], quote: quote || undefined,
+      buttonUrl: url, buttonLabel: "View your request", footer: `Ticket #${ticket.number} · ${warranty ? "Warranty claim" : lost ? "Lost package" : "Missing part"}`,
+    }),
+    text: `Hi ${first},\n\n${text}${quote ? `\n\n${quote}` : ""}\n\nView your request #${ticket.number}: ${url}`,
+  });
+  return "sent";
+}
+
+// Sends the customer their international shipping details, or says it isn't available.
+export async function sendQuoteEmail(db: PrismaClient, shop: string, admin: AdminClient, ticketId: string): Promise<SendResult> {
+  const context = await customerContext(db, shop, admin, ticketId);
+  if (!context || !["Quoted", "Unavailable"].includes(context.ticket.quoteStatus)) return "skipped";
+  const { ticket, storeName, url, first, replyTo } = context;
+  const quoted = ticket.quoteStatus === "Quoted";
+  const heading = quoted ? "Your international shipping details" : "We can't ship to your address";
+  const text = quoted ? "We've checked product availability and shipping options for your address. Here are the details:"
+    : "We've checked product availability and shipping options for your address, but unfortunately we're not able to ship these products there.";
+  const details = quoted ? [ticket.quoteCarrier && `Carrier: ${ticket.quoteCarrier}`, `Estimated delivery: ${ticket.quoteDelivery}`, `Shipping cost: ${ticket.quoteShipping}`, `Taxes and duties: ${ticket.quoteTaxes}`].filter(Boolean).join("\n") : "";
+  const quote = [details, ticket.quoteNote].filter(Boolean).join("\n\n");
+  await transport().sendMail({
+    from: sender(storeName),
+    to: { name: ticket.name, address: ticket.email },
+    replyTo,
+    subject: `[#${ticket.number}] ${heading}`,
+    html: renderCustomerEmail({
+      storeName, heading, paragraphs: [`Hi ${first},`, text], quote: quote || undefined,
+      buttonUrl: url, buttonLabel: "View your request", footer: `Ticket #${ticket.number} · International shipping`,
+    }),
+    text: `Hi ${first},\n\n${text}${quote ? `\n\n${quote}` : ""}\n\nView your request #${ticket.number}: ${url}`,
+  });
+  return "sent";
+}
+
+// Tells the customer whether their order was changed (help-desk-edit.server.ts).
+export async function sendEditEmail(db: PrismaClient, shop: string, admin: AdminClient, ticketId: string): Promise<SendResult> {
+  const context = await customerContext(db, shop, admin, ticketId);
+  if (!context || !["Updated", "Rejected"].includes(context.ticket.editStatus)) return "skipped";
+  const { ticket, storeName, url, first, replyTo } = context;
+  let values: Record<string, string> = {};
+  try { values = JSON.parse(ticket.details) as Record<string, string>; } catch { /* no details */ }
+  const order = ticket.orderName || values.orderNumber ? `order ${ticket.orderName || values.orderNumber}` : "your order";
+  const updated = ticket.editStatus === "Updated";
+  const heading = updated ? "Your order has been updated" : "We couldn't change your order";
+  const text = updated ? `We've updated ${order} with the changes you asked for. If there's a price difference, you'll receive a separate invoice or refund from us.`
+    : `We looked at your request to change ${order}, but unfortunately we're not able to change it.`;
+  await transport().sendMail({
+    from: sender(storeName),
+    to: { name: ticket.name, address: ticket.email },
+    replyTo,
+    subject: `[#${ticket.number}] ${heading}`,
+    html: renderCustomerEmail({
+      storeName, heading, paragraphs: [`Hi ${first},`, text], quote: ticket.editNote || undefined,
+      buttonUrl: url, buttonLabel: "View your request", footer: `Ticket #${ticket.number} · Order change request`,
+    }),
+    text: `Hi ${first},\n\n${text}${ticket.editNote ? `\n\n${ticket.editNote}` : ""}\n\nView your request #${ticket.number}: ${url}`,
+  });
+  return "sent";
+}
+
+// What the customer is told at each step of a return (help-desk-return.server.ts).
+const RETURN_EMAIL: Record<string, { heading: string; text: (order: string) => string }> = {
+  "Label sent": {
+    heading: "Your return is approved: here's your return label",
+    text: (order) => `We've approved the return for ${order}. Your return label is attached and on your request page. Please print it, attach it to the package and send it to our warehouse. Once received, our team will inspect the product and proceed with your refund or exchange.`,
+  },
+  Received: { heading: "We've received your return", text: (order) => `Your return for ${order} has arrived at our warehouse and our team has inspected the product. We're now proceeding with your refund or exchange and will let you know.` },
+  Rejected: { heading: "We couldn't accept your return", text: (order) => `We've looked at your return request for ${order}, but unfortunately it doesn't meet our return conditions.` },
+};
+
+// Tells the customer where their return stands; the label goes with the approval.
+export async function sendReturnEmail(db: PrismaClient, shop: string, admin: AdminClient, ticketId: string): Promise<SendResult> {
+  const context = await customerContext(db, shop, admin, ticketId);
+  const copy = context && RETURN_EMAIL[context.ticket.returnStatus];
+  if (!context || !copy) return "skipped";
+  const { ticket, storeName, url, first, replyTo } = context;
+  let values: Record<string, string> = {};
+  try { values = JSON.parse(ticket.details) as Record<string, string>; } catch { /* no details */ }
+  const order = ticket.orderName || values.orderNumber ? `order ${ticket.orderName || values.orderNumber}` : "your order";
+  const label = ticket.returnStatus === "Label sent" && ticket.returnLabelId
+    ? await db.helpDeskAttachment.findFirst({ where: { id: ticket.returnLabelId, ticketId }, select: { name: true, type: true, data: true } }) : null;
   const text = copy.text(order);
   await transport().sendMail({
     from: sender(storeName),
@@ -310,10 +458,17 @@ export async function sendCancellationEmail(db: PrismaClient, shop: string, admi
     replyTo,
     subject: `[#${ticket.number}] ${copy.heading}`,
     html: renderCustomerEmail({
-      storeName, heading: copy.heading, paragraphs: [`Hi ${first},`, text], quote: ticket.cancelNote || undefined,
-      buttonUrl: url, buttonLabel: "View your request", footer: `Ticket #${ticket.number} · Cancellation request`,
+      storeName, heading: copy.heading, paragraphs: [`Hi ${first},`, text], quote: ticket.returnNote || undefined,
+      buttonUrl: url, buttonLabel: "View your request", footer: `Ticket #${ticket.number} · Return request`,
     }),
-    text: `Hi ${first},\n\n${text}${ticket.cancelNote ? `\n\n${ticket.cancelNote}` : ""}\n\nView your request #${ticket.number}: ${url}`,
+    text: `Hi ${first},
+
+${text}${ticket.returnNote ? `
+
+${ticket.returnNote}` : ""}
+
+View your request #${ticket.number}: ${url}`,
+    ...(label ? { attachments: [{ filename: label.name, content: Buffer.from(label.data), contentType: label.type }] } : {}),
   });
   return "sent";
 }

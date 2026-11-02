@@ -15,6 +15,8 @@ function submission(option: FormOption) {
   switch (option.flow) {
     case "delivery": Object.assign(values, { orderNumber: "#1001" }); break;
     case "orderUpdate": Object.assign(values, { orderNumber: "#1001", details: "Please change it" }); break;
+    case "lost": Object.assign(values, { orderNumber: "#1001", details: "Tracking stopped", lostPreference: "Refund" }); products.push(product); break;
+    case "edit": Object.assign(values, { orderNumber: "#1001", details: "Blue instead of Black", chargesAccepted: "Yes" }); products.push("gid://shopify/LineItem/1"); break;
     case "cancel": Object.assign(values, { orderNumber: "#1001", cancelReason: "Ordered by mistake" }); break;
     case "address": Object.assign(values, { orderNumber: "#1001", shipName: "Jordan Lee", shipAddress1: "2 Oak Ave", shipCity: "Austin", shipProvince: "TX", shipZip: "78701", shipCountry: "US" }); break;
     case "productIssue":

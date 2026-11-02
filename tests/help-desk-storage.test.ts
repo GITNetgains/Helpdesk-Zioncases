@@ -1,6 +1,10 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
-import { cancelOrderInShopify, decideCancellation } from "../app/services/help-desk-cancel.server";
+import { cancelOrderInShopify, confirmItemsCancelled, decideCancellation } from "../app/services/help-desk-cancel.server";
 import { rejectAddressChange, updateAddressInShopify } from "../app/services/help-desk-address.server";
+import { applyOrderEdit, cleanOps, previewOrderEdit, rejectOrderEdit } from "../app/services/help-desk-edit.server";
+import { approveReplacement, rejectReplacement, shipReplacement } from "../app/services/help-desk-replacement.server";
+import { quoteUnavailable, sendQuote } from "../app/services/help-desk-quote.server";
+import { markReturnReceived, rejectReturn, returnLabelFile, sendReturnLabel } from "../app/services/help-desk-return.server";
 import { PrismaClient } from "@prisma/client";
 import { mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -75,18 +79,20 @@ describe("Help desk persistence", () => {
     expect(parsed.get("query")).toBe("Wholesale enquiry");
     await expect(readHelpDeskForm(new Request("https://example.com", { method: "POST", body: new Uint8Array(101 * 1024 * 1024) }))).rejects.toThrow("Request too large");
   });
-  it("stores received and wanted products for a wrong delivery", async () => {
+  it("stores received and wanted products for a wrong delivery, returned only unused in its packaging", async () => {
     const body = form({ topic: topics[3], orderType: orderTypes[2], orderNumber: "#1001", existing: "", query: "" });
     body.append("products", "gid://shopify/Product/1");
     body.append("receivedProducts", "gid://shopify/Product/2");
     body.append("images", new File([Buffer.from([255, 216, 255, 0])], "wrong.jpg", { type: "image/jpeg" }));
+    expect((await submitTicket(db, shop, body)).errors.returnCondition).toMatch(/unused/);
+    body.set("returnCondition", "Yes");
     const saved = await submitTicket(db, shop, body);
     expect(saved.errors).toEqual({});
     const ticket = await db.helpDeskTicket.findUniqueOrThrow({ where: { id: saved.ticketId } });
     expect(JSON.parse(ticket.products)).toEqual(["gid://shopify/Product/1"]);
     expect(JSON.parse(ticket.receivedProducts)).toEqual(["gid://shopify/Product/2"]);
   });
-  it("files a missing part under its own sub-category, with how many and what they'd like", async () => {
+  it("files a missing part under its own sub-category, with how many, to be replaced", async () => {
     const id = "gid://shopify/Product/1";
     const body = form({ topic: topics[3], orderType: orderTypes[1], issue: issues[2], orderNumber: "#1001", existing: "", query: "",
       category: "Missing Parts", subcategory: "Item missing from order", resolution: "Replacement" });
@@ -94,11 +100,16 @@ describe("Help desk persistence", () => {
     body.append(`itemTitle:${id}`, "Slab Case X");
     body.append(`itemPart:${id}`, "Lid");
     body.append(`itemQty:${id}`, "3");
+    // Without a photo it isn't sent; a refund asked for is still a replacement.
+    expect((await submitTicket(db, shop, body)).errors.images).toBeTruthy();
+    body.append(`itemResolution:${id}`, "Refund");
+    body.append(`images:${id}`, new File([Buffer.from([255, 216, 255, 0])], "box.jpg", { type: "image/jpeg" }));
     const saved = await submitTicket(db, shop, body);
     expect(saved.errors).toEqual({});
     const ticket = await db.helpDeskTicket.findUniqueOrThrow({ where: { id: saved.ticketId } });
     expect(ticket).toMatchObject({ category: "Missing Parts", subcategory: "Lids or panels missing" });
-    expect(JSON.parse(ticket.details)).toMatchObject({ part: "Lid", resolution: "Replacement", details: "Slab Case X (Lid) × 3: Lid" });
+    expect(JSON.parse(ticket.details)).toMatchObject({ part: "Lid", resolution: "Replacement", details: "Slab Case X (Lid) × 3: Lid → Replacement" });
+    expect(ticket).toMatchObject({ replacementStatus: "Pending", tags: "missing-part" });
   });
   it("keeps where and when a warranty item was bought, and rejects a made-up place", async () => {
     const id = "gid://shopify/Product/1";
@@ -120,10 +131,11 @@ describe("Help desk persistence", () => {
   });
   it("stores a wrong colour's wanted variant and a wrong quantity's counts in the product's line", async () => {
     const [one, two] = ["gid://shopify/Product/1", "gid://shopify/Product/2"];
-    const body = form({ topic: topics[3], orderType: orderTypes[2], orderNumber: "#1001", existing: "", query: "", resolution: "Replacement" });
+    const body = form({ topic: topics[3], orderType: orderTypes[2], orderNumber: "#1001", existing: "", query: "", resolution: "Replacement", returnCondition: "Yes" });
     for (const [id, title] of [[one, "Slab Case X"], [two, "Graded Card Display"]]) {
       body.append("products", id);
       body.append(`itemTitle:${id}`, title);
+      body.append(`itemResolution:${id}`, "Exchange");
       body.append(`images:${id}`, new File([Buffer.from([255, 216, 255, 0])], "wrong.jpg", { type: "image/jpeg" }));
     }
     body.append(`itemNote:${one}`, "A black one");
@@ -133,14 +145,16 @@ describe("Help desk persistence", () => {
     const saved = await submitTicket(db, shop, body);
     expect(saved.errors).toEqual({});
     const ticket = await db.helpDeskTicket.findUniqueOrThrow({ where: { id: saved.ticketId } });
-    expect(JSON.parse(ticket.details)).toMatchObject({ resolution: "Replacement",
-      details: "Slab Case X: wants Blue. A black one\n\nGraded Card Display: received 1, wants 2" });
+    // A wrong item is returned for a refund or an exchange: a replacement isn't one of them.
+    expect(JSON.parse(ticket.details)).toMatchObject({ resolution: "Exchange", returnCondition: "Yes",
+      details: "Slab Case X: wants Blue. A black one → Exchange\n\nGraded Card Display: received 1, wants 2 → Exchange" });
+    expect(ticket).toMatchObject({ returnStatus: "Pending", tags: "return" });
   });
-  it("keeps what each product's customer wants: a refund for one, a replacement for another", async () => {
+  it("keeps what each product's customer wants: a refund for one, an exchange for another", async () => {
     const [one, two] = ["gid://shopify/Product/1", "gid://shopify/Product/2"];
     const body = form({ topic: topics[3], orderType: orderTypes[1], issue: issues[0], orderNumber: "#1001", existing: "", query: "",
-      category: "Manufacturing Defect", subcategory: "Defective or not working" });
-    for (const [id, title, resolution] of [[one, "Slab Case X", "Refund"], [two, "Graded Card Display", "Replacement"]]) {
+      category: "Manufacturing Defect", subcategory: "Defective or not working", returnCondition: "Yes" });
+    for (const [id, title, resolution] of [[one, "Slab Case X", "Refund"], [two, "Graded Card Display", "Exchange"]]) {
       body.append("products", id);
       body.append(`itemTitle:${id}`, title);
       body.append(`itemNote:${id}`, "Cracked");
@@ -153,19 +167,21 @@ describe("Help desk persistence", () => {
     expect(saved.errors).toEqual({});
     const ticket = await db.helpDeskTicket.findUniqueOrThrow({ where: { id: saved.ticketId } });
     expect(JSON.parse(ticket.details)).toMatchObject({ resolution: "Refund", replacement: "Graded Card Display → Slab Case Y",
-      details: "Slab Case X: Cracked → Refund\n\nGraded Card Display: Cracked → Replacement: Slab Case Y" });
+      details: "Slab Case X: Cracked → Refund\n\nGraded Card Display: Cracked → Exchange: Slab Case Y", returnCondition: "Yes" });
+    expect(ticket).toMatchObject({ returnStatus: "Pending", tags: "return" });
   });
   it("stores a wrong delivery described per product, with each product's photo", async () => {
     const id = "gid://shopify/Product/1";
-    const body = form({ topic: topics[3], orderType: orderTypes[2], orderNumber: "#1001", existing: "", query: "" });
+    const body = form({ topic: topics[3], orderType: orderTypes[2], orderNumber: "#1001", existing: "", query: "", returnCondition: "Yes" });
     body.append("products", id);
     body.append(`itemTitle:${id}`, "Slab Case X");
+    body.append(`itemResolution:${id}`, "Refund");
     body.append(`itemNote:${id}`, "Black instead of Blue");
     body.append(`images:${id}`, new File([Buffer.from([255, 216, 255, 0])], "wrong.jpg", { type: "image/jpeg" }));
     const saved = await submitTicket(db, shop, body);
     expect(saved.errors).toEqual({});
     const ticket = await db.helpDeskTicket.findUniqueOrThrow({ where: { id: saved.ticketId }, include: { attachments: true } });
-    expect(JSON.parse(ticket.details).details).toBe("Slab Case X: Black instead of Blue");
+    expect(JSON.parse(ticket.details).details).toBe("Slab Case X: Black instead of Blue → Refund");
     expect(ticket.attachments.map((file) => file.productId)).toEqual([id]);
   });
 });
@@ -248,15 +264,15 @@ describe("Help desk conversations", () => {
     });
     const load = (id: string) => db.helpDeskTicket.findUniqueOrThrow({ where: { id }, include: { messages: true, emails: true } });
 
-    it("starts pending with the reason; by hand it can only be rejected, never approved or marked cancelled", async () => {
+    it("starts pending with the reason; it's never marked cancelled by hand, and a rejection says why", async () => {
       const { ticketId, errors } = await submitTicket(db, shop, cancelForm());
       expect(errors).toEqual({});
       let ticket = await load(ticketId!);
       expect(ticket).toMatchObject({ cancelStatus: "Pending", tags: "cancel", category: "Orders", subcategory: "Cancel Order" });
       expect(JSON.parse(ticket.details)).toMatchObject({ cancelReason: "Ordered by mistake" });
-      // Submitting only asks: nothing is approved or cancelled by hand, so the
+      // Submitting only asks: nothing is marked cancelled by hand, so the
       // customer is never told it's cancelled while the order still ships.
-      for (const decision of ["approve", "mark-cancelled"]) {
+      for (const decision of ["mark-cancelled", "cancel"]) {
         expect((await decideCancellation(db, shop, ticketId!, { decision, note: "On it!", author: "Priya" })).errors.form).toBeTruthy();
       }
       expect((await load(ticketId!)).cancelStatus).toBe("Pending");
@@ -354,6 +370,84 @@ describe("Help desk conversations", () => {
       const { ticketId } = await submitTicket(db, shop, form());
       expect((await load(ticketId!)).cancelStatus).toBe("");
       expect((await decideCancellation(db, shop, ticketId!, { decision: "approve", note: "", author: "Priya" })).errors.form).toBeTruthy();
+    });
+
+    it("approving is a decision only: Shopify isn't asked to cancel until staff choose to", async () => {
+      const shopify = fakeShopify();
+      const { ticketId } = await submitTicket(db, shop, cancelForm());
+      expect(await decideCancellation(db, shop, ticketId!, { decision: "approve", note: "We'll cancel it today.", author: "Priya" }, shopify.admin)).toEqual({ errors: {}, cancelStatus: "Approved" });
+      expect(shopify.cancels()).toHaveLength(0);
+      const ticket = await load(ticketId!);
+      expect(ticket).toMatchObject({ cancelStatus: "Approved", status: "In progress", cancelNote: "We'll cancel it today." });
+      expect(ticket.messages.map((message) => message.body)).toContain("Cancellation request approved. The order hasn't been changed in Shopify yet.");
+      // Approving twice isn't a decision; cancelling in Shopify then finishes it.
+      expect((await decideCancellation(db, shop, ticketId!, { decision: "approve", note: "", author: "Priya" }, shopify.admin)).errors.form).toBeTruthy();
+      expect((await cancelOrderInShopify(db, shopify.admin, shop, ticketId!, { ...options, refund: "store-credit" }, [0])).cancelStatus).toBe("Cancelled");
+      expect(shopify.cancels()[0].variables).toMatchObject({ refundMethod: { storeCreditRefund: {} } });
+    });
+
+    it("won't approve an order that has shipped", async () => {
+      const shopify = fakeShopify({ fulfillment: "FULFILLED" });
+      const { ticketId } = await submitTicket(db, shop, cancelForm());
+      expect((await decideCancellation(db, shop, ticketId!, { decision: "approve", note: "", author: "Priya" }, shopify.admin)).errors.form).toContain("already shipped");
+      expect((await load(ticketId!)).cancelStatus).toBe("Pending");
+    });
+
+    it("won't cancel an order with an open return", async () => {
+      const admin = { graphql: async (query: string) => {
+        const body = unshipped() as { data: { orders: { nodes: Record<string, unknown>[] } } };
+        body.data.orders.nodes[0].returnStatus = "IN_PROGRESS";
+        return new Response(JSON.stringify(query.includes("orderCancel") ? {} : body));
+      } };
+      const { ticketId } = await submitTicket(db, shop, cancelForm());
+      expect((await cancelOrderInShopify(db, admin, shop, ticketId!, options, [0])).errors.form).toContain("return");
+      expect((await load(ticketId!)).cancelStatus).toBe("Pending");
+    });
+
+    // An order with two lines; removed: how many of the riser were removed with Edit order.
+    const twoItems = (riser: { current: number; unfulfilled: number }) => {
+      const body = unshipped() as { data: { orders: { nodes: Record<string, unknown>[] } } };
+      body.data.orders.nodes[0].lineItems = { nodes: [
+        { id: "gid://shopify/LineItem/11", title: "Slab Case X", variantTitle: "Black", sku: "X", quantity: 1, currentQuantity: 1, unfulfilledQuantity: 1, product: { id: "gid://shopify/Product/1" }, image: null },
+        { id: "gid://shopify/LineItem/12", title: "Riser", variantTitle: null, sku: "R", quantity: 2, currentQuantity: riser.current, unfulfilledQuantity: riser.unfulfilled, product: null, image: null },
+      ] };
+      return { graphql: async () => new Response(JSON.stringify(body)) };
+    };
+
+    it("cancels selected items once Shopify shows them removed from the order", async () => {
+      const body = cancelForm();
+      body.set("cancelScope", "Selected items");
+      body.append("products", "gid://shopify/LineItem/12");
+      const { ticketId, errors } = await submitTicket(db, shop, body);
+      expect(errors).toEqual({});
+      expect(await load(ticketId!)).toMatchObject({ cancelStatus: "Pending", products: JSON.stringify(["gid://shopify/LineItem/12"]) });
+      // Shopify can't cancel single items: staff use Edit order.
+      expect((await cancelOrderInShopify(db, twoItems({ current: 2, unfulfilled: 2 }), shop, ticketId!, options, [0])).errors.form).toContain("Edit order");
+      // Still on the order: not cancelled yet.
+      expect((await confirmItemsCancelled(db, twoItems({ current: 2, unfulfilled: 2 }), shop, ticketId!, { note: "", author: "Priya" })).errors.form).toContain("Riser × 2 to ship");
+      expect((await load(ticketId!)).cancelStatus).toBe("Pending");
+      // Removed in Shopify: now it is, and the case that stays doesn't matter.
+      expect(await confirmItemsCancelled(db, twoItems({ current: 0, unfulfilled: 0 }), shop, ticketId!, { note: "Done!", author: "Priya" })).toEqual({ errors: {}, cancelStatus: "Cancelled" });
+      const ticket = await load(ticketId!);
+      expect(ticket).toMatchObject({ cancelStatus: "Cancelled", status: "Resolved", resolutionType: "Order cancelled" });
+      expect(ticket.messages.map((message) => message.body)).toContain("Approved: Riser × 2 removed from order #100900 in Shopify");
+    });
+
+    it("doesn't count shipped items as cancelled", async () => {
+      const body = cancelForm();
+      body.set("cancelScope", "Selected items");
+      body.append("products", "gid://shopify/LineItem/12");
+      const { ticketId } = await submitTicket(db, shop, body);
+      expect((await confirmItemsCancelled(db, twoItems({ current: 2, unfulfilled: 0 }), shop, ticketId!, { note: "", author: "Priya" })).errors.form).toContain("has shipped");
+      expect((await load(ticketId!)).cancelStatus).toBe("Pending");
+    });
+
+    it("only takes order lines, and items when asked for some", async () => {
+      const some = cancelForm();
+      some.set("cancelScope", "Selected items");
+      expect((await submitTicket(db, shop, some)).errors.products).toBeTruthy();
+      some.append("products", "gid://shopify/Product/1");
+      expect((await submitTicket(db, shop, some)).errors.products).toBeTruthy();
     });
   });
 
@@ -662,5 +756,308 @@ describe("Help desk conversations", () => {
     const text = fillMacro("Hi {{ customer.first_name }}, about {{ticket.number}} / {{ order.number }} from {{ store.name }} {{ unknown }}",
       { name: "Rahul Sharma", number: 1007, topic: "Order Queries", details: { orderNumber: "#1042" } }, "Zion Cases");
     expect(text).toBe("Hi Rahul, about #1007 / #1042 from Zion Cases {{ unknown }}");
+  });
+});
+
+describe("Damaged or defective returns", () => {
+  const id = "gid://shopify/Product/1";
+  const pdf = () => new File([Buffer.from("%PDF-1.4\n% label")], "label.pdf", { type: "application/pdf" });
+  const claim = (extra: Record<string, string> = {}, resolution = "Refund") => {
+    const body = form({ topic: topics[3], orderType: orderTypes[1], issue: issues[0], orderNumber: "#1001", existing: "", query: "",
+      category: "Product Damage", subcategory: "Broken lid", returnCondition: "Yes", ...extra });
+    body.append("products", id);
+    body.append(`itemTitle:${id}`, "Slab Case X");
+    body.append(`itemNote:${id}`, "Lid cracked");
+    body.append(`itemResolution:${id}`, resolution);
+    body.append(`images:${id}`, new File([Buffer.from([255, 216, 255, 0])], "crack.jpg", { type: "image/jpeg" }));
+    return body;
+  };
+
+  it("needs the product unused in its packaging, and a refund or an exchange", async () => {
+    expect((await submitTicket(db, shop, claim({ returnCondition: "No" }))).errors.returnCondition).toMatch(/unused/);
+    expect((await submitTicket(db, shop, claim({ returnCondition: "" }))).errors.returnCondition).toMatch(/unused/);
+    expect((await submitTicket(db, shop, claim({}, "Replacement"))).errors.resolution).toMatch(/refund or an exchange/);
+    // Missing parts and warranty claims aren't returns.
+    const warranty = await submitTicket(db, shop, claim({ category: "Warranty", returnCondition: "" }, "Replacement"));
+    expect(warranty.errors).toEqual({});
+    expect((await db.helpDeskTicket.findUniqueOrThrow({ where: { id: warranty.ticketId } })).returnStatus).toBe("");
+  });
+
+  it("goes from Pending to Label sent to Received, with the label kept for the customer", async () => {
+    const { ticketId, token } = await submitTicket(db, shop, claim());
+    expect((await db.helpDeskTicket.findUniqueOrThrow({ where: { id: ticketId } })).returnStatus).toBe("Pending");
+    // Only after the label is sent can it be received.
+    expect((await markReturnReceived(db, shop, ticketId!, { note: "", author: "Priya" })).errors.form).toMatch(/moved on/);
+    expect((await sendReturnLabel(db, shop, ticketId!, { label: null, note: "", author: "Priya" })).errors.label).toBeTruthy();
+    expect((await sendReturnLabel(db, shop, ticketId!, { label: new File(["hello"], "x.pdf", { type: "application/pdf" }), note: "", author: "Priya" })).errors.label).toMatch(/PDF, PNG or JPG/);
+    expect(await sendReturnLabel(db, shop, ticketId!, { label: pdf(), note: "Drop it off within 14 days.", author: "Priya" })).toEqual({ errors: {}, returnStatus: "Label sent" });
+    const sent = await db.helpDeskTicket.findUniqueOrThrow({ where: { id: ticketId } });
+    expect(sent).toMatchObject({ returnStatus: "Label sent", returnNote: "Drop it off within 14 days.", returnDecidedBy: "Priya", status: "Waiting on customer" });
+    expect(await returnLabelFile(db, shop, token!)).toMatchObject({ name: "label.pdf", type: "application/pdf" });
+    expect(await returnLabelFile(db, "other.myshopify.com", token!)).toBeNull();
+    // The label isn't one of the customer's photos.
+    expect((await db.helpDeskAttachment.findUniqueOrThrow({ where: { id: sent.returnLabelId } })).messageId).toBeTruthy();
+    // Rejecting is only for a pending return.
+    expect((await rejectReturn(db, shop, ticketId!, { note: "No", author: "Priya" })).errors.form).toMatch(/moved on/);
+    expect(await markReturnReceived(db, shop, ticketId!, { note: "", author: "Sam" })).toEqual({ errors: {}, returnStatus: "Received" });
+    expect(await db.helpDeskTicket.findUniqueOrThrow({ where: { id: ticketId } })).toMatchObject({ returnStatus: "Received", status: "In progress", resolutionType: "Return accepted" });
+    const events = (await db.helpDeskMessage.findMany({ where: { ticketId, kind: "event" }, orderBy: { createdAt: "asc" } })).map((message) => message.body);
+    expect(events).toEqual(expect.arrayContaining(["Return approved. Return label sent to the customer: label.pdf", "Returned product received and verified"]));
+  });
+
+  it("is rejected with a reason for the customer", async () => {
+    const { ticketId, token } = await submitTicket(db, shop, claim());
+    expect((await rejectReturn(db, shop, ticketId!, { note: " ", author: "Priya" })).errors.note).toBeTruthy();
+    expect(await rejectReturn(db, shop, ticketId!, { note: "The case has been used.", author: "Priya" })).toEqual({ errors: {}, returnStatus: "Rejected" });
+    expect(await db.helpDeskTicket.findUniqueOrThrow({ where: { id: ticketId } })).toMatchObject({ returnStatus: "Rejected", status: "Resolved", resolutionType: "Request declined" });
+    expect(await returnLabelFile(db, shop, token!)).toBeNull();
+  });
+});
+
+describe("Order edit requests", () => {
+  const [slab, riser] = ["gid://shopify/LineItem/11", "gid://shopify/LineItem/12"];
+  const order = (fulfillment = "UNFULFILLED") => ({ data: { orders: { nodes: [{
+    legacyResourceId: "7801", name: "#100950", email: "customer@example.com", createdAt: "2026-10-20T12:00:00Z", cancelledAt: null,
+    displayFinancialStatus: "PAID", displayFulfillmentStatus: fulfillment, totalPriceSet: { shopMoney: { amount: "100.00", currencyCode: "USD" } },
+    shippingAddress: null, fulfillments: [], lineItems: { nodes: [
+      { id: slab, title: "Slab Case X", variantTitle: "Black", sku: "SLAB-BLK", quantity: 1, currentQuantity: 1, unfulfilledQuantity: 1, product: { id: "gid://shopify/Product/1" }, image: null },
+      { id: riser, title: "Riser", variantTitle: null, sku: "RISER", quantity: 2, currentQuantity: 2, unfulfilledQuantity: 2, product: { id: "gid://shopify/Product/2" }, image: null },
+    ] },
+  }] } } });
+  const editForm = (extra: Record<string, string> = {}) => {
+    const body = form({ topic: topics[3], orderType: orderTypes[0], update: "Change Product or Quantity", orderNumber: "#100950", existing: "", query: "",
+      category: "Orders", subcategory: "Edit Items, Color or Quantity", chargesAccepted: "Yes", details: "Please hurry", ...extra });
+    body.append("products", slab);
+    body.set(`itemTitle:${slab}`, "Slab Case X");
+    body.set(`itemAction:${slab}`, "Change color or size");
+    body.set(`itemVariant:${slab}`, "Blue");
+    body.append("products", riser);
+    body.set(`itemTitle:${riser}`, "Riser");
+    body.set(`itemAction:${riser}`, "Remove");
+    body.set("addedItems", JSON.stringify([{ id: "gid://shopify/Product/3", title: "Card Stand", quantity: 2 }, { id: "javascript:alert(1)", title: "x", quantity: 1 }]));
+    return body;
+  };
+  // A Shopify that edits orders: begin, quantities, added variants, totals and commit.
+  function fakeShopify(state: { fulfillment?: string } = {}) {
+    const calls: { query: string; variables?: Record<string, unknown> }[] = [];
+    const admin = {
+      graphql: async (query: string, options?: { variables?: Record<string, unknown> }) => {
+        calls.push({ query, variables: options?.variables });
+        const money = (amount: string) => ({ shopMoney: { amount, currencyCode: "USD" } });
+        if (query.includes("orderEditBegin")) return new Response(JSON.stringify({ data: { orderEditBegin: { calculatedOrder: { id: "gid://shopify/CalculatedOrder/9", lineItems: { nodes: [
+          { id: "gid://shopify/CalculatedLineItem/11", quantity: 1 }, { id: "gid://shopify/CalculatedLineItem/12", quantity: 2 }] } }, userErrors: [] } } }));
+        if (query.includes("orderEditSetQuantity")) return new Response(JSON.stringify({ data: { orderEditSetQuantity: { calculatedOrder: { id: "x" }, userErrors: [] } } }));
+        if (query.includes("orderEditAddVariant")) return new Response(JSON.stringify({ data: { orderEditAddVariant: { calculatedOrder: { id: "x" }, userErrors: [] } } }));
+        if (query.includes("HelpDeskEditTotals")) return new Response(JSON.stringify({ data: { node: { originalOrder: { totalPriceSet: money("100.00") }, totalPriceSet: money("115.00"), totalOutstandingSet: money("15.00") } } }));
+        if (query.includes("orderEditCommit")) return new Response(JSON.stringify({ data: { orderEditCommit: { order: { id: "gid://shopify/Order/7801" }, userErrors: [] } } }));
+        return new Response(JSON.stringify(order(state.fulfillment)));
+      },
+    };
+    return { admin, calls, named: (name: string) => calls.filter((call) => call.query.includes(name)) };
+  }
+  const ops = { lines: [{ lineItemId: riser, quantity: 0 }, { lineItemId: slab, quantity: 0 }], adds: [{ variantId: "gid://shopify/ProductVariant/31", quantity: 1 }] };
+
+  it("keeps what to do with each item and the products to add, and needs the charges accepted", async () => {
+    expect((await submitTicket(db, shop, editForm({ chargesAccepted: "" }))).errors.chargesAccepted).toBeTruthy();
+    const unanswered = editForm();
+    unanswered.delete(`itemAction:${riser}`);
+    expect((await submitTicket(db, shop, unanswered)).errors.products).toMatch(/each item/);
+    const { ticketId, errors } = await submitTicket(db, shop, editForm());
+    expect(errors).toEqual({});
+    const ticket = await db.helpDeskTicket.findUniqueOrThrow({ where: { id: ticketId } });
+    expect(ticket).toMatchObject({ editStatus: "Pending", tags: "order-edit" });
+    const details = JSON.parse(ticket.details);
+    expect(details).toMatchObject({ addedProducts: "Card Stand × 2", chargesAccepted: "Yes", details: "Slab Case X: change to Blue\nRiser: Remove\nAdd: Card Stand × 2\nPlease hurry" });
+    expect(JSON.parse(details.editRequest)).toEqual({
+      lines: [{ id: slab, title: "Slab Case X", action: "Change color or size", quantity: null, variant: "Blue" }, { id: riser, title: "Riser", action: "Remove", quantity: 0, variant: "" }],
+      adds: [{ id: "gid://shopify/Product/3", title: "Card Stand", quantity: 2 }],
+    });
+  });
+
+  it("previews the new total without saving, then updates the order in Shopify while it's at the warehouse", async () => {
+    const { ticketId } = await submitTicket(db, shop, editForm());
+    const packing = fakeShopify({ fulfillment: "IN_PROGRESS" });
+    expect((await applyOrderEdit(db, packing.admin, shop, ticketId!, { ops, note: "", author: "Priya", notifyCustomer: true, summary: "removed Riser" })).errors.form).toMatch(/Not shipped or being packed/);
+    expect(packing.named("orderEditBegin")).toHaveLength(0);
+    const ready = fakeShopify();
+    expect(await previewOrderEdit(db, ready.admin, shop, ticketId!, ops)).toEqual({ errors: {}, totals: {
+      before: { amount: "100.00", currencyCode: "USD" }, after: { amount: "115.00", currencyCode: "USD" }, outstanding: { amount: "15.00", currencyCode: "USD" } } });
+    expect(ready.named("orderEditCommit")).toHaveLength(0);
+    expect(await applyOrderEdit(db, ready.admin, shop, ticketId!, { ops, note: "Swapped it.", author: "Priya", notifyCustomer: true, summary: "removed Riser; removed Slab Case X; added Slab Case X - Blue × 1" }))
+      .toEqual({ errors: {}, editStatus: "Updated" });
+    expect(ready.named("orderEditSetQuantity").map((call) => call.variables)).toEqual([
+      { id: "gid://shopify/CalculatedOrder/9", lineItemId: "gid://shopify/CalculatedLineItem/12", quantity: 0, restock: true },
+      { id: "gid://shopify/CalculatedOrder/9", lineItemId: "gid://shopify/CalculatedLineItem/11", quantity: 0, restock: true },
+      { id: "gid://shopify/CalculatedOrder/9", lineItemId: "gid://shopify/CalculatedLineItem/12", quantity: 0, restock: true },
+      { id: "gid://shopify/CalculatedOrder/9", lineItemId: "gid://shopify/CalculatedLineItem/11", quantity: 0, restock: true },
+    ]);
+    expect(ready.named("orderEditAddVariant")[0].variables).toMatchObject({ variantId: "gid://shopify/ProductVariant/31", quantity: 1 });
+    expect(ready.named("orderEditCommit")).toHaveLength(1);
+    expect(ready.named("orderEditCommit")[0].variables).toMatchObject({ id: "gid://shopify/CalculatedOrder/9", notifyCustomer: true });
+    expect(await db.helpDeskTicket.findUniqueOrThrow({ where: { id: ticketId } })).toMatchObject({ editStatus: "Updated", editNote: "Swapped it.", status: "Resolved", resolutionType: "Order updated" });
+    // Decided once.
+    expect((await rejectOrderEdit(db, shop, ticketId!, { note: "No", author: "Priya" })).errors.form).toMatch(/already been decided/);
+  });
+
+  it("is rejected with a reason, and staff changes are cleaned", async () => {
+    const { ticketId } = await submitTicket(db, shop, editForm());
+    expect((await rejectOrderEdit(db, shop, ticketId!, { note: " ", author: "Priya" })).errors.note).toBeTruthy();
+    expect(await rejectOrderEdit(db, shop, ticketId!, { note: "It has already left our warehouse.", author: "Priya" })).toEqual({ errors: {}, editStatus: "Rejected" });
+    expect(cleanOps({ lines: [{ lineItemId: "nope", quantity: 1 }], adds: [{ variantId: "gid://shopify/ProductVariant/1", quantity: 500 }] })).toEqual({ lines: [], adds: [{ variantId: "gid://shopify/ProductVariant/1", quantity: 99 }] });
+  });
+});
+
+describe("Missing part replacements", () => {
+  const id = "gid://shopify/Product/1";
+  const claim = () => {
+    const body = form({ topic: topics[3], orderType: orderTypes[1], issue: issues[2], orderNumber: "#1001", existing: "", query: "", category: "Missing Parts", subcategory: "Item missing from order" });
+    body.append("products", id);
+    body.append(`itemTitle:${id}`, "Slab Case X");
+    body.append(`itemNote:${id}`, "The risers weren't in the box");
+    body.append(`images:${id}`, new File([Buffer.from([255, 216, 255, 0])], "box.jpg", { type: "image/jpeg" }));
+    return body;
+  };
+
+  it("goes from Pending to Approved to Shipped, with the tracking for the customer", async () => {
+    const { ticketId, errors } = await submitTicket(db, shop, claim());
+    expect(errors).toEqual({});
+    // Only an approved replacement can ship.
+    expect((await shipReplacement(db, shop, ticketId!, { note: "", author: "Priya", carrier: "USPS", number: "9400", url: "" })).errors.form).toMatch(/moved on/);
+    expect(await approveReplacement(db, shop, ticketId!, { note: "We'll send new risers.", author: "Priya" })).toEqual({ errors: {}, replacementStatus: "Approved" });
+    expect(await db.helpDeskTicket.findUniqueOrThrow({ where: { id: ticketId } })).toMatchObject({ replacementStatus: "Approved", status: "In progress" });
+    expect((await shipReplacement(db, shop, ticketId!, { note: "", author: "Priya", carrier: "USPS", number: " ", url: "" })).errors.number).toBeTruthy();
+    expect((await shipReplacement(db, shop, ticketId!, { note: "", author: "Priya", carrier: "USPS", number: "9400", url: "javascript:alert(1)" })).errors.url).toBeTruthy();
+    expect(await shipReplacement(db, shop, ticketId!, { note: "On its way!", author: "Sam", carrier: "USPS", number: "9400111", url: "https://tools.usps.com/go/TrackConfirmAction?tLabels=9400111" }))
+      .toEqual({ errors: {}, replacementStatus: "Shipped" });
+    const ticket = await db.helpDeskTicket.findUniqueOrThrow({ where: { id: ticketId }, include: { messages: true } });
+    expect(ticket).toMatchObject({ replacementStatus: "Shipped", replacementCarrier: "USPS", replacementTracking: "9400111", status: "Resolved", resolutionType: "Replacement part", replacementDecidedBy: "Sam" });
+    expect(ticket.messages.map((message) => message.body)).toEqual(expect.arrayContaining(["Replacement approved", "Replacement part shipped with USPS: 9400111"]));
+  });
+
+  it("is rejected with a reason, for example when the part is still in transit", async () => {
+    const { ticketId } = await submitTicket(db, shop, claim());
+    expect((await rejectReplacement(db, shop, ticketId!, { note: " ", author: "Priya" })).errors.note).toBeTruthy();
+    expect(await rejectReplacement(db, shop, ticketId!, { note: "The risers ship separately and are still in transit.", author: "Priya" })).toEqual({ errors: {}, replacementStatus: "Rejected" });
+    expect(await db.helpDeskTicket.findUniqueOrThrow({ where: { id: ticketId } })).toMatchObject({ replacementStatus: "Rejected", status: "Resolved", resolutionType: "Request declined" });
+    // It can still be approved later.
+    expect((await approveReplacement(db, shop, ticketId!, { note: "", author: "Priya" })).replacementStatus).toBe("Approved");
+  });
+});
+
+describe("Warranty claims", () => {
+  const id = "gid://shopify/Product/1";
+  const claim = () => {
+    const body = form({ topic: topics[3], orderType: orderTypes[1], issue: issues[0], orderNumber: "#1001", existing: "", query: "",
+      category: "Warranty", subcategory: "Replacement request", purchasedFrom: "Amazon", purchaseDate: "2026-03" });
+    body.append("products", id);
+    body.append(`itemTitle:${id}`, "Slab Case X");
+    body.append(`itemNote:${id}`, "The lock stopped working");
+    body.append(`itemResolution:${id}`, "Refund");
+    return body;
+  };
+
+  it("needs photos, asks for no solution, and starts pending as a warranty", async () => {
+    expect((await submitTicket(db, shop, claim())).errors.images).toBeTruthy();
+    const body = claim();
+    body.append(`images:${id}`, new File([Buffer.from([255, 216, 255, 0])], "lock.jpg", { type: "image/jpeg" }));
+    const { ticketId, errors } = await submitTicket(db, shop, body);
+    expect(errors).toEqual({});
+    const ticket = await db.helpDeskTicket.findUniqueOrThrow({ where: { id: ticketId } });
+    expect(ticket).toMatchObject({ replacementStatus: "Pending", replacementKind: "warranty", tags: "warranty" });
+    expect(JSON.parse(ticket.details)).not.toHaveProperty("resolution");
+  });
+
+  it("is approved with a solution, then the next steps are sent, with or without tracking", async () => {
+    const body = claim();
+    body.append(`images:${id}`, new File([Buffer.from([255, 216, 255, 0])], "lock.jpg", { type: "image/jpeg" }));
+    const { ticketId } = await submitTicket(db, shop, body);
+    expect((await approveReplacement(db, shop, ticketId!, { note: "", author: "Priya" })).errors.solution).toBeTruthy();
+    expect((await approveReplacement(db, shop, ticketId!, { note: "", author: "Priya", solution: "Refund" })).errors.solution).toBeTruthy();
+    expect(await approveReplacement(db, shop, ticketId!, { note: "", author: "Priya", solution: "Repair" })).toEqual({ errors: {}, replacementStatus: "Approved" });
+    // A repair ships nothing yet: the instructions are the next steps.
+    expect((await shipReplacement(db, shop, ticketId!, { note: " ", author: "Priya", carrier: "", number: "", url: "" })).errors.note).toBeTruthy();
+    expect(await shipReplacement(db, shop, ticketId!, { note: "Send the case to our warehouse with the label we've emailed.", author: "Priya", carrier: "", number: "", url: "" }))
+      .toEqual({ errors: {}, replacementStatus: "Shipped" });
+    const ticket = await db.helpDeskTicket.findUniqueOrThrow({ where: { id: ticketId }, include: { messages: true } });
+    expect(ticket).toMatchObject({ replacementSolution: "Repair", replacementStatus: "Shipped", status: "Resolved", replacementTracking: "" });
+    expect(ticket.messages.map((message) => message.body)).toEqual(expect.arrayContaining(["Warranty claim approved: Repair", "Warranty claim: next steps sent to the customer"]));
+  });
+});
+
+describe("Lost packages", () => {
+  const claim = (extra: Record<string, string> = {}) => {
+    const body = form({ topic: topics[3], orderType: orderTypes[3], delivery: deliveryIssues[8], orderNumber: "#1001", existing: "", query: "",
+      category: "Shipping & Delivery", subcategory: "Lost Package", details: "Tracking stopped a week ago", lostPreference: "Send the missing product", ...extra });
+    body.append("products", "gid://shopify/Product/2");
+    return body;
+  };
+
+  it("needs the missing product, details and a preference, and starts pending with it", async () => {
+    expect((await submitTicket(db, shop, claim({ lostPreference: "A pony" }))).errors.lostPreference).toBeTruthy();
+    expect((await submitTicket(db, shop, claim({ details: "" }))).errors.details).toBeTruthy();
+    const none = claim();
+    none.delete("products");
+    expect((await submitTicket(db, shop, none)).errors.products).toMatch(/missing products/);
+    const { ticketId, errors } = await submitTicket(db, shop, claim());
+    expect(errors).toEqual({});
+    const ticket = await db.helpDeskTicket.findUniqueOrThrow({ where: { id: ticketId } });
+    expect(ticket).toMatchObject({ replacementStatus: "Pending", replacementKind: "lost", replacementSolution: "Send the missing product", tags: "lost-package" });
+    expect(JSON.parse(ticket.products)).toEqual(["gid://shopify/Product/2"]);
+  });
+
+  it("is approved with the customer's choice, and a refund's next steps need no tracking", async () => {
+    const { ticketId } = await submitTicket(db, shop, claim({ lostPreference: "Refund" }));
+    expect(await approveReplacement(db, shop, ticketId!, { note: "", author: "Priya" })).toEqual({ errors: {}, replacementStatus: "Approved" });
+    expect(await shipReplacement(db, shop, ticketId!, { note: "We've refunded the riser to your card.", author: "Priya", carrier: "", number: "", url: "" }))
+      .toEqual({ errors: {}, replacementStatus: "Shipped" });
+    const ticket = await db.helpDeskTicket.findUniqueOrThrow({ where: { id: ticketId }, include: { messages: true } });
+    expect(ticket).toMatchObject({ replacementSolution: "Refund", status: "Resolved", resolutionType: "Refund" });
+    expect(ticket.messages.map((message) => message.body)).toEqual(expect.arrayContaining(["Lost package approved: Refund", "Lost package: next steps sent to the customer"]));
+  });
+
+  it("can be sent again instead, with tracking", async () => {
+    const { ticketId } = await submitTicket(db, shop, claim({ lostPreference: "Refund" }));
+    expect(await approveReplacement(db, shop, ticketId!, { note: "", author: "Priya", solution: "Send the missing product" })).toEqual({ errors: {}, replacementStatus: "Approved" });
+    expect(await shipReplacement(db, shop, ticketId!, { note: "", author: "Priya", carrier: "UPS", number: "1Z1", url: "" })).toEqual({ errors: {}, replacementStatus: "Shipped" });
+    expect(await db.helpDeskTicket.findUniqueOrThrow({ where: { id: ticketId } })).toMatchObject({ replacementSolution: "Send the missing product", replacementTracking: "1Z1", resolutionType: "Replacement" });
+  });
+});
+
+describe("International shipping quotes", () => {
+  const request = (extra: Record<string, string> = {}) => {
+    const body = form({ topic: topics[0], country: "DE", address: "Hauptstrasse 12, Berlin, 10115", category: "Shipping & Delivery", subcategory: "International Shipping", shippingMethod: "Expedited", ...extra });
+    body.append("products", "gid://shopify/Product/1");
+    body.set("itemQty:gid://shopify/Product/1", "2");
+    body.set("itemTitle:gid://shopify/Product/1", "Slab Case X");
+    return body;
+  };
+
+  it("needs Regular or Expedited shipping, and starts pending", async () => {
+    expect((await submitTicket(db, shop, request({ shippingMethod: "Teleport" }))).errors.shippingMethod).toBeTruthy();
+    const { ticketId, errors } = await submitTicket(db, shop, request());
+    expect(errors).toEqual({});
+    const ticket = await db.helpDeskTicket.findUniqueOrThrow({ where: { id: ticketId } });
+    expect(ticket).toMatchObject({ quoteStatus: "Pending", tags: "shipping-quote" });
+    expect(JSON.parse(ticket.details)).toMatchObject({ shippingMethod: "Expedited", quantities: "Slab Case X × 2" });
+    // Domestic shipping isn't quoted this way.
+    const domestic = await submitTicket(db, shop, request({ subcategory: "Domestic Shipping", country: "US", shippingMethod: "" }));
+    expect(domestic.errors).toEqual({});
+    expect((await db.helpDeskTicket.findUniqueOrThrow({ where: { id: domestic.ticketId } })).quoteStatus).toBe("");
+  });
+
+  it("sends the delivery date, shipping cost and taxes, once", async () => {
+    const { ticketId } = await submitTicket(db, shop, request());
+    expect(Object.keys((await sendQuote(db, shop, ticketId!, { carrier: "", delivery: "", shipping: "", taxes: "", note: "", author: "Priya" })).errors).sort()).toEqual(["delivery", "shipping", "taxes"]);
+    expect(await sendQuote(db, shop, ticketId!, { carrier: "DHL Express", delivery: "Nov 18-22", shipping: "$45.00", taxes: "About $12 VAT", note: "In stock!", author: "Priya" }))
+      .toEqual({ errors: {}, quoteStatus: "Quoted" });
+    expect(await db.helpDeskTicket.findUniqueOrThrow({ where: { id: ticketId } })).toMatchObject({
+      quoteStatus: "Quoted", quoteCarrier: "DHL Express", quoteDelivery: "Nov 18-22", quoteShipping: "$45.00", quoteTaxes: "About $12 VAT", status: "Resolved" });
+    expect((await quoteUnavailable(db, shop, ticketId!, { note: "No", author: "Priya" })).errors.form).toMatch(/already been sent/);
+  });
+
+  it("tells the customer when it isn't available, with a reason", async () => {
+    const { ticketId } = await submitTicket(db, shop, request());
+    expect((await quoteUnavailable(db, shop, ticketId!, { note: " ", author: "Priya" })).errors.note).toBeTruthy();
+    expect(await quoteUnavailable(db, shop, ticketId!, { note: "We can't ship batteries there.", author: "Priya" })).toEqual({ errors: {}, quoteStatus: "Unavailable" });
   });
 });

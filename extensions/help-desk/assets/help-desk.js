@@ -68,6 +68,7 @@
     }
     const { topics, issues, countries } = config;
     const cancelReasons = Array.isArray(config.cancelReasons) ? config.cancelReasons : [];
+    const cancelScopes = Array.isArray(config.cancelScopes) ? config.cancelScopes : ['Whole order', 'Selected items'];
     // "How can we help you?" groups, each with its "What's going on?" options
     // (app/services/help-desk-form.ts). An option carries the ticket's category,
     // sub-category and the form values it implies, and names the fields to show.
@@ -126,10 +127,37 @@
       const position = active.findIndex(({ at }) => at === index) + 1;
       counter.textContent = `Step ${position} of ${active.length} · ${progress.children[index].textContent}`;
       for (const line of chosenLines) line.refresh();
+      renderCrumbs();
       if (moved && form.isConnected) {
         if (form.getBoundingClientRect().top < 0) form.scrollIntoView({ behavior: 'smooth', block: 'start' });
         panels[index].querySelector('h3').focus({ preventScroll: true });
       }
+    }
+    // Breadcrumbs above the steps: where the customer is, by what they chose
+    // ("Help Desk › Orders › Edit Existing Order › Request"). Earlier steps go
+    // back when clicked; the current one is plain text. A skipped step (details,
+    // for a signed-in customer) isn't listed.
+    const crumbs = node('nav', '', { class: 'help-desk-crumbs', 'aria-label': 'Breadcrumb' });
+    function renderCrumbs() {
+      const list = node('ol');
+      const add = (label, target) => {
+        const item = node('li');
+        if (target === step) item.append(node('span', label, { 'aria-current': 'step' }));
+        else {
+          const link = node('button', label, { type: 'button' });
+          link.onclick = () => go(target);
+          item.append(link);
+        }
+        list.append(item);
+      };
+      add('Help Desk', 0);
+      const chosenGroup = step >= 1 ? groups[Number(group?.value)] : null;
+      if (chosenGroup) add(chosenGroup.label, groups[Number(group.value)]?.options.length === 1 ? 0 : 1);
+      if (step >= 2 && current) add(current.label, issueStep());
+      for (let at = 2; at <= step; at++) if (!progress.children[at]?.hidden) add(progress.children[at].textContent, at);
+      // On the topic step there's nothing chosen yet: Help Desk alone.
+      crumbs.replaceChildren(list);
+      crumbs.hidden = step === 0;
     }
     // Back at the top of a step, where it's easy to reach.
     function backButton(panel, back) {
@@ -527,6 +555,7 @@
       signed.append(node('span', initials, { class: 'help-desk-avatar', 'aria-hidden': 'true' }), text);
       aside.prepend(signed);
     }
+    controls.prepend(crumbs);
     form.append(aside, controls);
     prefill();
     // Signed-in customers' earlier requests, each linking to its private request page.
@@ -694,7 +723,8 @@
     function catalog() {
       const products = Array.from(root.querySelector('[data-help-desk-products]').options).map(option => ({ id: option.value, title: option.textContent, image: option.dataset.image || '' }));
       const ordered = new Map();
-      for (const item of orders.flatMap(items)) if (item.id && !ordered.has(item.id)) ordered.set(item.id, { id: item.id, title: item.title, image: item.image, ordered: true });
+      // Only products still in the store: a deleted product's order line can't be ordered again.
+      for (const item of orders.flatMap(items)) if (item.id?.startsWith('gid://shopify/Product/') && !ordered.has(item.id)) ordered.set(item.id, { id: item.id, title: item.title, image: item.image, ordered: true });
       return [...ordered.values(), ...products.filter(product => !ordered.has(product.id))];
     }
 
@@ -1091,7 +1121,9 @@
     // change; otherwise the customer sees why. Changing the order closes them again.
     function orderGate(kind, reveal) {
       const area = node('div', '', { 'data-fields': '', 'data-part': 'ask' });
-      orderField(area, null, order => order.fulfillment !== 'fulfilled' && order.fulfillment !== 'partial');
+      // A partly shipped order can still be asked about for a cancellation (what hasn't shipped), not for a new address.
+      // A lost package is about a shipped order; the others, one that hasn't shipped (a cancellation: not all of it).
+      orderField(area, null, kind === 'lost' ? shipped : order => order.fulfillment !== 'fulfilled' && (kind === 'cancel' || order.fulfillment !== 'partial'));
       const panel = node('div', '', { class: 'help-desk-track', 'data-part': 'ask' });
       const check = node('button', 'Continue', { type: 'button' });
       const result = node('p', '', { class: 'help-desk-track-error', role: 'alert', hidden: '' });
@@ -1099,7 +1131,7 @@
       panel.append(check, result);
       fields.append(area, panel, more);
       requestNext.hidden = true;
-      const close = () => { more.replaceChildren(); panel.hidden = false; requestNext.hidden = true; stage('ask'); };
+      const close = () => { more.replaceChildren(); selected.clear(); nextCheck = null; panel.hidden = false; requestNext.hidden = true; stage('ask'); };
       for (const type of ['input', 'change']) area.addEventListener(type, () => { if (more.childElementCount) close(); result.hidden = true; });
       check.onclick = async () => {
         const orderNumber = String(area.querySelector('[name=orderNumber]')?.value || '').trim();
@@ -1118,9 +1150,10 @@
           result.hidden = true;
           // The order checked out: say so, then its fields, as the next screen.
           const verified = node('div', '', { class: 'help-desk-verified' });
-          verified.append(node('strong', `Order ${orderNumber}`), node('span', kind === 'cancel' ? 'This order hasn\'t shipped yet, so you can send a cancellation request.' : 'This order\'s address can still be changed.'));
+          verified.append(node('strong', `Order ${orderNumber}`), node('span', kind === 'lost' ? 'We found your order. Check its status below.' : kind === 'edit' ? 'This order is still at our warehouse, so you can ask to change it.' : kind !== 'cancel' ? 'This order\'s address can still be changed.'
+            : data.partial ? 'Part of this order has shipped. You can ask to cancel the items that haven\'t shipped yet.' : 'This order hasn\'t shipped yet, so you can send a cancellation request.'));
           more.append(verified);
-          reveal(more, data.country || '');
+          reveal(more, data.country || '', data);
           stage('request', '', '', close);
           requestNext.hidden = false;
         } catch { show('We couldn\'t check your order right now. Please try again in a moment.'); }
@@ -1222,6 +1255,26 @@
       parent.append(card);
     }
 
+    // A request's Process Guidelines, above the order number: each step's name,
+    // what to do, and any rules under it. Appended to parent when given.
+    function guidelines(parent, steps, heading = 'Process Guidelines') {
+      const notice = node('div', '', { class: 'help-desk-cancel-notice help-desk-guide', role: 'note', 'data-part': 'ask' });
+      const list = node('ol');
+      for (const [title, text, ...rules] of steps) {
+        const item = node('li');
+        item.append(node('b', title));
+        if (text) item.append(` ${text}`);
+        if (rules.length) {
+          const sub = node('ul');
+          for (const rule of rules) sub.append(node('li', rule));
+          item.append(sub);
+        }
+        list.append(item);
+      }
+      notice.append(node('strong', heading), list);
+      parent?.append(notice);
+      return notice;
+    }
     // Fields for each kind of request, after the customer picks an option.
     const flows = {
       // Where is my order, partial or missing deliveries, faster shipping.
@@ -1231,18 +1284,138 @@
         const required = Boolean(option.detailsLabel);
         field(fields, 'details', required ? option.detailsLabel : 'Additional Details (optional)', { multiline: true, optional: !required, placeholder: option.placeholder || 'For example: the tracking status shown, or which items have not arrived.' });
       },
+      // Editing an order still at our warehouse, by its Process Guidelines: the
+      // order checked first, then the items to change, products to add, the
+      // changes, and the price difference accepted. The team confirms before
+      // the order is updated; the server checks the same.
+      edit(option) {
+        guidelines(fields, [
+          ['Enter Order Number:', 'Provide your order number to view your order details.'],
+          ['Check Order Status:', 'Changes can only be requested if the order is still at our warehouse and hasn\'t been dispatched.'],
+          ['Select Items:', 'Choose the products you\'d like to modify, add, or remove.'],
+          ['Describe Changes:', 'Provide the details of your requested modifications.'],
+          ['Review Additional Charges:', 'Any price differences or additional charges will be confirmed before proceeding.'],
+          ['Submit Request:', 'Our support team will review your request and confirm the changes before updating your order.'],
+        ]);
+        orderGate('edit', (more, country, data) => {
+          const lines = Array.isArray(data?.items) ? data.items : [];
+          // Each item picked gets its own box: remove it, change how many, or change its color or size.
+          if (lines.length) {
+            productCards(more, lines.map(line => ({ id: line.id, title: line.title, variant: line.variant || '', quantity: Number(line.quantity) || 1, image: line.image || '' })),
+              'Select the items to modify or remove', (box, product, id) => {
+                const slot = node('div', '', { 'data-fields': '' });
+                choiceCards(box, `itemAction:${id}`, 'What would you like to do?', [['Remove', 'Remove it'], ['Change quantity', 'Change quantity'], ['Change color or size', 'Change color or size']], value => {
+                  slot.replaceChildren();
+                  if (value === 'Change quantity') {
+                    const count = quantityField(slot, `itemWanted:${id}`, 'New quantity', 99);
+                    count.value = String(product.quantity || 1);
+                    count.dataset.review = `${product.title} · New quantity`;
+                  }
+                  if (value === 'Change color or size') field(slot, `itemVariant:${id}`, 'Which color or size would you like?', { placeholder: 'e.g. Blue, Large' }).dataset.review = `${product.title} · Wants`;
+                }, `${product.title} · Change`);
+                box.append(slot);
+              }, { search: false });
+          }
+          // Products to add, with how many, for the team to price.
+          const added = new Map();
+          const names = node('input', '', { type: 'hidden', name: 'addedProducts', 'data-review': 'Products to add' });
+          const list = node('input', '', { type: 'hidden', name: 'addedItems' });
+          const sync = () => {
+            names.value = [...added.values()].map(product => `${product.title} × ${product.qty || 1}`).join(', ');
+            list.value = JSON.stringify([...added.values()].map(product => ({ id: product.id, title: product.title, quantity: product.qty || 1 })));
+          };
+          const adding = node('div', '', { class: 'help-desk-edit-add' });
+          more.append(adding);
+          productSearch(adding, 'Add Products (optional)', added, sync, { required: false, quantities: true });
+          adding.append(names, list);
+          field(more, 'details', 'Describe Changes (optional)', { multiline: true, optional: true, placeholder: option.placeholder || '' });
+          // Review Additional Charges: accepted before the request is sent.
+          const consent = node('label', '', { class: 'help-desk-consent' });
+          const accept = node('input', '', { type: 'checkbox', name: 'chargesAccepted', value: 'Yes' });
+          const copy = node('span');
+          copy.append(node('strong', 'I agree to review any additional charges'), node('small', 'Any price difference or additional charge will be confirmed with me before my order is updated.'));
+          consent.append(accept, copy);
+          more.append(consent);
+          nextCheck = () => {
+            if (!selected.size && !added.size) { message('Select the items you\'d like to change, or add a product.', true); return false; }
+            const open = [...selected.keys()].find(id => !more.querySelector(`[name="itemAction:${id}"]:checked`));
+            if (open) { message(`Choose what you'd like to do with ${selected.get(open).title}.`, true); return false; }
+            if (!accept.checked) { message('Please confirm that any price difference will be confirmed before your order is updated.', true); return false; }
+            return true;
+          };
+        });
+      },
+      // A lost package, by its Process Guidelines: the order, the missing
+      // products, the order's status in Shopify with more details, and whether
+      // they'd like the products sent again or a refund. The team confirms.
+      lost(option) {
+        guidelines(fields, [
+          ['Enter Order Number:', 'Provide your order number.'],
+          ['Select Missing Item:', 'Choose the missing product.'],
+          ['Review Order Status:', 'Check the current Shopify order status and provide additional details about the issue.'],
+          ['Select your further Preference:', 'Select whether you\'d prefer the missing product or a refund.'],
+          ['Submit Request:', 'Submit your request for our support team to review and confirm the next steps.'],
+        ]);
+        orderGate('lost', (more, country, data) => {
+          const lines = Array.isArray(data?.items) ? data.items : [];
+          productCards(more, lines.map(line => ({ id: line.id, title: line.title, variant: line.variant || '', quantity: Number(line.quantity) || 1, image: line.image || '' })),
+            'Which product is missing?', () => {}, { search: !lines.length });
+          // The order as Shopify has it: its status and each shipment's tracking.
+          const status = node('div', '', { class: 'help-desk-lost-status', role: 'group', 'aria-label': 'Order status' });
+          status.append(node('h4', 'Order Status'), node('p', `Shopify status: ${data?.status || 'Unfulfilled'}`));
+          for (const shipment of Array.isArray(data?.shipments) ? data.shipments : []) {
+            const row = node('p', [shipment.label, shipment.carrier, shipment.number].filter(Boolean).join(' · '));
+            if (shipment.url) row.append(' · ', node('a', 'Track', { href: shipment.url, target: '_blank', rel: 'noopener' }));
+            status.append(row);
+          }
+          more.append(status);
+          field(more, 'details', option.detailsLabel || 'Additional Details', { multiline: true, placeholder: option.placeholder || '' });
+          const preference = choiceCards(more, 'lostPreference', 'What would you prefer?', [
+            ['Send the missing product', 'Send the missing product', 'We ship it to you again.'],
+            ['Refund', 'Refund', 'To your original payment method.'],
+          ]);
+          nextCheck = () => {
+            if (!selected.size) { message('Select the missing product.', true); return false; }
+            if (!preference.querySelector('input:checked')) { message('Choose whether you\'d like the product sent again or a refund.', true); return false; }
+            return true;
+          };
+        });
+      },
       // Changes to an order that hasn't shipped yet.
       orderUpdate(option) {
         orderField(fields, null, order => order.fulfillment !== 'fulfilled');
         field(fields, 'details', option.detailsLabel || 'Request Details', { multiline: true, placeholder: option.placeholder || '' });
       },
-      // Cancelling the whole order before it ships: the order, why, and anything else.
-      // The team approves or rejects it; the request page shows where it stands.
+      // Cancelling the order (or only some of its items) before it ships: the
+      // order, what to cancel, why, and anything else. The team approves or
+      // rejects it and cancels it in Shopify; the request page shows where it stands.
       cancel(option) {
         const notice = node('div', '', { class: 'help-desk-cancel-notice', role: 'note' });
-        notice.append(node('strong', 'This sends a cancellation request. It doesn\'t cancel your order.'), node('span', 'Our team reviews every request and cancels the whole order only if it hasn\'t shipped yet. Enter your order number and continue: we\'ll check your order first. You can follow the request (Pending, Approved, Rejected or Cancelled) on your request page.'));
+        notice.append(node('strong', 'This sends a cancellation request. It doesn\'t cancel your order.'), node('span', 'Our team reviews every request and cancels only what hasn\'t shipped yet. Enter your order number and continue: we\'ll check your order first. You can follow the request (Pending, Approved, Rejected or Cancelled) on your request page.'));
         fields.append(notice);
-        orderGate('cancel', more => {
+        orderGate('cancel', (more, country, data) => {
+          // An order with more than one item: all of it, or only the items they pick.
+          const lines = Array.isArray(data?.items) ? data.items : [];
+          if (lines.length > 1) {
+            const picks = node('div', '', { 'data-fields': '' });
+            choiceCards(more, 'cancelScope', 'What would you like to cancel?', [
+              [cancelScopes[0], data.partial ? 'Everything not shipped yet' : 'The whole order', `All ${lines.length} items`],
+              [cancelScopes[1], 'Only some items', 'Choose them next'],
+            ], value => {
+              picks.replaceChildren();
+              selected.clear();
+              if (value !== cancelScopes[1]) return;
+              productPicker(picks, 'Items to Cancel', lines.map(line => ({
+                id: line.id, image: line.image || '',
+                title: [line.title, line.variant].filter(Boolean).join(' - ') + (Number(line.quantity) > 1 ? ` × ${line.quantity}` : ''),
+              })));
+            }, 'Cancel');
+            more.append(picks);
+            nextCheck = () => {
+              if (more.querySelector('[name=cancelScope]:checked')?.value === cancelScopes[1] && !selected.size) { message('Select the items you want to cancel.', true); return false; }
+              return true;
+            };
+          }
           const reason = field(more, 'cancelReason', 'Reason for Cancellation', { choices: cancelReasons, placeholder: 'Select a reason' });
           const extra = node('div', '', { 'data-fields': '' });
           more.append(extra);
@@ -1303,10 +1476,62 @@
         const wrong = option.flow === 'wrongItem';
         const missing = !wrong && option.preset.issue === issues[2];
         const warranty = option.category === 'Warranty';
+        // Damaged or defective goes back to the warehouse, by the Process Guidelines
+        // shown above the order number: shipped, within 6 months, unused and in its
+        // packaging, for a refund or an exchange. The server checks the same.
+        const returning = !wrong && !missing && !warranty;
+        if (returning) {
+          area.before(guidelines(null, [
+            ['Enter Order Number:', 'Provide your order number.'],
+            ['Describe the Issue:', 'Explain the issue and upload product photos.'],
+            ['Check Return Eligibility:', '', 'Returns accepted within 6 months of purchase.', 'Product must be unused and in original packaging.'],
+            ['Select your preference:', 'Refund or Exchange.'],
+            ['Return Label:', 'Once approved by customer support, the return label will be sent via email or Helpdesk.'],
+            ['Ship the Product:', 'Print and attach the label to the package and send it to our warehouse.'],
+            ['Verification:', 'Once received, our team will inspect the product and proceed with your refund or exchange.'],
+          ]));
+        }
+        // A missing part, by its Procedure Guidelines: the product and the part with
+        // photos; the team checks the order (still in transit? in the box?),
+        // confirms the replacement and ships it with tracking.
+        if (missing) {
+          area.before(guidelines(null, [
+            ['Enter Order Number:', 'Provide your order number and select the affected product.'],
+            ['Describe the Issue:', 'Specify the missing or lost part and upload product images.'],
+            ['Check Order Status:', 'Our team will verify whether the missing part is still in transit or was included in the original shipment.'],
+            ['Support Confirmation:', 'Our support team will review your request and confirm replacement eligibility.'],
+            ['Replacement Shipping:', 'Once approved, we\'ll arrange shipment of the replacement part and share tracking details.'],
+          ], 'Procedure Guidelines'));
+        }
+        // A wrong item goes back too, by its Process Guidelines: the problem with
+        // photos, a return for a refund or an exchange, unused and in its packaging,
+        // then the team's confirmation before anything is sent back.
+        if (wrong) {
+          area.before(guidelines(null, [
+            ['Enter Order Number:', 'Provide your order number.'],
+            ['Describe the Issue:', 'Explain the problem and upload product images.'],
+            ['Choose a Resolution:', 'Select Return, then choose Refund or Exchange.'],
+            ['Check Eligibility:', 'Ensure the product is unused and in its original packaging.'],
+            ['Submit Request:', 'Submit your request and wait for our team\'s confirmation before proceeding.'],
+          ]));
+        }
+        // A warranty claim, by its Process Guidelines: the product and the defect
+        // with photos; the team checks the purchase date and coverage and decides
+        // the solution, so the customer doesn't pick one.
+        if (warranty) {
+          area.before(guidelines(null, [
+            ['Enter Order Number:', 'Provide your order number and select the affected product.'],
+            ['Describe the Issue:', 'Explain the defect or damage and upload clear product images.'],
+            ['Check Warranty Eligibility:', 'Our team will verify the purchase date and applicable warranty coverage.'],
+            ['Submit Your Claim:', 'Send your request for our support team to review.'],
+            ['Warranty Approval:', 'Once verified, our team will confirm whether a replacement, repair, or other eligible solution is available.'],
+            ['Next Steps:', 'We\'ll share the instructions and shipping details, if applicable.'],
+          ]));
+        }
         // Damaged or defective: "What happened?" decides, and with it the photo tips.
         let transit = option.category === 'Shipping Damage' && !option.kinds;
         // What they'd like done (values: issueResolutions): a replacement, with the products they want, or a refund.
-        const resolutions = [['Replacement', 'Replacement'], ['Refund', 'Refund']]
+        const resolutions = (returning ? [['Refund', 'Refund'], ['Exchange', 'Exchange']] : wrong ? [['Refund', 'Return & Refund'], ['Exchange', 'Return & Exchange']] : [['Replacement', 'Replacement'], ['Refund', 'Refund']])
           .filter(([value]) => !Array.isArray(config.issueResolutions) || config.issueResolutions.includes(value));
         // Each product's own "What would you like?" and, for a replacement, the
         // products wanted instead of it: that product to start with; they can
@@ -1314,16 +1539,28 @@
         // product: a wrong colour or quantity is replaced by the variant or count asked above it.
         const resolutionBoxes = new Map();
         function askResolution(box, product, id) {
+          // A warranty claim: the team confirms the solution after checking it.
+          if (warranty) {
+            box.append(node('p', 'Our team will verify your purchase date and warranty coverage, then confirm whether a replacement, repair or other solution is available.', { class: 'help-desk-hint', role: 'note' }));
+            return;
+          }
+          // A missing part is replaced: the part itself, nothing to choose.
+          if (missing) {
+            box.append(node('input', '', { type: 'hidden', name: `itemResolution:${id}`, value: 'Replacement' }),
+              node('p', 'Once our team confirms it, we\'ll ship the replacement part and share its tracking details with you.', { class: 'help-desk-hint', role: 'note' }));
+            return;
+          }
           const replacements = new Map();
           const replacement = node('input', '', { type: 'hidden', name: `itemReplacement:${id}`, 'data-review': `${product.title} · Replacement` });
           const wanted = node('div', '', { class: 'help-desk-replacement', hidden: '' });
           // A refund: what happens next, so they know what to expect.
-          const refundNote = node('p', 'We\'ll review your request and refund to your original payment method. We may ask you to return the item first.', { class: 'help-desk-hint help-desk-refund-note', role: 'note', hidden: '' });
+          const refundNote = node('p', returning || wrong ? 'Once your return is approved, we\'ll email you a return label. We refund to your original payment method after the product is received and verified.'
+            : 'We\'ll review your request and refund to your original payment method. We may ask you to return the item first.', { class: 'help-desk-hint help-desk-refund-note', role: 'note', hidden: '' });
           const sync = () => { replacement.value = [...replacements.values()].map(entry => entry.title).join(', '); };
           const show = () => {
             const value = box.querySelector(`input[name="itemResolution:${id}"]:checked`)?.value;
             refundNote.hidden = value !== 'Refund';
-            const open = value === 'Replacement' && (!wrong || wrongKind === 'Wrong product');
+            const open = (value === 'Replacement' || value === 'Exchange') && (!wrong || wrongKind === 'Wrong product');
             if (open === !wanted.hidden) return;
             replacements.clear();
             wanted.replaceChildren();
@@ -1479,10 +1716,14 @@
           showTips();
           const orderNumber = String(area.querySelector('[name=orderNumber]')?.value || '').trim();
           const local = orders.find(order => order.name === orderNumber);
-          // Missing: part of the order hasn't shipped yet, so it may still be on its way.
+          // Missing: part of the order hasn't shipped yet, or it hasn't been delivered, so it may still be on its way.
           if (missing && (found?.partial || local?.fulfillment === 'partial')) {
             const notice = node('div', '', { class: 'help-desk-cancel-notice', role: 'note' });
             notice.append(node('strong', 'Part of this order hasn\'t shipped yet.'), node('span', 'The item may still be on its way. Check Track Order first.'));
+            more.append(notice);
+          } else if (missing && found && !found.deliveredAt) {
+            const notice = node('div', '', { class: 'help-desk-cancel-notice', role: 'note' });
+            notice.append(node('strong', 'This order isn\'t marked as delivered yet.'), node('span', 'The missing part may still be in transit. You can still send this request, and our team will check it.'));
             more.append(notice);
           }
           // One option for several categories: what happened sets the ticket's category.
@@ -1524,10 +1765,18 @@
               if (many) quantityField(box, `itemQty:${id}`, 'How many are affected?', product.quantity).dataset.review = `${product.title} · How many`;
               field(box, `itemNote:${id}`, 'Describe the issue', { multiline: true, placeholder: option.placeholder || 'Briefly describe the problem' }).dataset.review = product.title;
             }
-            imageField(box, wrong || option.preset.issue === issues[0], `images:${id}`);
+            imageField(box, wrong || missing || option.preset.issue === issues[0], `images:${id}`);
             videoField(box, '', `videos:${id}`);
             askResolution(box, product, id);
           }, { search: !found?.items?.length, tips });
+          // A return (damaged, defective or wrong): the product must be unused and in its original packaging.
+          let condition = null;
+          if (returning || wrong) {
+            const unfit = node('p', wrong ? 'Sorry, we can only accept returns of unused products in their original packaging. Please contact our support team for help.'
+              : 'Sorry, we can only accept returns of unused products in their original packaging. If it stopped working, please send a Warranty Claim instead.', { class: 'help-desk-track-error', role: 'alert', hidden: '' });
+            condition = choiceCards(more, 'returnCondition', 'Is the product unused and in its original packaging?', [['Yes', 'Yes'], ['No', 'No']], value => { unfit.hidden = value !== 'No'; });
+            more.append(unfit);
+          }
           // A warranty claim without an order we found: where and when it was bought.
           if (warranty && !found && purchasePlaces.length) {
             const bought = node('div', '', { class: 'help-desk-address', role: 'group', 'aria-label': 'Purchase' });
@@ -1540,6 +1789,7 @@
             if (!selected.size) { message(wrong ? 'Select the product that was wrong.' : 'Select the product with the problem.', true); return false; }
             const empty = [...resolutionBoxes.values()].find(entry => entry.wanted.isConnected && !entry.wanted.hidden && !entry.replacements.size);
             if (empty) { message(`Add the product you'd like instead of ${empty.product.title}.`, true); return false; }
+            if (condition && condition.querySelector('input:checked')?.value !== 'Yes') { message('Returns are accepted only for unused products in their original packaging.', true); return false; }
             return true;
           };
           stage('request', '', '', back);
@@ -1559,7 +1809,8 @@
             const data = await (await fetch(url, { headers: { Accept: 'application/json' } })).json();
             note.hidden = true;
             skip.hidden = true;
-            if (data.found) open(data.found);
+            if (data.found?.returnBlocker && returning) show(data.found.returnBlocker);
+            else if (data.found) open(data.found);
             else if (data.unavailable) open(null);
             else show(data.notFound ? `${data.error} If it's an older order, you can continue without it.` : data.error || 'We couldn\'t check your order right now.', data.notFound);
           } catch { open(null); }
@@ -1590,6 +1841,17 @@
       international(option) {
         const home = config.home || 'US';
         const list = countries.filter(entry => option.region === 'domestic' ? entry.code === home : option.region === 'international' ? entry.code !== home : true);
+        // International: its Process Guidelines, and Regular or Expedited shipping.
+        const abroad = option.region === 'international';
+        if (abroad) {
+          guidelines(fields, [
+            ['Select Product:', 'Choose the product you\'d like to purchase.'],
+            ['Enter Shipping Address:', 'Provide your complete delivery address.'],
+            ['Choose Shipping Method:', 'Select Regular or Expedited Shipping.'],
+            ['Check Availability:', 'Our team will verify product availability and shipping carrier options.'],
+            ['Get Shipping Details:', 'We\'ll share the estimated delivery date, shipping costs, and applicable taxes for your address.'],
+          ]);
+        }
         productPicker(fields, 'Products You Want Shipped', null, selected, { quantities: true });
         const grid = node('div', '', { class: 'help-desk-address', role: 'group', 'aria-label': 'Shipping address' });
         grid.append(node('h4', 'Shipping Address'));
@@ -1634,6 +1896,10 @@
         grid.addEventListener('change', compose);
         states();
         addressSuggest(grid, () => country.value);
+        const method = abroad ? choiceCards(fields, 'shippingMethod', 'Shipping Method', [
+          ['Regular', 'Regular Shipping', 'The standard rate and delivery time.'],
+          ['Expedited', 'Expedited Shipping', 'Faster delivery, at a higher cost.'],
+        ]) : null;
 
         // No prices on the form: once the products and address are in, the
         // request is sent, and our team replies with shipping options and costs.
@@ -1648,6 +1914,7 @@
           const invalid = [...grid.querySelectorAll('input, select, textarea')].find(input => input.willValidate && !input.checkValidity());
           if (invalid) { invalid.reportValidity(); invalid.focus(); return; }
           if (street.value.length < 5) { message('Please enter the full street address, with the house or building number.', true); street.focus(); return; }
+          if (method && !method.querySelector('input:checked')) { message('Choose Regular or Expedited shipping.', true); return; }
           compose();
           return { request: true };
         }, () => false, null, '');

@@ -8,8 +8,12 @@ import { addStaffMessage, classifyUnsorted, deleteTickets, readHelpDeskForm, sub
 import { categoryNames, rootCauses, subcategoriesOf } from "./help-desk-taxonomy";
 import { cachedProducts, emailConfigured, loadProducts, loadShop, sendTestEmail, trackingUrl } from "./help-desk-email.server";
 import { ordersByEmail, syncTicketOrder } from "./help-desk-orders.server";
-import { cancelOrderInShopify, decideCancellation } from "./help-desk-cancel.server";
+import { cancelOrderInShopify, confirmItemsCancelled, decideCancellation, refundMethods, type RefundMethod } from "./help-desk-cancel.server";
 import { rejectAddressChange, updateAddressInShopify } from "./help-desk-address.server";
+import { markReturnReceived, rejectReturn, sendReturnLabel } from "./help-desk-return.server";
+import { approveReplacement, rejectReplacement, shipReplacement } from "./help-desk-replacement.server";
+import { quoteUnavailable, sendQuote } from "./help-desk-quote.server";
+import { applyOrderEdit, cleanOps, previewOrderEdit, rejectOrderEdit, variantsBySku, type EditTotals, type SkuVariant } from "./help-desk-edit.server";
 import { DETECTOR_MODES, rescanMissingKeyScans, scanImage, serializeScan } from "./image-scan/scan.server";
 import { PROVIDERS, verifyCredentials } from "./image-scan/detector.server";
 import { ensureWorker, queueEmail, retryEmail } from "./help-desk-outbox.server";
@@ -143,11 +147,13 @@ export async function loadTicket({ admin, shop, settings, base, redirect }: Cont
     db.helpDeskTicket.findMany({ where: { shop, tags: { not: "" } }, orderBy: { updatedAt: "desc" }, take: 300, select: { tags: true } }),
   ]);
   const { accessToken, details, id, number, name, email, topic, status, priority, assignee, tags, category, subcategory, rootCause, resolutionType, customerId, channel, createdAt, firstResponseAt, resolvedAt, allowPhotos, allowVideos, cancelStatus, cancelNote, cancelDecidedBy, cancelDecidedAt,
-    addressStatus, addressNote, addressApplied, addressDecidedBy, addressDecidedAt, attachments, messages, emails } = ticket;
+    addressStatus, addressNote, addressApplied, addressDecidedBy, addressDecidedAt, returnStatus, returnNote, returnLabelId, returnDecidedBy, returnDecidedAt, editStatus, editNote, editDecidedBy, editDecidedAt,
+    replacementStatus, replacementNote, replacementCarrier, replacementTracking, replacementTrackingUrl, replacementDecidedBy, replacementDecidedAt, replacementKind, replacementSolution,
+    quoteStatus, quoteCarrier, quoteDelivery, quoteShipping, quoteTaxes, quoteNote, quoteDecidedBy, quoteDecidedAt, attachments, messages, emails } = ticket;
   const files = attachments.map(({ scan, ...file }) => ({ ...file, scan: serializeScan(scan) }));
   // An open address change: has ShipStation bought a label for the old address? null: not asked.
   const account = shipStationAccount(settings);
-  const asksShipStation = ["Pending", "Rejected"].includes(addressStatus) || ["Pending", "Approved", "Rejected"].includes(ticket.cancelStatus);
+  const asksShipStation = ["Pending", "Rejected"].includes(addressStatus) || editStatus === "Pending" || ["Pending", "Approved", "Rejected"].includes(ticket.cancelStatus);
   const shipStation: ShipStationStatus | null = !asksShipStation || !liveOrder || liveOrder.cancelled ? null
     : !account ? { state: "off" }
     : await memo(shipStationKey(shop, id), 2 * MINUTE, async () => { const status = await shipStationStatus(account, liveOrder); return status.state === "error" ? undefined : status; }) ?? { state: "error" };
@@ -155,6 +161,10 @@ export async function loadTicket({ admin, shop, settings, base, redirect }: Cont
     id, number, name, email, topic, status, priority, assignee, tags, category, subcategory, rootCause, resolutionType, customerId, channel, createdAt, firstResponseAt, resolvedAt, allowPhotos, allowVideos,
     cancelStatus, cancelNote, cancelDecidedBy, cancelDecidedAt, attachments: files, messages, emails, readAt,
     addressStatus, addressNote, addressApplied: parseJson<Record<string, string> | null>(addressApplied || "null", null), addressDecidedBy, addressDecidedAt,
+    returnStatus, returnNote, returnLabelId, returnDecidedBy, returnDecidedAt,
+    editStatus, editNote, editDecidedBy, editDecidedAt,
+    replacementStatus, replacementNote, replacementCarrier, replacementTracking, replacementTrackingUrl, replacementDecidedBy, replacementDecidedAt, replacementKind, replacementSolution,
+    quoteStatus, quoteCarrier, quoteDelivery, quoteShipping, quoteTaxes, quoteNote, quoteDecidedBy, quoteDecidedAt,
   };
   return data({
     ...base, macros, others, orders, storeName: store.name || shop,
@@ -204,7 +214,7 @@ export async function loadInbox({ shop, settings, base }: Context, url: URL) {
     db.helpDeskTicket.findMany({
       where, orderBy, skip: (page - 1) * PAGE_SIZE, take: PAGE_SIZE,
       select: {
-        id: true, number: true, name: true, email: true, topic: true, status: true, priority: true, assignee: true, tags: true, unread: true, channel: true, cancelStatus: true, addressStatus: true,
+        id: true, number: true, name: true, email: true, topic: true, status: true, priority: true, assignee: true, tags: true, unread: true, channel: true, cancelStatus: true, addressStatus: true, returnStatus: true, editStatus: true, replacementStatus: true, replacementKind: true, quoteStatus: true,
         category: true, subcategory: true, orderName: true, carrier: true, shipmentStatus: true, createdAt: true, lastActivityAt: true, firstResponseAt: true, details: true, _count: { select: { attachments: true, messages: { where: { kind: "customer" } } } },
       },
     }),
@@ -244,7 +254,7 @@ export async function loadOverview({ shop, settings, base }: Context, url: URL) 
   return data({ ...base, dashboard: await loadDashboard(db, shop, range), overview: setupStatus(settings) }, { headers });
 }
 
-export type ActionResult = { errors: Record<string, string>; ticketId?: string; emailed?: boolean; updated?: number; notice?: string; warning?: string };
+export type ActionResult = { errors: Record<string, string>; ticketId?: string; emailed?: boolean; updated?: number; notice?: string; warning?: string; variants?: SkuVariant[]; totals?: EditTotals };
 
 export const helpDeskAction = async ({ request }: ActionFunctionArgs) => {
   const { admin, session } = await authenticate.admin(request);
@@ -306,11 +316,18 @@ export const helpDeskAction = async ({ request }: ActionFunctionArgs) => {
         }
         return data<ActionResult>({ errors: {}, updated });
       }
-      // An order cancellation request: approve, reject, mark cancelled, or cancel the order in Shopify.
+      // An order cancellation request: approve or reject it, cancel the order in
+      // Shopify, or confirm the items were removed from it there.
       case "cancellation": {
         const input = { note: text("note"), author: text("author") || "Staff" };
+        const refund = text("refund");
         const result = text("decision") === "cancel-shopify"
-          ? await cancelOrderInShopify(db, admin, shop, text("id"), { ...input, refund: text("refund") !== "false", restock: text("restock") !== "false", notifyCustomer: text("notifyCustomer") === "true" })
+          ? await cancelOrderInShopify(db, admin, shop, text("id"), {
+            ...input, refund: refund === "false" ? false : (refundMethods as readonly string[]).includes(refund) ? refund as RefundMethod : true,
+            restock: text("restock") !== "false", notifyCustomer: text("notifyCustomer") === "true",
+          })
+          : text("decision") === "confirm-items"
+          ? await confirmItemsCancelled(db, admin, shop, text("id"), input)
           : await decideCancellation(db, shop, text("id"), { ...input, decision: text("decision") }, admin);
         // The ticket reloads next: show the order as Shopify has it now, not the cached copy.
         forgetTicketOrder(shop, text("id"), await db.helpDeskTicket.findFirst({ where: { id: text("id"), shop }, select: { email: true } }));
@@ -329,6 +346,61 @@ export const helpDeskAction = async ({ request }: ActionFunctionArgs) => {
         forgetTicketOrder(shop, text("id"), await db.helpDeskTicket.findFirst({ where: { id: text("id"), shop }, select: { email: true } }));
         if (!result.addressStatus) return data<ActionResult>({ errors: result.errors }, { status: 400 });
         return data<ActionResult>({ errors: {}, ticketId: text("id"), notice: result.addressStatus, warning: result.warning });
+      }
+      // A damaged or defective item sent back: send its label (approving it), reject it, or mark it received.
+      case "return": {
+        const input = { note: text("note"), author: text("author") || "Staff" };
+        const label = form.get("label");
+        const result = text("decision") === "label"
+          ? await sendReturnLabel(db, shop, text("id"), { ...input, label: typeof label === "string" ? null : label }, admin)
+          : text("decision") === "received"
+          ? await markReturnReceived(db, shop, text("id"), input, admin)
+          : await rejectReturn(db, shop, text("id"), input, admin);
+        if (!result.returnStatus) return data<ActionResult>({ errors: result.errors }, { status: 400 });
+        return data<ActionResult>({ errors: {}, ticketId: text("id"), notice: result.returnStatus });
+      }
+      // An order edit request: find variants by SKU, preview the new total,
+      // update the order in Shopify, or reject the request.
+      case "edit": {
+        const decision = text("decision");
+        if (decision === "sku") {
+          const found = await variantsBySku(admin, text("sku"));
+          return "error" in found ? fail(found.error, 400, "sku") : data<ActionResult>({ errors: {}, variants: found });
+        }
+        const input = { note: text("note"), author: text("author") || "Staff" };
+        if (decision === "reject") {
+          const result = await rejectOrderEdit(db, shop, text("id"), input, admin);
+          if (!result.editStatus) return data<ActionResult>({ errors: result.errors }, { status: 400 });
+          return data<ActionResult>({ errors: {}, ticketId: text("id"), notice: result.editStatus });
+        }
+        const ops = cleanOps(parseJson<unknown>(text("ops"), null));
+        if (!ops) return fail("Reload the page and try again.");
+        if (decision === "preview") {
+          const preview = await previewOrderEdit(db, admin, shop, text("id"), ops);
+          return preview.totals ? data<ActionResult>({ errors: {}, totals: preview.totals }) : data<ActionResult>({ errors: preview.errors }, { status: 400 });
+        }
+        const result = await applyOrderEdit(db, admin, shop, text("id"), { ...input, ops, notifyCustomer: text("notifyCustomer") === "true", summary: text("summary") });
+        forgetTicketOrder(shop, text("id"), await db.helpDeskTicket.findFirst({ where: { id: text("id"), shop }, select: { email: true } }));
+        if (!result.editStatus) return data<ActionResult>({ errors: result.errors }, { status: 400 });
+        return data<ActionResult>({ errors: {}, ticketId: text("id"), notice: result.editStatus });
+      }
+      // A missing part: approve the replacement, reject it, or ship it with tracking.
+      case "replacement": {
+        const input = { note: text("note"), author: text("author") || "Staff" };
+        const result = text("decision") === "approve" ? await approveReplacement(db, shop, text("id"), { ...input, solution: text("solution") }, admin)
+          : text("decision") === "ship" ? await shipReplacement(db, shop, text("id"), { ...input, carrier: text("carrier"), number: text("number"), url: text("url") }, admin)
+          : await rejectReplacement(db, shop, text("id"), input, admin);
+        if (!result.replacementStatus) return data<ActionResult>({ errors: result.errors }, { status: 400 });
+        return data<ActionResult>({ errors: {}, ticketId: text("id"), notice: result.replacementStatus });
+      }
+      // An international shipping quote: send the delivery, cost and taxes, or say it's not available.
+      case "quote": {
+        const input = { note: text("note"), author: text("author") || "Staff" };
+        const result = text("decision") === "send"
+          ? await sendQuote(db, shop, text("id"), { ...input, carrier: text("carrier"), delivery: text("delivery"), shipping: text("shipping"), taxes: text("taxes") }, admin)
+          : await quoteUnavailable(db, shop, text("id"), input, admin);
+        if (!result.quoteStatus) return data<ActionResult>({ errors: result.errors }, { status: 400 });
+        return data<ActionResult>({ errors: {}, ticketId: text("id"), notice: result.quoteStatus });
       }
       case "message": {
         const result = await addStaffMessage(db, shop, text("id"), { kind: text("kind"), body: text("body"), author: text("author"), status: text("status") || undefined });

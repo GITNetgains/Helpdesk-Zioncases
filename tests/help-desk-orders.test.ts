@@ -79,10 +79,16 @@ describe("Ticket orders from Shopify", () => {
     const admin = { graphql: vi.fn(async () => new Response(JSON.stringify({ data: { orders: { nodes: [withProducts] } } }))) };
     // Items that are no longer products (no product) can't be picked.
     expect(await issueItems(admin, "#100472", "jordan@example.com")).toEqual({
-      order: "#100472", deliveredAt: "2026-10-14T15:00:00Z", partial: false,
+      order: "#100472", deliveredAt: "2026-10-14T15:00:00Z", partial: false, returnBlocker: null,
       items: [{ id: "gid://shopify/Product/1", title: "Slab Case X", variant: "Black", quantity: 1, image: "https://cdn.example/x.jpg" }],
     });
     expect(await issueItems(admin, "#100472", "stranger@example.com")).toBeNull();
+    // A product deleted since the order: its order line stands in, so it can still be picked.
+    const deleted = node({ fulfillments: delivered, lineItems: { nodes: [
+      { id: "gid://shopify/LineItem/7", title: "Old Snowboard", variantTitle: null, sku: null, quantity: 2, product: null, image: null },
+    ] } });
+    const again = { graphql: vi.fn(async () => new Response(JSON.stringify({ data: { orders: { nodes: [deleted] } } }))) };
+    expect((await issueItems(again, "#100472", "jordan@example.com"))?.items).toEqual([{ id: "gid://shopify/LineItem/7", title: "Old Snowboard", variant: "", quantity: 2, image: "" }]);
     const failing = { graphql: vi.fn(async () => { throw new Error("offline"); }) };
     expect(await issueItems(failing, "#100472", "jordan@example.com")).toBeUndefined();
   });
@@ -138,10 +144,10 @@ describe("Can the customer still cancel or re-address their order?", () => {
   const admin = (changes: Record<string, unknown> = {}) => ({ graphql: async () => new Response(JSON.stringify({ data: { orders: { nodes: [node(changes)] } } })) });
   const unshipped = { displayFulfillmentStatus: "UNFULFILLED", fulfillments: [] };
   const toronto = { name: "Jordan Lee", address1: "1 King St W", address2: "", city: "Toronto", province: "ON", zip: "M5H 1A1", country: "CA", phone: "" };
-  const answer = (kind: "cancel" | "address", changes: Record<string, unknown>, email = "jordan@example.com", to?: typeof toronto) => checkOrderChange(admin(changes), kind, "#100472", email, to);
+  const answer = (kind: "cancel" | "address" | "edit", changes: Record<string, unknown>, email = "jordan@example.com", to?: typeof toronto) => checkOrderChange(admin(changes), kind, "#100472", email, to);
 
   it("allows both while nothing has started, and says which country the order ships to", async () => {
-    expect(await answer("cancel", unshipped)).toEqual({ allowed: true, country: "US", orderId: "5501", orderName: "#100472" });
+    expect(await answer("cancel", unshipped)).toEqual({ allowed: true, country: "US", orderId: "5501", orderName: "#100472", items: [], partial: false });
     expect(await answer("address", unshipped)).toEqual({ allowed: true, country: "US", orderId: "5501", orderName: "#100472" });
     expect(await answer("address", { ...unshipped, displayFulfillmentStatus: "ON_HOLD" })).toMatchObject({ allowed: true });
   });
@@ -149,13 +155,23 @@ describe("Can the customer still cancel or re-address their order?", () => {
   it.each([
     ["delivered", { fulfillments: delivered }, false, false],
     ["in transit", {}, false, false],
-    ["partly shipped", { displayFulfillmentStatus: "PARTIALLY_FULFILLED" }, false, false],
+    // The team decides what can still be cancelled of a partly shipped order.
+    ["partly shipped", { displayFulfillmentStatus: "PARTIALLY_FULFILLED" }, true, false],
     ["being packed", { displayFulfillmentStatus: "IN_PROGRESS", fulfillments: [] }, true, false],
     ["cancelled", { ...unshipped, cancelledAt: "2026-10-12T00:00:00Z" }, false, false],
     ["a pickup order", { ...unshipped, requiresShipping: false }, true, false],
   ] as const)("an order %s: cancel %s, change address %s", async (_, changes, cancel, address) => {
     expect((await answer("cancel", changes))?.allowed).toBe(cancel);
     expect((await answer("address", changes))?.allowed).toBe(address);
+  });
+
+  it("lets an order be edited only while it's still at the warehouse, whatever its address", async () => {
+    expect(await answer("edit", unshipped)).toEqual({ allowed: true, country: "US", orderId: "5501", orderName: "#100472", items: [] });
+    expect((await answer("edit", { ...unshipped, requiresShipping: false }))?.allowed).toBe(true);
+    for (const changes of [{ fulfillments: delivered }, { displayFulfillmentStatus: "PARTIALLY_FULFILLED" }, { displayFulfillmentStatus: "IN_PROGRESS", fulfillments: [] }]) {
+      expect(await answer("edit", changes)).toMatchObject({ allowed: false, error: expect.stringContaining("dispatched or is being packed") });
+    }
+    expect(await answer("edit", { ...unshipped, cancelledAt: "2026-10-12T00:00:00Z" })).toMatchObject({ allowed: false, error: "This order is cancelled, so it can't be changed." });
   });
 
   it("tells the customer why in plain words", async () => {
@@ -165,6 +181,14 @@ describe("Can the customer still cancel or re-address their order?", () => {
     // The address it already ships to (Austin, TX, US in the fixture).
     expect(await answer("address", { ...unshipped, shippingAddress: { address1: "1 Main St", city: "Austin", provinceCode: "TX", zip: "78701", countryCodeV2: "US" } }, "jordan@example.com",
       { ...toronto, address1: "1 MAIN ST.", city: "austin", province: "TX", zip: "78701", country: "US" })).toMatchObject({ allowed: false, error: expect.stringContaining("already going to this address") });
+  });
+
+  it("lets a lost package be reported only for a shipped order, with its items and tracking", async () => {
+    expect(await checkOrderChange(admin(unshipped), "lost", "#100472", "jordan@example.com")).toMatchObject({ allowed: false, error: expect.stringContaining("hasn't shipped yet") });
+    expect(await checkOrderChange(admin({ ...unshipped, cancelledAt: "2026-10-12T00:00:00Z" }), "lost", "#100472", "jordan@example.com")).toMatchObject({ allowed: false, error: expect.stringContaining("cancelled") });
+    const shippedOrder = await checkOrderChange(admin({ fulfillments: delivered }), "lost", "#100472", "jordan@example.com");
+    expect(shippedOrder).toMatchObject({ allowed: true, orderName: "#100472" });
+    expect(shippedOrder && shippedOrder.allowed && shippedOrder.shipments?.length).toBeGreaterThan(0);
   });
 
   it("only answers about an order placed with that email", async () => {

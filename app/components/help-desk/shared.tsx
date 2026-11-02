@@ -50,6 +50,34 @@ export function AddressBadge({ status }: { status: string }) {
   return <s-badge tone={ADDRESS_TONE[status as keyof typeof ADDRESS_TONE] ?? "neutral"} icon="location">Address change: {status}</s-badge>;
 }
 
+// Where a damaged or defective item's return stands; nothing for other tickets.
+const RETURN_TONE = { Pending: "warning", "Label sent": "info", Received: "success", Rejected: "critical" } as const;
+export function ReturnBadge({ status }: { status: string }) {
+  if (!status) return null;
+  return <s-badge tone={RETURN_TONE[status as keyof typeof RETURN_TONE] ?? "neutral"} icon="return">Return: {status}</s-badge>;
+}
+
+// Where an order edit request stands; nothing for other tickets.
+const EDIT_TONE = { Pending: "warning", Updated: "success", Rejected: "critical" } as const;
+export function EditBadge({ status }: { status: string }) {
+  if (!status) return null;
+  return <s-badge tone={EDIT_TONE[status as keyof typeof EDIT_TONE] ?? "neutral"} icon="edit">Order edit: {status}</s-badge>;
+}
+
+// Where a missing part's replacement stands; nothing for other tickets.
+const REPLACEMENT_TONE = { Pending: "warning", Approved: "info", Shipped: "success", Rejected: "critical" } as const;
+export function ReplacementBadge({ status, kind = "" }: { status: string; kind?: string }) {
+  if (!status) return null;
+  return <s-badge tone={REPLACEMENT_TONE[status as keyof typeof REPLACEMENT_TONE] ?? "neutral"} icon="package">{kind === "warranty" ? "Warranty" : kind === "lost" ? "Lost package" : "Missing part"}: {kind && kind !== "missing" && status === "Shipped" ? "Next steps sent" : status}</s-badge>;
+}
+
+// Where an international shipping quote stands; nothing for other tickets.
+const QUOTE_TONE = { Pending: "warning", Quoted: "success", Unavailable: "critical" } as const;
+export function QuoteBadge({ status }: { status: string }) {
+  if (!status) return null;
+  return <s-badge tone={QUOTE_TONE[status as keyof typeof QUOTE_TONE] ?? "neutral"} icon="globe">Shipping quote: {status}</s-badge>;
+}
+
 // Shows a toast for a fetcher's result once it settles.
 export function useResultToast(fetcher: { state: string; data?: ActionResult }, success: string | ((data: ActionResult) => string)) {
   const shopify = useAppBridge();

@@ -1,6 +1,6 @@
 import type { PrismaClient } from "@prisma/client";
 import {
-  emailConfigured, notifyCustomerReply, notifyTicket, sendAcknowledgement, sendAddressEmail, sendCancellationEmail, sendReplyEmail, sendStatusEmail, type SendResult,
+  emailConfigured, notifyCustomerReply, notifyTicket, sendAcknowledgement, sendAddressEmail, sendCancellationEmail, sendReplyEmail, sendReturnEmail, sendEditEmail, sendReplacementEmail, sendQuoteEmail, sendStatusEmail, type SendResult,
 } from "./help-desk-email.server";
 
 // Every Help Desk email goes through this queue: a row is saved first, then
@@ -8,7 +8,7 @@ import {
 // before it's marked failed. Agents see each email's state on the ticket and
 // can retry a failed one.
 
-export type EmailKind = "new-ticket" | "ack" | "reply" | "customer-reply" | "status" | "cancellation" | "address";
+export type EmailKind = "new-ticket" | "ack" | "reply" | "customer-reply" | "status" | "cancellation" | "address" | "return" | "edit" | "replacement" | "quote";
 type AdminClient = Parameters<typeof notifyTicket>[2];
 
 const MAX_ATTEMPTS = 3;
@@ -24,6 +24,10 @@ async function deliver(db: PrismaClient, admin: AdminClient, row: { shop: string
     case "status": return sendStatusEmail(db, row.shop, admin, row.ticketId);
     case "cancellation": return sendCancellationEmail(db, row.shop, admin, row.ticketId);
     case "address": return sendAddressEmail(db, row.shop, admin, row.ticketId);
+    case "return": return sendReturnEmail(db, row.shop, admin, row.ticketId);
+    case "edit": return sendEditEmail(db, row.shop, admin, row.ticketId);
+    case "replacement": return sendReplacementEmail(db, row.shop, admin, row.ticketId);
+    case "quote": return sendQuoteEmail(db, row.shop, admin, row.ticketId);
     case "reply": return row.messageId ? sendReplyEmail(db, row.shop, admin, row.messageId) : "skipped";
     case "customer-reply": return row.messageId ? notifyCustomerReply(db, row.shop, admin, row.messageId) : "skipped";
     default: return "skipped";

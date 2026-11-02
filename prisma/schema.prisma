@@ -81,6 +81,43 @@ model HelpDeskTicket {
   addressApplied   String    @default("")
   addressDecidedBy String    @default("")
   addressDecidedAt DateTime?
+  // Damaged or defective items sent back (app/services/help-desk-return.server.ts).
+  // returnStatus: empty (not a return), Pending, Label sent, Received or Rejected.
+  // returnLabelId: the return label staff sent, a HelpDeskAttachment.
+  returnStatus    String    @default("")
+  returnNote      String    @default("")
+  returnLabelId   String    @default("")
+  returnDecidedBy String    @default("")
+  returnDecidedAt DateTime?
+  // Order edit requests (app/services/help-desk-edit.server.ts): items changed,
+  // removed or added. editStatus: empty (not an edit), Pending, Updated or Rejected.
+  editStatus    String    @default("")
+  editNote      String    @default("")
+  editDecidedBy String    @default("")
+  editDecidedAt DateTime?
+  // Missing or lost parts (app/services/help-desk-replacement.server.ts).
+  // replacementStatus: empty (not a missing part), Pending, Approved, Shipped or Rejected.
+  replacementStatus      String    @default("")
+  replacementNote        String    @default("")
+  replacementCarrier     String    @default("")
+  replacementTracking    String    @default("")
+  replacementTrackingUrl String    @default("")
+  replacementDecidedBy   String    @default("")
+  replacementDecidedAt   DateTime?
+  // missing (a missing part) or warranty (a warranty claim); and for a warranty,
+  // the solution the team approved: Replacement, Repair, Store credit or Other.
+  replacementKind        String    @default("")
+  replacementSolution    String    @default("")
+  // International shipping quotes (app/services/help-desk-quote.server.ts).
+  // quoteStatus: empty (not a quote), Pending, Quoted or Unavailable; what the team sent.
+  quoteStatus     String    @default("")
+  quoteCarrier    String    @default("")
+  quoteDelivery   String    @default("")
+  quoteShipping   String    @default("")
+  quoteTaxes      String    @default("")
+  quoteNote       String    @default("")
+  quoteDecidedBy  String    @default("")
+  quoteDecidedAt  DateTime?
   // When staff last opened the ticket; later messages are marked new.
   staffReadAt DateTime?
   firstResponseAt DateTime?
@@ -101,6 +138,10 @@ model HelpDeskTicket {
   @@index([shop, carrier])
   @@index([shop, cancelStatus])
   @@index([shop, addressStatus])
+  @@index([shop, returnStatus])
+  @@index([shop, editStatus])
+  @@index([shop, replacementStatus])
+  @@index([shop, quoteStatus])
 }
 
 // Conversation after the original request. kind: customer (portal reply),
@@ -144,7 +185,7 @@ model HelpDeskBotQuestion {
 }
 
 // Outgoing emails, sent from a queue with retries.
-// kind: new-ticket, customer-reply (to the store), ack, reply, status, cancellation, address (to the customer).
+// kind: new-ticket, customer-reply (to the store), ack, reply, status, cancellation, address, return, edit, replacement, quote (to the customer).
 // status: pending, processing, sent, skipped or failed.
 model HelpDeskEmail {
   id            String    @id @default(cuid())

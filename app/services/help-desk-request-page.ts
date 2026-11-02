@@ -1,4 +1,4 @@
-import { addressFromValues, addressLines, countryName, fieldLabels, VIDEO_EXTENSIONS, type ShippingAddress } from "./help-desk";
+import { addressFromValues, addressLines, cancelScopes, countryName, fieldLabels, VIDEO_EXTENSIONS, type ShippingAddress, parseEditRequest } from "./help-desk";
 
 // The customer-facing pages served through the app proxy: the private request
 // page and the lookup page. They are returned as Liquid so the store's theme
@@ -134,7 +134,8 @@ const STYLES = `<style>
 .hdt-note{margin-bottom:14px;padding:12px 14px;border-radius:12px;font-size:14px}
 .hdt-note[data-tone="success"]{background:#e3f5ea;color:#0c5132}.hdt-note[data-tone="error"]{background:#fde8e6;color:#8e1f0b}
 .hdt-cancel{border-top:4px solid #f0b400}
-.hdt-cancel[data-status="Approved"]{border-top-color:var(--blue)}.hdt-cancel[data-status="Rejected"]{border-top-color:#b3261e}.hdt-cancel[data-status="Cancelled"],.hdt-cancel[data-status="Updated"]{border-top-color:var(--ok)}
+.hdt-cancel[data-status="Approved"]{border-top-color:var(--blue)}.hdt-cancel[data-status="Rejected"]{border-top-color:#b3261e}.hdt-cancel[data-status="Cancelled"],.hdt-cancel[data-status="Updated"],.hdt-cancel[data-status="Received"]{border-top-color:var(--ok)}.hdt-cancel[data-status="Label sent"]{border-top-color:var(--blue)}.hdt-cancel[data-status="Shipped"]{border-top-color:var(--ok)}
+.hdt-button{display:inline-block;padding:12px 22px;border-radius:6px;background:var(--accent);color:#fff;font-weight:600;text-decoration:none}
 .hdt-pill[data-status="Updated"]{background:#e3f5ea;color:var(--ok)}
 .hdt-cancel-head{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
 .hdt-pill[data-status="Pending"]{background:#fff4d6;color:#7a5600}.hdt-pill[data-status="Approved"]{background:#e6effc;color:#1d4f94}
@@ -409,6 +410,16 @@ export type RequestPageTicket = {
   cancelStatus?: string; cancelNote?: string; cancelDecidedAt?: Date | null;
   // A shipping address change: Pending, Updated or Rejected, the team's note and the address set in Shopify (JSON).
   addressStatus?: string; addressNote?: string; addressApplied?: string; addressDecidedAt?: Date | null;
+  // A damaged or defective item sent back: Pending, Label sent, Received or Rejected, the team's note and the label it sent.
+  returnStatus?: string; returnNote?: string; returnLabelId?: string; returnDecidedAt?: Date | null;
+  // An order edit: Pending, Updated or Rejected, and what the team said.
+  editStatus?: string; editNote?: string; editDecidedAt?: Date | null;
+  // A missing part: Pending, Approved, Shipped or Rejected, the team's note and the replacement's tracking.
+  replacementStatus?: string; replacementNote?: string; replacementCarrier?: string; replacementTracking?: string; replacementTrackingUrl?: string; replacementDecidedAt?: Date | null;
+  // missing or warranty, and the solution approved for a warranty claim.
+  replacementKind?: string; replacementSolution?: string;
+  // An international shipping quote: Pending, Quoted or Unavailable, and what the team sent.
+  quoteStatus?: string; quoteCarrier?: string; quoteDelivery?: string; quoteShipping?: string; quoteTaxes?: string; quoteNote?: string; quoteDecidedAt?: Date | null;
   messages: { id: string; kind: string; author: string; body: string; createdAt: Date }[];
 };
 // The order's latest shipment, shown only when the order was placed with the
@@ -433,9 +444,9 @@ function shipmentCard(shipment: PageShipment | null | undefined) {
 
 const CANCEL_COPY: Record<string, string> = {
   Pending: "Pending review: your order has not been cancelled yet. Our team will check that it hasn't shipped, then let you know here and by email.",
-  Approved: "Your cancellation is approved. We're cancelling the order now and will confirm when it's done.",
+  Approved: "Your cancellation is approved. We're cancelling it now and will confirm here and by email when it's done.",
   Rejected: "We weren't able to cancel this order.",
-  Cancelled: "Your order has been cancelled. If you paid for it, the refund goes back to your original payment method and usually appears within 5-10 business days.",
+  Cancelled: "Cancelled. If a refund is due, it's on its way: refunds to a card usually appear within 5-10 business days.",
 };
 
 const ADDRESS_COPY: Record<string, string> = {
@@ -458,8 +469,119 @@ ${ticket.addressNote ? `<blockquote>${multiline(ticket.addressNote)}</blockquote
 ${ticket.addressDecidedAt ? `<p>Updated ${time(ticket.addressDecidedAt)}</p>` : ""}</div>`;
 }
 
+const RETURN_COPY: Record<string, string> = {
+  Pending: "Pending review: our team is checking that your return meets the conditions (unused, in its original packaging). Please wait for our confirmation before sending anything back: once it's approved, we'll send your return label here and by email.",
+  "Label sent": "Your return is approved. Print the label, attach it to the package and send it to our warehouse. Once received, our team will inspect the product and proceed with your refund or exchange.",
+  Received: "We've received your return and inspected the product. We're now proceeding with your refund or exchange.",
+  Rejected: "We weren't able to accept this return.",
+};
+
+// Where the customer's return stands, with its label once it's approved.
+function returnCard(ticket: RequestPageTicket, order: string) {
+  const status = ticket.returnStatus;
+  if (!status) return "";
+  const rejected = status === "Rejected";
+  const steps = rejected ? ["Requested", "Not accepted"] : ["Requested", "Label sent", "Received", "Refund or exchange"];
+  const current = rejected ? 1 : ["", "Pending", "Label sent", "Received"].indexOf(status);
+  const list = steps.map((label, index) => {
+    const done = index < current;
+    const attributes = rejected && index === 1 ? " data-rejected" : done ? " data-done" : index === current ? " data-current" : "";
+    return `<li${attributes}><b>${rejected && index === 1 ? "✕" : done ? "✓" : index + 1}</b>${label}</li>`;
+  }).join("");
+  const label = status === "Label sent" && ticket.returnLabelId
+    ? `<div class="hdt-actions"><a class="hdt-button" href="?ticket=${escape(ticket.accessToken)}&amp;label=1" download>Download return label</a></div>` : "";
+  return `<div class="hdt-card hdt-pad hdt-cancel" data-status="${escape(status)}" data-kind="return">
+<div class="hdt-cancel-head"><h2>Return</h2><span class="hdt-pill" data-status="${escape(status)}"><i></i>${escape(status)}</span></div>
+${order ? `<p>${escape(order)}</p>` : ""}<ol aria-label="Return progress">${list}</ol>
+<p>${escape(RETURN_COPY[status] ?? "")}</p>${label}${ticket.returnNote ? `<blockquote>${multiline(ticket.returnNote)}</blockquote>` : ""}
+${ticket.returnDecidedAt ? `<p>Updated ${time(ticket.returnDecidedAt)}</p>` : ""}</div>`;
+}
+
+const EDIT_COPY: Record<string, string> = {
+  Pending: "Pending review: your order hasn't been changed yet. Our team will check it's still at our warehouse and confirm any price difference with you before updating it.",
+  Updated: "Your order has been updated with the changes below.",
+  Rejected: "We weren't able to change this order.",
+};
+
+// Where the customer's order edit stands, with the changes asked for.
+function editCard(ticket: RequestPageTicket, values: Record<string, string>) {
+  const status = ticket.editStatus;
+  if (!status) return "";
+  const changes = parseEditRequest(values.editRequest);
+  const lines = [
+    ...changes.lines.map((line) => `${line.title}: ${line.action === "Remove" ? "remove" : line.action === "Change quantity" ? `quantity ${line.quantity}` : `change to ${line.variant}`}`),
+    ...changes.adds.map((add) => `Add ${add.title} × ${add.quantity}`),
+  ];
+  return `<div class="hdt-card hdt-pad hdt-cancel" data-status="${escape(status)}" data-kind="edit">
+<div class="hdt-cancel-head"><h2>Order changes</h2><span class="hdt-pill" data-status="${escape(status)}"><i></i>${escape(status)}</span></div>
+<p>${escape(EDIT_COPY[status] ?? "")}</p>${lines.length ? `<blockquote>${lines.map(escape).join("<br>")}</blockquote>` : ""}
+${ticket.editNote ? `<blockquote>${multiline(ticket.editNote)}</blockquote>` : ""}
+${ticket.editDecidedAt ? `<p>Updated ${time(ticket.editDecidedAt)}</p>` : ""}</div>`;
+}
+
+const REPLACEMENT_COPY: Record<string, string> = {
+  Pending: "Pending review: our team is checking whether the part is still in transit or was in the original shipment, and will confirm your replacement here and by email.",
+  Approved: "Your replacement is approved. We're arranging the shipment and will share the tracking details here and by email.",
+  Shipped: "Your replacement part is on its way.",
+  Rejected: "We weren't able to send a replacement for this part.",
+};
+
+const LOST_COPY: Record<string, string> = {
+  Pending: "Pending review: our team is checking your order's shipment with the carrier, and will confirm the next steps here and by email.",
+  Approved: "Your request is approved. We'll share the next steps (and the tracking, if we're sending it again) here and by email.",
+  Shipped: "Here are the next steps for your lost package.",
+  Rejected: "We weren't able to approve this request.",
+};
+const WARRANTY_COPY: Record<string, string> = {
+  Pending: "Pending review: our team is checking the purchase date and warranty coverage, and will confirm here and by email whether a replacement, repair or other solution is available.",
+  Approved: "Your warranty claim is approved. We'll share the instructions and shipping details here and by email.",
+  Shipped: "Here are the next steps for your warranty claim.",
+  Rejected: "We weren't able to approve this warranty claim.",
+};
+
+// Where the customer's missing part (or warranty claim) stands, with the tracking.
+function replacementCard(ticket: RequestPageTicket) {
+  const status = ticket.replacementStatus;
+  if (!status) return "";
+  const warranty = ticket.replacementKind === "warranty";
+  const lost = ticket.replacementKind === "lost";
+  const rejected = status === "Rejected";
+  const steps = rejected ? ["Requested", "Not possible"] : ["Requested", "Approved", warranty || lost ? "Next steps" : "Shipped"];
+  const current = rejected ? 1 : ["", "Pending", "Approved", "Shipped"].indexOf(status);
+  const list = steps.map((label, index) => {
+    const done = index < current || (status === "Shipped" && index === 2);
+    const attributes = rejected && index === 1 ? " data-rejected" : done ? " data-done" : index === current ? " data-current" : "";
+    return `<li${attributes}><b>${rejected && index === 1 ? "✕" : done ? "✓" : index + 1}</b>${label}</li>`;
+  }).join("");
+  const link = safeUrl(ticket.replacementTrackingUrl ?? "");
+  const tracking = ticket.replacementTracking ? `<dl style="margin-top:8px">${ticket.replacementCarrier ? `<div><dt>Carrier</dt><dd>${escape(ticket.replacementCarrier)}</dd></div>` : ""}<div><dt>Tracking number</dt><dd>${escape(ticket.replacementTracking)}</dd></div></dl>${link ? `<p class="hdt-track"><a href="${escape(link)}" target="_blank" rel="noopener">Track shipment</a></p>` : ""}` : "";
+  return `<div class="hdt-card hdt-pad hdt-cancel" data-status="${escape(status)}" data-kind="replacement">
+<div class="hdt-cancel-head"><h2>${warranty ? "Warranty claim" : lost ? "Lost package" : "Replacement part"}</h2><span class="hdt-pill" data-status="${escape(status)}"><i></i>${escape((warranty || lost) && status === "Shipped" ? "Next steps" : status)}</span></div>
+<ol aria-label="${warranty ? "Warranty claim" : lost ? "Lost package" : "Replacement"} progress">${list}</ol>
+<p>${escape((warranty ? WARRANTY_COPY : lost ? LOST_COPY : REPLACEMENT_COPY)[status] ?? "")}</p>${(warranty || lost) && ticket.replacementSolution && status !== "Rejected" ? `<p><strong>${lost && status === "Pending" ? "You asked for" : "Solution"}:</strong> ${escape(ticket.replacementSolution)}</p>` : ""}${tracking}${ticket.replacementNote ? `<blockquote>${multiline(ticket.replacementNote)}</blockquote>` : ""}
+${ticket.replacementDecidedAt ? `<p>Updated ${time(ticket.replacementDecidedAt)}</p>` : ""}</div>`;
+}
+
+const QUOTE_COPY: Record<string, string> = {
+  Pending: "Pending review: our team is checking product availability and shipping carrier options for your address, and will share the estimated delivery date, shipping costs and taxes here and by email.",
+  Quoted: "Here are the shipping details for your address.",
+  Unavailable: "We weren't able to ship these products to your address.",
+};
+
+// Where the customer's international shipping quote stands, with the details sent.
+function quoteCard(ticket: RequestPageTicket) {
+  const status = ticket.quoteStatus;
+  if (!status) return "";
+  const rows = status === "Quoted" ? [["Carrier", ticket.quoteCarrier], ["Estimated delivery", ticket.quoteDelivery], ["Shipping cost", ticket.quoteShipping], ["Taxes and duties", ticket.quoteTaxes]]
+    .filter(([, value]) => value).map(([label, value]) => `<div><dt>${label}</dt><dd>${escape(value ?? "")}</dd></div>`).join("") : "";
+  return `<div class="hdt-card hdt-pad hdt-cancel" data-status="${escape(status === "Quoted" ? "Updated" : status === "Unavailable" ? "Rejected" : status)}" data-kind="quote">
+<div class="hdt-cancel-head"><h2>Shipping details</h2><span class="hdt-pill" data-status="${escape(status)}"><i></i>${escape(status)}</span></div>
+<p>${escape(QUOTE_COPY[status] ?? "")}</p>${rows ? `<dl style="margin-top:8px">${rows}</dl>` : ""}${ticket.quoteNote ? `<blockquote>${multiline(ticket.quoteNote)}</blockquote>` : ""}
+${ticket.quoteDecidedAt ? `<p>Updated ${time(ticket.quoteDecidedAt)}</p>` : ""}</div>`;
+}
+
 // Where the customer's order cancellation request stands.
-function cancellationCard(ticket: RequestPageTicket, order: string) {
+function cancellationCard(ticket: RequestPageTicket, order: string, items: boolean) {
   const status = ticket.cancelStatus;
   if (!status) return "";
   const rejected = status === "Rejected";
@@ -473,7 +595,7 @@ function cancellationCard(ticket: RequestPageTicket, order: string) {
   }).join("");
   return `<div class="hdt-card hdt-pad hdt-cancel" data-status="${escape(status)}">
 <div class="hdt-cancel-head"><h2>Order cancellation</h2><span class="hdt-pill" data-status="${escape(status)}"><i></i>${escape(status)}</span></div>
-${order ? `<p>${escape(order)} · whole order</p>` : ""}<ol aria-label="Cancellation progress">${list}</ol>
+${order ? `<p>${escape(order)} · ${items ? "selected items" : "whole order"}</p>` : ""}<ol aria-label="Cancellation progress">${list}</ol>
 <p>${escape(CANCEL_COPY[status] ?? "")}</p>${ticket.cancelNote ? `<blockquote>${multiline(ticket.cancelNote)}</blockquote>` : ""}
 ${ticket.cancelDecidedAt ? `<p>Updated ${time(ticket.cancelDecidedAt)}</p>` : ""}</div>`;
 }
@@ -539,7 +661,7 @@ ${ticket.allowVideos ? `<label class="hdt-drop"><i aria-hidden="true">🎥</i><s
   ].join("");
   const count = ticket.messages.length + (chat ? 0 : 1);
 
-  const stamp = liveStamp(ticket.status, ticket.messages.length, ticket.messages.at(-1)?.id, ticket.allowPhotos, `${ticket.cancelStatus ?? ""}${ticket.addressStatus ? `|${ticket.addressStatus}` : ""}`, ticket.allowVideos);
+  const stamp = liveStamp(ticket.status, ticket.messages.length, ticket.messages.at(-1)?.id, ticket.allowPhotos, `${ticket.cancelStatus ?? ""}${ticket.addressStatus ? `|${ticket.addressStatus}` : ""}${ticket.returnStatus ? `|${ticket.returnStatus}` : ""}${ticket.editStatus ? `|e:${ticket.editStatus}` : ""}${ticket.replacementStatus ? `|r:${ticket.replacementStatus}` : ""}${ticket.quoteStatus ? `|q:${ticket.quoteStatus}` : ""}`, ticket.allowVideos);
   return page(`Request #${ticket.number}`, `
 <div class="hdt-card hdt-hero">
 <div class="hdt-top"><div>
@@ -558,7 +680,7 @@ ${ticket.allowVideos ? `<label class="hdt-drop"><i aria-hidden="true">🎥</i><s
 ${foot}
 </div>
 <aside class="hdt-aside">
-${cancellationCard(ticket, values.orderNumber ? `Order ${values.orderNumber}` : "")}${addressCard(ticket, values)}
+${cancellationCard(ticket, values.orderNumber ? `Order ${values.orderNumber}` : "", values.cancelScope === cancelScopes[1])}${addressCard(ticket, values)}${returnCard(ticket, values.orderNumber ? `Order ${values.orderNumber}` : "")}${editCard(ticket, values)}${replacementCard(ticket)}${quoteCard(ticket)}
 <div class="hdt-card hdt-pad"><h2>Request summary</h2><dl style="margin-top:8px">${summary}</dl></div>
 ${shipmentCard(extras.shipment)}
 <div class="hdt-card hdt-pad hdt-help"><h2>Good to know</h2>

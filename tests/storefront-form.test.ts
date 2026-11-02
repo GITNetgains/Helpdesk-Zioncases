@@ -207,9 +207,9 @@ describe("Storefront Help Desk form", () => {
     it("opens its options in a dropdown, in order, each with its description", async () => {
       await mount();
       choose("How can we help?", "Orders");
-      expect(choices("What do you need help with?")).toEqual(["Track Order", "Cancel Order", "Modify Address", "Lost Package"]);
+      expect(choices("What do you need help with?")).toEqual(["Track Order", "Cancel Order", "Modify Address", "Edit Existing Order", "Lost Package"]);
       choose("How can we help?", "Shipping");
-      expect(choices("What do you need help with?")).toEqual(["Domestic Shipping", "International Shipping", "Shipping Times", "Taxes, Customs & Duties"]);
+      expect(choices("What do you need help with?")).toEqual(["Domestic Shipping", "International Shipping", "Taxes, Customs & Duties"]);
       choose("How can we help?", "Orders");
       // Nothing to fill in until an option is picked.
       expect(document.querySelector('input[name="category"]')).toBeNull();
@@ -273,19 +273,48 @@ describe("Storefront Help Desk form", () => {
       expect(posts.lookups).toHaveLength(0);
     });
 
-    it("Lost Package checks the tracking first, then opens a request", async () => {
-      const posts = await mount();
+    it("Lost Package: guidelines, the order checked, the missing product, its Shopify status, details and a preference", async () => {
+      const items = [
+        { id: "gid://shopify/Product/1", title: "Slab Case X", variant: "Black", quantity: 1, image: "" },
+        { id: "gid://shopify/Product/2", title: "Riser", variant: "", quantity: 2, image: "" },
+      ];
+      const shipments = [{ label: "In transit", carrier: "UPS", number: "1Z999", url: "https://ups.example/1Z999", deliveredAt: null }];
+      const posts = await mount(undefined, { allowed: true, country: "US", items, status: "Fulfilled", shipments });
       fillContact();
       choose("How can we help?", "Orders");
       choose("What do you need help with?", "Lost Package");
-      expect(submitButton().hidden).toBe(true);
+      expect([...document.querySelectorAll(".help-desk-guide li b")].map((step) => step.textContent)).toEqual(
+        ["Enter Order Number:", "Select Missing Item:", "Review Order Status:", "Select your further Preference:", "Submit Request:"]);
       type("Order Number", "#1004");
-      button("Check Order Status").click();
-      await vi.waitFor(() => expect(document.querySelector(".help-desk-track-error")?.textContent).toContain("couldn't find an order"));
-      type("How can we help with this order?", "Tracking stopped a week ago");
+      button("Continue").click();
+      await vi.waitFor(() => expect(labels()).toContain("Additional Details"));
+      expect(posts.lookups.at(-1)?.searchParams.get("check")).toBe("lost");
+      const status = document.querySelector(".help-desk-lost-status")?.textContent;
+      expect(status).toContain("Shopify status: Fulfilled");
+      expect(status).toContain("In transit · UPS · 1Z999");
+      // Nothing picked: Review waits. Then a preference.
+      review();
+      expect(document.querySelector("[data-help-desk-status]")?.textContent).toBe("Select the missing product.");
+      item("Riser").click();
+      type("Additional Details", "Tracking stopped a week ago");
+      review();
+      expect(document.querySelector("[data-help-desk-status]")?.textContent).toContain("sent again or a refund");
+      (document.querySelector('input[name=lostPreference][value="Refund"]') as HTMLInputElement).click();
       const sent = await submit(posts);
-      expect(sent).toMatchObject({ category: "Shipping & Delivery", subcategory: "Lost Package", delivery: "Package lost", orderNumber: "#1004" });
+      expect(sent).toMatchObject({ category: "Shipping & Delivery", subcategory: "Lost Package", delivery: "Package lost", orderNumber: "#1004",
+        products: "gid://shopify/Product/2", lostPreference: "Refund", details: "Tracking stopped a week ago" });
       expect(validateHelpDesk(sent, [], [])).toEqual({});
+    });
+
+    it("Lost Package stops at an order that hasn't shipped", async () => {
+      await mount(undefined, { allowed: false, error: "This order hasn't shipped yet, so it can't be lost in transit. Choose Track Order to see where it stands." });
+      fillContact();
+      choose("How can we help?", "Orders");
+      choose("What do you need help with?", "Lost Package");
+      type("Order Number", "#1004");
+      button("Continue").click();
+      await vi.waitFor(() => expect(document.querySelector(".help-desk-track-error")?.textContent).toContain("hasn't shipped yet"));
+      expect(labels()).not.toContain("Additional Details");
     });
 
     // Each option, filled in as a customer would: the fields it asks for and what it sends.
@@ -312,81 +341,6 @@ describe("Storefront Help Desk form", () => {
       expect(sent).toMatchObject(expected);
       expect(sent).not.toHaveProperty("option");
       expect(validateHelpDesk(sent, [], [])).toEqual({});
-    });
-
-    it("Shipping Times answers from the store's rates, then opens a question only if needed", async () => {
-      const shipping = {
-        country: "US", countryName: "United States", province: "TX", ships: true, processing: [1, 2], shipsBy: ["2026-11-03", "2026-11-04"], note: "Orders after 2 pm ship the next day.",
-        rates: [
-          { name: "Express", price: "$25.00", condition: "", days: [1, 2], arrives: ["2026-11-05", "2026-11-06"] },
-          { name: "Standard", price: "Free", condition: "On orders of $75.00 or more", days: [3, 4], arrives: ["2026-11-09", "2026-11-10"] },
-        ],
-      };
-      const order = { order: "#1010", method: "Standard", placedAt: "2026-11-02T09:00:00Z", status: "processing", date: null, arrives: ["2026-11-09", "2026-11-10"], trackingUrl: "" };
-      const posts = await mount(undefined, undefined, { shipping, order });
-      // Dates are shown in the shopper's own locale.
-      const day = (value: string) => new Intl.DateTimeFormat(undefined, { weekday: "short", month: "short", day: "numeric", timeZone: "UTC" }).format(new Date(value));
-      fillContact();
-      choose("How can we help?", "Shipping");
-      choose("What do you need help with?", "Shipping Times");
-      expect(labels()).toEqual(expect.arrayContaining(["Shipping To", "State (optional)", "Order Number (optional)"]));
-      expect(submitButton().hidden).toBe(true);
-      // Only the United States and Canada for now, then "Another country".
-      expect(choices("Shipping To")).toEqual(["Canada", "United States", "Another country"]);
-      choose("Shipping To", "Canada");
-      expect(labels()).toContain("Province (optional)");
-      choose("Shipping To", "Another country");
-      expect(labels()).not.toContain("Province (optional)");
-      choose("Shipping To", "United States");
-      choose("State (optional)", "Texas");
-      type("Order Number (optional)", "#1010");
-      button("Check Shipping Times").click();
-      await vi.waitFor(() => expect(document.querySelectorAll(".help-desk-track-card")).toHaveLength(2));
-      expect(Object.fromEntries(posts.lookups[0].searchParams)).toMatchObject({ shipping: "1", country: "US", province: "TX", order: "#1010", email: "jordan@example.com" });
-      const [orderCard, destination] = document.querySelectorAll(".help-desk-track-card");
-      expect(orderCard.textContent).toContain("Order #1010 · Standard");
-      expect(orderCard.textContent).toContain(`Expected to arrive ${day("2026-11-09")} – ${day("2026-11-10")}`);
-      expect(destination.textContent).toContain("Shipping to Texas, United States");
-      expect(destination.textContent).toContain("Orders ship within 1–2 business days");
-      expect([...destination.querySelectorAll(".help-desk-ship-rates li")].map((item) => [...item.querySelectorAll("strong, small")].map((part) => part.textContent))).toEqual([
-        ["Express", "$25.00", `${day("2026-11-05")} – ${day("2026-11-06")}`, "1–2 business days in transit"],
-        ["Standard", "Free · On orders of $75.00 or more", `${day("2026-11-09")} – ${day("2026-11-10")}`, "3–4 business days in transit"],
-      ]);
-      expect(destination.textContent).toContain("Orders after 2 pm ship the next day.");
-      expect(posts).toHaveLength(0);
-      button("I Still Need Help").click();
-      expect(control("Your Question").value).toBe("Shipping to Texas, United States.\n");
-      type("Your Question", "Shipping to Texas. Will it arrive before Saturday?");
-      const sent = await submit(posts);
-      expect(sent).toMatchObject({ category: "Shipping & Delivery", subcategory: "Shipping Times", orderNumber: "#1010" });
-      expect(validateHelpDesk(sent, [], [])).toEqual({});
-    });
-
-    it("Shipping Times sends another country straight to their question (we ship worldwide)", async () => {
-      const posts = await mount();
-      fillContact();
-      choose("How can we help?", "Shipping");
-      choose("What do you need help with?", "Shipping Times");
-      choose("Shipping To", "Another country");
-      button("Check Shipping Times").click();
-      // Nothing to look up, no "coming soon": their question, to send.
-      expect(posts.lookups).toHaveLength(0);
-      expect(document.querySelector(".help-desk-track-card")).toBeNull();
-      expect(document.querySelector(".help-desk-section-request [data-fields]")?.getAttribute("data-stage")).toBe("request");
-      expect((control("Your Country and Question") as HTMLTextAreaElement).placeholder).toContain("We'll reply with shipping options and prices.");
-      type("Your Country and Question", "I'm in Germany. Can you ship the Slab Case X here?");
-      expect(await submit(posts)).toMatchObject({ subcategory: "Shipping Times", query: "I'm in Germany. Can you ship the Slab Case X here?" });
-    });
-
-    it("Shipping Times falls back to a question when shipping times are unavailable", async () => {
-      const posts = await mount();
-      fillContact();
-      choose("How can we help?", "Shipping");
-      choose("What do you need help with?", "Shipping Times");
-      button("Check Shipping Times").click();
-      await vi.waitFor(() => expect(document.querySelector(".help-desk-track-error")?.textContent).toContain("unavailable"));
-      type("Your Question", "How long to Texas?");
-      expect((await submit(posts)).subcategory).toBe("Shipping Times");
     });
 
     it("Taxes, Customs & Duties asks where it ships to, then the question", async () => {
@@ -429,6 +383,8 @@ describe("Storefront Help Desk form", () => {
       fillContact();
       choose("How can we help?", "Shipping");
       choose("What do you need help with?", "International Shipping");
+      expect([...document.querySelectorAll(".help-desk-guide li b")].map((step) => step.textContent)).toEqual(
+        ["Select Product:", "Enter Shipping Address:", "Choose Shipping Method:", "Check Availability:", "Get Shipping Details:"]);
       expect(labels()).toEqual(expect.arrayContaining(["Country", "Street Address", "City", "ZIP / Postal Code"]));
       expect(labels()).not.toContain("Anything Else? (optional)");
       expect(choices("Country")).toEqual(["Canada", "United States", "Another country"]);
@@ -454,15 +410,19 @@ describe("Storefront Help Desk form", () => {
       type("Street Address", "1 King St W");
       type("ZIP / Postal Code", "M5H 1A1");
       control("City").dispatchEvent(new Event("input", { bubbles: true }));
+      // Then Regular or Expedited shipping.
+      button("Review Request").click();
+      expect(status()).toContain("Choose Regular or Expedited shipping.");
+      (document.querySelector('input[name=shippingMethod][value="Expedited"]') as HTMLInputElement).click();
       button("Review Request").click();
       // Everything on Review, by name; nothing was looked up or sent yet.
       expect(reviewShown()).toBe(true);
-      expect(reviewRows()).toMatchObject({ Country: "Canada", Province: "Ontario", Products: "Slab Case X × 2" });
+      expect(reviewRows()).toMatchObject({ Country: "Canada", Province: "Ontario", Products: "Slab Case X × 2", "Shipping Method": "Expedited Shipping" });
       expect(posts.lookups).toHaveLength(0);
       expect(posts).toHaveLength(0);
       const sent = await send(posts);
       expect(sent).toMatchObject({ category: "Shipping & Delivery", subcategory: "International Shipping", topic: "Shipping Inquiry", country: "CA",
-        address: "1 King St W, Toronto, Ontario, M5H 1A1", "itemQty:gid://shopify/Product/1": "2", products: "gid://shopify/Product/1" });
+        address: "1 King St W, Toronto, Ontario, M5H 1A1", "itemQty:gid://shopify/Product/1": "2", products: "gid://shopify/Product/1", shippingMethod: "Expedited" });
       expect(validateHelpDesk(sent, ["gid://shopify/Product/1"], [])).toEqual({});
     });
 
@@ -479,6 +439,7 @@ describe("Storefront Help Desk form", () => {
       type("City", "Berlin");
       type("ZIP / Postal Code", "10115");
       control("City").dispatchEvent(new Event("input", { bubbles: true }));
+      (document.querySelector('input[name=shippingMethod][value="Regular"]') as HTMLInputElement).click();
       button("Review Request").click();
       expect(reviewShown()).toBe(true);
       expect(reviewRows()).toMatchObject({ Country: "Germany" });
@@ -548,12 +509,13 @@ describe("Storefront Help Desk form", () => {
       expect(submitButton().hidden).toBe(true);
     });
 
-    it("Cancel Order says the whole order is cancelled and asks why when the reason is Other", async () => {
+    it("Cancel Order only sends a request, and asks why when the reason is Other", async () => {
       const posts = await mount();
       fillContact();
       choose("How can we help?", "Orders");
       choose("What do you need help with?", "Cancel Order");
-      expect(document.querySelector(".help-desk-cancel-notice")?.textContent).toContain("whole order");
+      expect(document.querySelector(".help-desk-cancel-notice")?.textContent).toContain("doesn't cancel your order");
+      expect(document.querySelector(".help-desk-cancel-notice")?.textContent).toContain("only what hasn't shipped");
       type("Order Number", "#1006");
       button("Continue").click();
       await vi.waitFor(() => expect(labels()).toContain("Reason for Cancellation"));
@@ -566,7 +528,115 @@ describe("Storefront Help Desk form", () => {
       type("Tell Us Why", "Moving house next week");
       const sent = await submit(posts);
       expect(sent).toMatchObject({ update: "Cancel Order", cancelReason: "Other", details: "Moving house next week" });
+      // A one-item order isn't asked what to cancel.
+      expect(sent.cancelScope).toBeUndefined();
       expect(validateHelpDesk(sent, [], [])).toEqual({});
+    });
+
+    it("Cancel Order lets the customer pick some of the order's items", async () => {
+      const items = [
+        { id: "gid://shopify/LineItem/11", title: "Slab Case X", variant: "Black", quantity: 2, image: "" },
+        { id: "gid://shopify/LineItem/12", title: "Riser", variant: "", quantity: 1, image: "" },
+      ];
+      const posts = await mount(undefined, { allowed: true, country: "US", items, partial: true });
+      fillContact();
+      choose("How can we help?", "Orders");
+      choose("What do you need help with?", "Cancel Order");
+      type("Order Number", "#1006");
+      button("Continue").click();
+      await vi.waitFor(() => expect(labels()).toContain("Reason for Cancellation"));
+      // Part of it has shipped: only what hasn't can be asked about.
+      expect(document.querySelector(".help-desk-verified")?.textContent).toContain("Part of this order has shipped");
+      expect(document.querySelector("legend")?.textContent).toContain("What would you like to cancel?");
+      const scope = (value: string) => {
+        const radio = document.querySelector(`[name=cancelScope][value="${value}"]`) as HTMLInputElement;
+        radio.checked = true;
+        radio.dispatchEvent(new Event("change"));
+      };
+      scope("Selected items");
+      choose("Reason for Cancellation", "Ordered by mistake");
+      // Nothing ticked yet: Review isn't opened.
+      review();
+      expect(document.querySelector("[data-help-desk-status]")?.textContent).toBe("Select the items you want to cancel.");
+      const riser = [...document.querySelectorAll(".help-desk-choice")].find((label) => label.textContent?.includes("Riser"))!.querySelector("input") as HTMLInputElement;
+      riser.checked = true;
+      riser.dispatchEvent(new Event("change"));
+      expect(await submit(posts)).toMatchObject({ update: "Cancel Order", cancelScope: "Selected items", products: "gid://shopify/LineItem/12" });
+    });
+
+    it("Edit Existing Order: guidelines, the order checked, items picked, changes described and charges accepted", async () => {
+      const items = [
+        { id: "gid://shopify/LineItem/11", title: "Slab Case X", variant: "Black", quantity: 1, image: "" },
+        { id: "gid://shopify/LineItem/12", title: "Riser", variant: "", quantity: 2, image: "" },
+      ];
+      const posts = await mount(undefined, { allowed: true, country: "US", items });
+      fillContact();
+      choose("How can we help?", "Orders");
+      choose("What do you need help with?", "Edit Existing Order");
+      expect([...document.querySelectorAll(".help-desk-guide li b")].map((step) => step.textContent)).toEqual(
+        ["Enter Order Number:", "Check Order Status:", "Select Items:", "Describe Changes:", "Review Additional Charges:", "Submit Request:"]);
+      type("Order Number", "#1006");
+      button("Continue").click();
+      await vi.waitFor(() => expect(labels()).toContain("Describe Changes (optional)"));
+      expect(posts.lookups.at(-1)?.searchParams.get("check")).toBe("edit");
+      expect(document.querySelector(".help-desk-verified")?.textContent).toContain("still at our warehouse");
+      // Nothing picked: Review waits.
+      review();
+      expect(document.querySelector("[data-help-desk-status]")?.textContent).toBe("Select the items you'd like to change, or add a product.");
+      // Each item picked asks what to do with it.
+      item("Slab Case X").click();
+      item("Riser").click();
+      review();
+      expect(document.querySelector("[data-help-desk-status]")?.textContent).toBe("Choose what you'd like to do with Slab Case X.");
+      (document.querySelector('input[name="itemAction:gid://shopify/LineItem/11"][value="Change color or size"]') as HTMLInputElement).click();
+      type("Which color or size would you like?", "Blue");
+      (document.querySelector('input[name="itemAction:gid://shopify/LineItem/12"][value="Change quantity"]') as HTMLInputElement).click();
+      expect((control("New quantity") as HTMLInputElement).value).toBe("2");
+      type("New quantity", "1");
+      // A product to add, with how many.
+      pickProduct("Add Products (optional)", "slab");
+      // Then the charges must be accepted.
+      review();
+      expect(document.querySelector("[data-help-desk-status]")?.textContent).toContain("price difference");
+      (document.querySelector("input[name=chargesAccepted]") as HTMLInputElement).click();
+      const sent = await submit(posts);
+      // Both items go as products (the last one shows here).
+      expect(sent).toMatchObject({ update: "Change Product or Quantity", products: "gid://shopify/LineItem/12", chargesAccepted: "Yes", subcategory: "Edit Items, Color or Quantity",
+        "itemAction:gid://shopify/LineItem/11": "Change color or size", "itemVariant:gid://shopify/LineItem/11": "Blue", "itemAction:gid://shopify/LineItem/12": "Change quantity", "itemWanted:gid://shopify/LineItem/12": "1",
+        addedProducts: "Slab Case X × 1" });
+      expect(JSON.parse(sent.addedItems)).toEqual([{ id: "gid://shopify/Product/1", title: "Slab Case X", quantity: 1 }]);
+    });
+
+    it("breadcrumbs show where the customer is, by what they chose, and go back when clicked", async () => {
+      await mount();
+      const crumbs = () => [...document.querySelectorAll(".help-desk-crumbs li")].map((item) => item.textContent);
+      const nav = document.querySelector(".help-desk-crumbs") as HTMLElement;
+      // Nothing chosen yet: no trail on the first step.
+      expect(nav.hidden).toBe(true);
+      fillContact();
+      choose("How can we help?", "Orders");
+      expect(nav.hidden).toBe(false);
+      expect(crumbs()).toEqual(["Help Desk", "Orders"]);
+      expect(document.querySelector(".help-desk-crumbs [aria-current]")?.textContent).toBe("Orders");
+      choose("What do you need help with?", "Edit Existing Order");
+      // A guest gives their details first.
+      expect(crumbs()).toEqual(["Help Desk", "Orders", "Edit Existing Order", "Your details"]);
+      // An earlier step is a link back.
+      ([...document.querySelectorAll(".help-desk-crumbs button")].find((link) => link.textContent === "Orders") as HTMLButtonElement).click();
+      expect(crumbs()).toEqual(["Help Desk", "Orders"]);
+      ([...document.querySelectorAll(".help-desk-crumbs button")].find((link) => link.textContent === "Help Desk") as HTMLButtonElement).click();
+      expect(nav.hidden).toBe(true);
+    });
+
+    it("Edit Existing Order stops at an order that has left the warehouse", async () => {
+      await mount(undefined, { allowed: false, error: "This order has already been dispatched or is being packed at our warehouse, so it can no longer be changed." });
+      fillContact();
+      choose("How can we help?", "Orders");
+      choose("What do you need help with?", "Edit Existing Order");
+      type("Order Number", "#1006");
+      button("Continue").click();
+      await vi.waitFor(() => expect(document.querySelector(".help-desk-track-error")?.textContent).toContain("already been dispatched"));
+      expect(labels()).not.toContain("Describe Changes");
     });
 
     it("switching options clears the previous option's fields", async () => {
@@ -577,10 +647,10 @@ describe("Storefront Help Desk form", () => {
       type("Order Number", "#1006");
       button("Continue").click();
       await vi.waitFor(() => expect(labels()).toContain("Reason for Cancellation"));
-      choose("What do you need help with?", "Lost Package");
+      choose("What do you need help with?", "Track Order");
       expect(labels()).not.toContain("Reason for Cancellation");
       expect(button("Continue")).toBeUndefined();
-      expect((document.querySelector('input[name="subcategory"]') as HTMLInputElement).value).toBe("Lost Package");
+      expect((document.querySelector('input[name="subcategory"]') as HTMLInputElement).value).toBe("Track My Order");
     });
   });
 
@@ -669,14 +739,14 @@ describe("Storefront Help Desk form", () => {
     expect(labels()).toContain("Describe the issue");
     expect(labels()).not.toContain("Which part?");
     expect(labels()).not.toContain("How many are affected?");
-    expect([...document.querySelectorAll<HTMLInputElement>("input[name^=\"itemResolution:\"]")].map((radio) => radio.value)).toEqual(["Replacement", "Refund"]);
+    expect([...document.querySelectorAll<HTMLInputElement>("input[name^=\"itemResolution:\"]")].map((radio) => radio.value)).toEqual(["Refund", "Exchange"]);
     // Two of a product: how many are affected.
     item("Graded Card Display").click();
     expect(labels()).toContain("How many are affected?");
     expect((document.querySelector('input[name="itemQty:gid://shopify/Product/2"]') as HTMLInputElement).max).toBe("2");
   });
 
-  it("Damaged or Defective goes all the way: what happened, the part, the photo and what they'd like, checked on Review and sent", async () => {
+  it("Damaged or Defective goes all the way: what happened, the part, the photo, its condition and what they'd like, checked on Review and sent", async () => {
     const posts = await findOrder("Damaged or Defective");
     await vi.waitFor(() => expect(stageOf()).toBe("request"));
     const reviewOpen = () => !(document.querySelector(".help-desk-section-review") as HTMLElement).hidden;
@@ -694,9 +764,9 @@ describe("Storefront Help Desk form", () => {
     [...document.querySelectorAll<HTMLInputElement>("input[name=kind]")].find((radio) => radio.value === "Doesn't work properly")!.click();
     review();
     expect(reviewOpen()).toBe(false);
-    // A replacement starts with the product they picked; without any, Review waits.
+    // An exchange starts with the product they picked; without any, Review waits.
     const chips = () => [...document.querySelectorAll(".help-desk-replacement .help-desk-selected button")].map((chip) => chip.textContent?.replace("×", "").trim());
-    (document.querySelector('input[name^="itemResolution:"][value="Replacement"]') as HTMLInputElement).click();
+    (document.querySelector('input[name^="itemResolution:"][value="Exchange"]') as HTMLInputElement).click();
     expect(chips()).toEqual(["Slab Case X"]);
     (document.querySelector(".help-desk-replacement .help-desk-selected button") as HTMLButtonElement).click();
     expect(chips()).toEqual([]);
@@ -705,36 +775,69 @@ describe("Storefront Help Desk form", () => {
     expect(document.querySelector("[data-help-desk-status]")?.textContent).toContain("Add the product you'd like instead of Slab Case X.");
     pickProduct("Add product", "slab");
     expect(chips()).toEqual(["Slab Case X"]);
+    // Only an unused product in its original packaging can go back.
+    const condition = (value: string) => (document.querySelector(`input[name=returnCondition][value="${value}"]`) as HTMLInputElement).click();
+    review();
+    expect(reviewOpen()).toBe(false);
+    condition("No");
+    review();
+    expect(reviewOpen()).toBe(false);
+    expect(document.querySelector("[data-help-desk-status]")?.textContent).toContain("unused products in their original packaging");
+    condition("Yes");
     review();
     expect(reviewOpen()).toBe(true);
     const rows = Object.fromEntries([...document.querySelectorAll(".help-desk-review-row")].map((row) => [row.querySelector("span")?.textContent, row.querySelector("strong")?.textContent]));
-    expect(rows).toMatchObject({ "What happened?": "Doesn't work properly", "Slab Case X · Wants": "Replacement", "Slab Case X · Replacement": "Slab Case X",
+    expect(rows).toMatchObject({ "What happened?": "Doesn't work properly", "Slab Case X · Wants": "Exchange", "Slab Case X · Replacement": "Slab Case X",
+      "Is the product unused and in its original packaging?": "Yes",
       "Slab Case X": "The lid won't close", Products: "Slab Case X", Photos: "1 attached" });
     document.querySelector("form")!.dispatchEvent(new Event("submit", { cancelable: true }));
     await vi.waitFor(() => expect(posts).toHaveLength(1));
-    expect(posts[0]).toMatchObject({ category: "Manufacturing Defect", subcategory: "Defective or not working", "itemResolution:gid://shopify/Product/1": "Replacement", "itemReplacement:gid://shopify/Product/1": "Slab Case X",
-      products: "gid://shopify/Product/1", "itemNote:gid://shopify/Product/1": "The lid won't close" });
+    expect(posts[0]).toMatchObject({ category: "Manufacturing Defect", subcategory: "Defective or not working", "itemResolution:gid://shopify/Product/1": "Exchange", "itemReplacement:gid://shopify/Product/1": "Slab Case X",
+      products: "gid://shopify/Product/1", "itemNote:gid://shopify/Product/1": "The lid won't close", returnCondition: "Yes" });
   });
 
-  it("Missing Item or Part: nothing is picked for them, they say what's missing in words, a photo or a video", async () => {
-    const posts = await findOrder("Missing Item or Part", { found: { ...orderItems.found, items: [orderItems.found.items[0]] } });
+  it("Damaged or Defective shows the Process Guidelines, and stops at an order past the return window", async () => {
+    const blocker = "Returns are accepted within 6 months of purchase, and this order was placed on Mar 1, 2026. If it stopped working, please send a Warranty Claim instead.";
+    await findOrder("Damaged or Defective", { found: { ...orderItems.found, returnBlocker: blocker } });
+    expect(document.querySelector(".help-desk-guide strong")?.textContent).toBe("Process Guidelines");
+    await vi.waitFor(() => expect(document.querySelector(".help-desk-track-error")?.textContent).toBe(blocker));
+    expect(stageOf()).not.toBe("request");
+    // A warranty claim isn't a return: its own guidelines, and an old order is fine.
+    await findOrder("Warranty Claim", { found: { ...orderItems.found, returnBlocker: blocker } });
+    expect([...document.querySelectorAll(".help-desk-guide li b")].map((step) => step.textContent)).toEqual(
+      ["Enter Order Number:", "Describe the Issue:", "Check Warranty Eligibility:", "Submit Your Claim:", "Warranty Approval:", "Next Steps:"]);
     await vi.waitFor(() => expect(stageOf()).toBe("request"));
-    // Even a one-item order starts unpicked.
+    expect(document.querySelector("input[name=returnCondition]")).toBeNull();
+  });
+
+  it("Missing Item or Part: the Procedure Guidelines, nothing picked for them, the missing part in words with a photo, to be replaced", async () => {
+    const posts = await findOrder("Missing Item or Part", { found: { ...orderItems.found, items: [orderItems.found.items[0]] } });
+    expect(document.querySelector(".help-desk-guide > strong")?.textContent).toBe("Procedure Guidelines");
+    expect([...document.querySelectorAll(".help-desk-guide li b")].map((step) => step.textContent)).toEqual(
+      ["Enter Order Number:", "Describe the Issue:", "Check Order Status:", "Support Confirmation:", "Replacement Shipping:"]);
+    await vi.waitFor(() => expect(stageOf()).toBe("request"));
+    // Even a one-item order starts unpicked. It was delivered: no in-transit warning.
     expect(item("Slab Case X").getAttribute("aria-pressed")).toBe("false");
     expect(boxes()).toEqual([]);
-    expect(document.querySelector(".help-desk-cancel-notice")).toBeNull();
+    expect(document.querySelector(".help-desk-cancel-notice:not(.help-desk-guide)")).toBeNull();
     item("Slab Case X").click();
     expect(boxes()).toEqual(["Slab Case X"]);
-    expect((document.querySelector('input[name="images:gid://shopify/Product/1"]') as HTMLInputElement).required).toBe(false);
+    // Product images are needed.
+    expect((document.querySelector('input[name="images:gid://shopify/Product/1"]') as HTMLInputElement).required).toBe(true);
     // No part list or count: their words, photos and a video say it.
     expect(document.querySelector('input[name="videos:gid://shopify/Product/1"]')).toBeTruthy();
     expect(document.querySelector('[name^="itemPart"], [name^="itemQty"]')).toBeNull();
     expect((control("What's missing?") as HTMLTextAreaElement).required).toBe(true);
     type("What's missing?", "The sling bag was not in the box");
-    expect([...document.querySelectorAll<HTMLInputElement>("input[name^=\"itemResolution:\"]")].map((radio) => radio.closest("label")?.textContent)).toEqual(["Replacement", "Refund"]);
-    (document.querySelector('input[name^="itemResolution:"][value="Replacement"]') as HTMLInputElement).click();
+    // The part itself is replaced: nothing to choose.
+    expect(document.querySelectorAll('input[type=radio][name^="itemResolution:"]')).toHaveLength(0);
+    const photo = document.querySelector('input[name="images:gid://shopify/Product/1"]') as HTMLInputElement;
+    const transfer = new DataTransfer();
+    transfer.items.add(new File(["x"], "box.jpg", { type: "image/jpeg" }));
+    photo.files = transfer.files;
+    photo.dispatchEvent(new Event("change"));
     const sent = await submit(posts);
-    expect(sent).toMatchObject({ category: "Missing Parts", subcategory: "Item missing from order", products: "gid://shopify/Product/1", "itemResolution:gid://shopify/Product/1": "Replacement", "itemReplacement:gid://shopify/Product/1": "Slab Case X",
+    expect(sent).toMatchObject({ category: "Missing Parts", subcategory: "Item missing from order", products: "gid://shopify/Product/1", "itemResolution:gid://shopify/Product/1": "Replacement",
       "itemTitle:gid://shopify/Product/1": "Slab Case X", "itemNote:gid://shopify/Product/1": "The sling bag was not in the box" });
   });
 
@@ -763,7 +866,13 @@ describe("Storefront Help Desk form", () => {
   it("Missing Item or Part warns when part of the order hasn't shipped yet", async () => {
     await findOrder("Missing Item or Part", { found: { ...orderItems.found, partial: true } });
     await vi.waitFor(() => expect(stageOf()).toBe("request"));
-    expect(document.querySelector(".help-desk-cancel-notice")?.textContent).toContain("Part of this order hasn't shipped yet.");
+    expect(document.querySelector(".help-desk-cancel-notice:not(.help-desk-guide)")?.textContent).toContain("Part of this order hasn't shipped yet.");
+  });
+
+  it("Missing Item or Part says the part may still be in transit when the order isn't delivered", async () => {
+    await findOrder("Missing Item or Part", { found: { ...orderItems.found, deliveredAt: null } });
+    await vi.waitFor(() => expect(stageOf()).toBe("request"));
+    expect(document.querySelector(".help-desk-cancel-notice:not(.help-desk-guide)")?.textContent).toContain("may still be in transit");
   });
 
   it("an order the app can't find (an old one, say) can continue by searching for the product", async () => {
@@ -775,15 +884,12 @@ describe("Storefront Help Desk form", () => {
     pickProduct("Which product has a problem?", "slab");
     expect(boxes()).toEqual(["Slab Case X"]);
     type("What's missing?", "The whole case");
-    const refundNote = document.querySelector(".help-desk-refund-note") as HTMLElement;
-    expect(refundNote.hidden).toBe(true);
-    (document.querySelector('input[name^="itemResolution:"][value="Refund"]') as HTMLInputElement).click();
-    expect(refundNote.hidden).toBe(false);
-    expect(refundNote.textContent).toContain("original payment method");
-    (document.querySelector('input[name^="itemResolution:"][value="Replacement"]') as HTMLInputElement).click();
-    expect(refundNote.hidden).toBe(true);
-    (document.querySelector('input[name^="itemResolution:"][value="Refund"]') as HTMLInputElement).click();
-    expect(await submit(posts)).toMatchObject({ orderNumber: "#1002", products: "gid://shopify/Product/1", "itemNote:gid://shopify/Product/1": "The whole case", "itemResolution:gid://shopify/Product/1": "Refund" });
+    const photo = document.querySelector('input[name="images:gid://shopify/Product/1"]') as HTMLInputElement;
+    const transfer = new DataTransfer();
+    transfer.items.add(new File(["x"], "box.jpg", { type: "image/jpeg" }));
+    photo.files = transfer.files;
+    photo.dispatchEvent(new Event("change"));
+    expect(await submit(posts)).toMatchObject({ orderNumber: "#1002", products: "gid://shopify/Product/1", "itemNote:gid://shopify/Product/1": "The whole case", "itemResolution:gid://shopify/Product/1": "Replacement" });
   });
 
   it("Warranty Claim without a found order asks where and when it was bought", async () => {
@@ -793,7 +899,10 @@ describe("Storefront Help Desk form", () => {
     expect(choices("Where did you buy it?")).toEqual(["Zion Cases website", "Amazon", "A store or dealer", "Gift or other"]);
     expect((control("When? (month)") as HTMLInputElement).type).toBe("month");
     pickProduct("Which product has a problem?", "slab");
-    expect([...document.querySelectorAll<HTMLInputElement>("input[name^=\"itemResolution:\"]")].map((radio) => radio.value)).toEqual(["Replacement", "Refund"]);
+    // The team decides the solution: nothing to choose, and the photos are needed.
+    expect(document.querySelectorAll("input[name^=\"itemResolution:\"]")).toHaveLength(0);
+    expect(document.querySelector(".help-desk-product-issue .help-desk-hint")?.textContent).toContain("replacement, repair or other solution");
+    expect((document.querySelector('input[name="images:gid://shopify/Product/1"]') as HTMLInputElement).required).toBe(true);
   });
 
   it("Warranty Claim with a found order doesn't ask where it was bought", async () => {
@@ -826,8 +935,10 @@ describe("Storefront Help Desk form", () => {
   const pickResolution = (value: string) => (document.querySelector(`input[name^="itemResolution:"][value="${value}"]`) as HTMLInputElement).click();
   const addProductOpen = () => !(document.querySelector(".help-desk-replacement") as HTMLElement).hidden;
 
-  it("Received the Wrong Item: the same product cards, each asking what came instead with required photos and a video", async () => {
+  it("Received the Wrong Item: the Process Guidelines, then the same product cards, each asking what came instead with required photos and a video", async () => {
     await findOrder("Received the Wrong Item");
+    expect([...document.querySelectorAll(".help-desk-guide li b")].map((step) => step.textContent)).toEqual(
+      ["Enter Order Number:", "Describe the Issue:", "Choose a Resolution:", "Check Eligibility:", "Submit Request:"]);
     await vi.waitFor(() => expect(stageOf()).toBe("request"));
     expect(document.querySelector(".help-desk-pick-title")?.textContent).toContain("Which product was wrong?");
     expect(boxes()).toEqual([]);
@@ -841,12 +952,15 @@ describe("Storefront Help Desk form", () => {
     expect(document.querySelector('input[name="videos:gid://shopify/Product/2"]')).toBeTruthy();
   });
 
-  it("Wrong product: a replacement is a whole product they add", async () => {
+  it("Wrong product: a return for a refund or an exchange, and an exchange is a whole product they add", async () => {
     await findOrder("Received the Wrong Item");
     await vi.waitFor(() => expect(stageOf()).toBe("request"));
     kindRadio("Wrong product").click();
     item("Slab Case X").click();
-    pickResolution("Replacement");
+    expect([...document.querySelectorAll<HTMLInputElement>('input[name^="itemResolution:"]')].map((radio) => radio.closest("label")?.textContent)).toEqual(["Return & Refund", "Return & Exchange"]);
+    // It goes back only unused, in its packaging.
+    expect(document.querySelectorAll("input[name=returnCondition]")).toHaveLength(2);
+    pickResolution("Exchange");
     expect(addProductOpen()).toBe(true);
     expect(labels()).toContain("Add product");
   });
@@ -869,8 +983,8 @@ describe("Storefront Help Desk form", () => {
     black.checked = true;
     black.dispatchEvent(new Event("change"));
     expect((document.querySelector('input[name="itemVariant:gid://shopify/Product/1"]') as HTMLInputElement).value).toBe("Black");
-    // The replacement is that variant: no other product to add.
-    pickResolution("Replacement");
+    // The exchange is that variant: no other product to add.
+    pickResolution("Exchange");
     expect(addProductOpen()).toBe(false);
     // Switching to Wrong product asks again, and keeps what they wrote.
     type("What did you receive instead?", "A black one");
@@ -899,7 +1013,8 @@ describe("Storefront Help Desk form", () => {
     expect(labels()).toEqual(expect.arrayContaining(["Qty arrived", "Qty you want", "Details (optional)"]));
     expect((control("Qty you want") as HTMLInputElement).value).toBe("2");
     type("Qty arrived", "1");
-    pickResolution("Replacement");
+    pickResolution("Exchange");
+    (document.querySelector('input[name=returnCondition][value="Yes"]') as HTMLInputElement).click();
     expect(addProductOpen()).toBe(false);
     const photo = document.querySelector('input[name="images:gid://shopify/Product/2"]') as HTMLInputElement;
     const transfer = new DataTransfer();
@@ -907,7 +1022,7 @@ describe("Storefront Help Desk form", () => {
     photo.files = transfer.files;
     photo.dispatchEvent(new Event("change"));
     const sent = await submit(posts);
-    expect(sent).toMatchObject({ category: "Wrong Item Received", subcategory: "Wrong quantity", "itemResolution:gid://shopify/Product/2": "Replacement",
+    expect(sent).toMatchObject({ category: "Wrong Item Received", subcategory: "Wrong quantity", "itemResolution:gid://shopify/Product/2": "Exchange", returnCondition: "Yes",
       "itemReceived:gid://shopify/Product/2": "1", "itemWanted:gid://shopify/Product/2": "2" });
     expect(sent["itemReplacement:gid://shopify/Product/2"] ?? "").toBe("");
   });

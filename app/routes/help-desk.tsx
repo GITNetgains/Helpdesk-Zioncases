@@ -1,11 +1,13 @@
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "react-router";
 import { authenticate } from "../shopify.server";
 import db from "../db.server";
-import { ADDRESS_FIELDS, addressFromValues, cancelReasons, countries, PROVINCES, deliveryIssues, issueResolutions, issues, MAX_MESSAGE_LENGTH, purchasePlaces, orderTypes, productParts, topics, updates } from "../services/help-desk";
+import { ADDRESS_FIELDS, addressFromValues, cancelReasons, cancelScopes, countries, PROVINCES, deliveryIssues, isReturnClaim, issueResolutions, issues,MAX_MESSAGE_LENGTH, purchasePlaces, orderTypes, productParts, topics, updates } from "../services/help-desk";
 import { liveStamp, renderLookupPage, renderRequestPage } from "../services/help-desk-request-page";
 import { formGroups } from "../services/help-desk-form";
 import { addCustomerMessage, customerCanReply, MAX_REPLY_IMAGES, readHelpDeskForm, submitTicket } from "../services/help-desk.server";
 import { checkOrderChange, conflictingRequest, customerOrders, issueItems, lookupTracking, productVariants, syncTicketOrder } from "../services/help-desk-orders.server";
+import { returnLabelFile } from "../services/help-desk-return.server";
+import { shipStationBlocksEdit } from "../services/help-desk-edit.server";
 import { memo } from "../services/memo.server";
 import { cachedProducts, loadProducts } from "../services/help-desk-email.server";
 import { ensureWorker, queueEmail } from "../services/help-desk-outbox.server";
@@ -63,10 +65,12 @@ export async function loader({ request }: LoaderFunctionArgs) {
   if (check === "variants") return variants(shop, admin, params.get("product") || "", clientKey(request, shop));
   // Address suggestions as the customer types a street address, then the one they picked.
   if (params.get("places")) return places(shop, params, clientKey(request, shop));
-  if (check === "cancel" || check === "address") return orderCheck(shop, admin, check, params.get("order") || "", params.get("email") || "", clientKey(request, shop));
+  if (check === "cancel" || check === "address" || check === "edit" || check === "lost") return orderCheck(shop, admin, check, params.get("order") || "", params.get("email") || "", clientKey(request, shop));
 
   const token = params.get("ticket");
   if (token !== null && params.get("pulse")) return pulse(shop, token, clientKey(request, shop));
+  // The return label staff sent, downloaded from the request page.
+  if (token !== null && params.get("label")) return returnLabel(shop, token, clientKey(request, shop));
   // live: the open page's own refresh, just the request's HTML without the theme around it.
   if (token !== null) return trackingPage(shop, admin, token, {}, params.get("live") === "1");
 
@@ -75,14 +79,14 @@ export async function loader({ request }: LoaderFunctionArgs) {
     customerOrders(admin, customerId),
     /^\d+$/.test(customerId) ? db.helpDeskTicket.findMany({
       where: { shop, customerId }, orderBy: { createdAt: "desc" }, take: 20,
-      select: { number: true, topic: true, status: true, cancelStatus: true, addressStatus: true, createdAt: true, lastActivityAt: true, accessToken: true },
+      select: { number: true, topic: true, status: true, cancelStatus: true, addressStatus: true, returnStatus: true, editStatus: true, replacementStatus: true, quoteStatus: true, createdAt: true, lastActivityAt: true, accessToken: true },
     }) : null,
     // Where the store ships from, so Domestic and International Shipping offer the right countries.
     loadShippingSetup(admin, shop).catch(() => undefined),
     placesKeyFor(shop),
   ]);
   return json({
-    home: shippingSetup?.home || "US", addressSuggestions: true, addressProvider: placesKey ? "google" : "osm", shippingCountries: SHIPPING_TIMES_COUNTRIES, countries, issues, orderTypes, topics, updates, deliveryIssues, productParts, cancelReasons, issueResolutions, purchasePlaces, provinces: PROVINCES, groups: formGroups, orders,
+    home: shippingSetup?.home || "US", addressSuggestions: true, addressProvider: placesKey ? "google" : "osm", shippingCountries: SHIPPING_TIMES_COUNTRIES, countries, issues, orderTypes, topics, updates, deliveryIssues, productParts, cancelReasons, cancelScopes, issueResolutions, purchasePlaces, provinces: PROVINCES, groups: formGroups, orders,
     tickets: tickets && tickets.map(({ accessToken, lastActivityAt, ...ticket }) => ({ ...ticket, updatedAt: lastActivityAt ?? ticket.createdAt, token: accessToken })),
   }, 200, privateHeaders);
 }
@@ -273,7 +277,7 @@ async function variants(shop: string, admin: Parameters<typeof lookupTracking>[0
 
 // "Continue" on Cancel Order and Modify Address. Same limits as the tracking
 // check: the number and email must match, and misses are counted.
-async function orderCheck(shop: string, admin: Parameters<typeof lookupTracking>[0], kind: "cancel" | "address", order: string, email: string, client: string) {
+async function orderCheck(shop: string, admin: Parameters<typeof lookupTracking>[0], kind: "cancel" | "address" | "edit" | "lost", order: string, email: string, client: string) {
   const misses = `track-miss|${client}`;
   if (blocked(misses, 5) || !hit(`track|${client}`, 10, MINUTE)) return json({ error: "Too many attempts. Please try again in 15 minutes." }, 200, privateHeaders);
   const answer = await checkOrderChange(admin, kind, order.slice(0, 40), email.slice(0, 200));
@@ -283,9 +287,10 @@ async function orderCheck(shop: string, admin: Parameters<typeof lookupTracking>
     return json({ error: answer.error }, 200, privateHeaders);
   }
   clear(misses);
-  const conflict = await conflictingRequest(db, shop, kind, answer);
+  // An edit: ShipStation must not have a label for it yet (the order is still at the warehouse).
+  const conflict = await conflictingRequest(db, shop, kind, answer) || (kind === "edit" ? await shipStationBlocksEdit(db, shop, { id: answer.orderId, name: answer.orderName }) : "");
   if (conflict) return json({ error: conflict }, 200, privateHeaders);
-  return json({ allowed: true, country: answer.country }, 200, privateHeaders);
+  return json({ allowed: true, country: answer.country, ...(kind === "cancel" ? { items: answer.items ?? [], partial: Boolean(answer.partial) } : kind === "edit" ? { items: answer.items ?? [] } : kind === "lost" ? { items: answer.items ?? [], status: answer.status ?? "", shipments: answer.shipments ?? [] } : {}) }, 200, privateHeaders);
 }
 
 // The same checks again when the request is sent, so a request made without
@@ -293,15 +298,36 @@ async function orderCheck(shop: string, admin: Parameters<typeof lookupTracking>
 // Shopify can't be reached does the request go through, for the team to check.
 async function refuseChange(shop: string, admin: Parameters<typeof lookupTracking>[0], form: FormData) {
   const value = (key: string) => String(form.get(key) ?? "").trim();
-  const kind = value("orderType") === orderTypes[0] ? (value("update") === updates[2] ? "cancel" : value("update") === updates[1] ? "address" : null) : null;
+  // A damaged or defective item to send back: the order must have shipped, within the return window.
+  if (isReturnClaim(Object.fromEntries(["topic", "orderType", "issue"].map((key) => [key, value(key)])), value("category")) && value("orderNumber")) {
+    if (value("requestKey") && await db.helpDeskTicket.findUnique({ where: { shop_requestKey: { shop, requestKey: value("requestKey") } }, select: { id: true } })) return null;
+    const found = await issueItems(admin, value("orderNumber").slice(0, 40), value("email").slice(0, 200));
+    if (found?.returnBlocker) return json({ errors: { orderNumber: found.returnBlocker } }, 400);
+    return null;
+  }
+  const kind = value("orderType") === orderTypes[0] ? (value("update") === updates[2] ? "cancel" : value("update") === updates[1] ? "address" : value("update") === updates[0] ? "edit" : null) : null;
   if (!kind || value("topic") !== topics[3] || !value("orderNumber")) return null;
   // A retried submission returns the request it already created.
   if (value("requestKey") && await db.helpDeskTicket.findUnique({ where: { shop_requestKey: { shop, requestKey: value("requestKey") } }, select: { id: true } })) return null;
   const values = Object.fromEntries(ADDRESS_FIELDS.map((key) => [key, value(key)]));
   const answer = await checkOrderChange(admin, kind, value("orderNumber").slice(0, 40), value("email").slice(0, 200), kind === "address" ? { ...addressFromValues(values), country: value("shipCountry").toUpperCase() } : undefined);
   if (!answer) return null;
-  const error = answer.allowed ? await conflictingRequest(db, shop, kind, answer) : answer.error;
-  return error ? json({ errors: { orderNumber: error } }, 400) : null;
+  const error = answer.allowed
+    ? await conflictingRequest(db, shop, kind, answer) || (kind === "edit" ? await shipStationBlocksEdit(db, shop, { id: answer.orderId, name: answer.orderName }) : "")
+    : answer.error;
+  if (error) return json({ errors: { orderNumber: error } }, 400);
+  // Items picked to change must be on this order.
+  if (answer.allowed && kind === "edit") {
+    const lines = new Set((answer.items ?? []).map((item) => item.id));
+    if (form.getAll("products").map(String).some((id) => !lines.has(id))) return json({ errors: { products: "Some of these items aren't on this order. Go back and choose the items again." } }, 400);
+  }
+  // Items picked to cancel must be this order's, and not shipped yet.
+  if (answer.allowed && kind === "cancel" && value("cancelScope") === cancelScopes[1]) {
+    const open = new Set((answer.items ?? []).map((item) => item.id));
+    const picked = form.getAll("products").map(String);
+    if (!picked.length || picked.some((id) => !open.has(id))) return json({ errors: { products: "Some of these items have shipped or aren't on this order. Go back and choose the items again." } }, 400);
+  }
+  return null;
 }
 
 // The open request page asks every few seconds whether anything the customer
@@ -313,12 +339,20 @@ async function pulse(shop: string, token: string, client: string) {
   const ticket = TOKEN.test(token) ? await db.helpDeskTicket.findFirst({
     where: { shop, accessToken: token },
     select: {
-      status: true, allowPhotos: true, allowVideos: true, cancelStatus: true, addressStatus: true, _count: { select: { messages: { where: { kind: { in: PUBLIC_KINDS } } } } },
+      status: true, allowPhotos: true, allowVideos: true, cancelStatus: true, addressStatus: true, returnStatus: true, editStatus: true, replacementStatus: true, quoteStatus: true, _count: { select: { messages: { where: { kind: { in: PUBLIC_KINDS } } } } },
       messages: { where: { kind: { in: PUBLIC_KINDS } }, orderBy: { createdAt: "desc" }, take: 1, select: { id: true } },
     },
   }) : null;
   if (!ticket) return json({ error: "Not found." }, 404);
-  return json({ stamp: liveStamp(ticket.status, ticket._count.messages, ticket.messages[0]?.id, ticket.allowPhotos, `${ticket.cancelStatus ?? ""}${ticket.addressStatus ? `|${ticket.addressStatus}` : ""}`, ticket.allowVideos) }, 200, privateHeaders);
+  return json({ stamp: liveStamp(ticket.status, ticket._count.messages, ticket.messages[0]?.id, ticket.allowPhotos, `${ticket.cancelStatus ?? ""}${ticket.addressStatus ? `|${ticket.addressStatus}` : ""}${ticket.returnStatus ? `|${ticket.returnStatus}` : ""}${ticket.editStatus ? `|e:${ticket.editStatus}` : ""}${ticket.replacementStatus ? `|r:${ticket.replacementStatus}` : ""}${ticket.quoteStatus ? `|q:${ticket.quoteStatus}` : ""}`, ticket.allowVideos) }, 200, privateHeaders);
+}
+
+async function returnLabel(shop: string, token: string, client: string) {
+  if (!hit(`label|${client}`, 20, MINUTE)) return json({ error: "Too many requests." }, 429);
+  const file = TOKEN.test(token) ? await returnLabelFile(db, shop, token) : null;
+  if (!file) return json({ error: "This label isn't available." }, 404);
+  const name = file.name.replace(/[^\w. -]/g, "_") || "return-label";
+  return new Response(Buffer.from(file.data), { headers: { ...privateHeaders, "Content-Type": file.type, "Content-Disposition": `attachment; filename="${name}"` } });
 }
 
 const liquid = (html: string, status = 200) => new Response(html, { status, headers: { ...privateHeaders, "Content-Type": "application/liquid" } });

@@ -118,29 +118,80 @@ export const addressCheckOrder = (
   hasShippingAddress: Boolean(order.shippingAddress), country: order.country,
   verified: Boolean(order.email) && order.email.trim().toLowerCase() === ticketEmail.trim().toLowerCase(),
 });
-// When a whole order can still be cancelled: it exists, isn't cancelled and nothing has shipped.
+// When the customer may ask to cancel: the order exists, isn't cancelled and
+// isn't all shipped. Paid, unpaid, labelled, being packed or partly shipped
+// orders can all be asked about: the team checks Shopify and ShipStation and
+// decides. Asking never changes the order.
 export function cancelChecks(order: AddressCheckOrder | null): AddressCheck[] {
   if (!order) return [{ id: "found", label: "Order found in Shopify", ok: false, detail: "Check the order number with the customer." }];
-  const unshipped = order.shipments === 0 && !["FULFILLED", "PARTIALLY_FULFILLED"].includes(order.fulfillmentStatus);
+  const partial = order.fulfillmentStatus === "PARTIALLY_FULFILLED";
+  const shipped = order.fulfillmentStatus === "FULFILLED" || (order.shipments > 0 && !partial);
   return [
     { id: "found", label: "Order found in Shopify", ok: true, detail: "" },
     { id: "cancelled", label: "Order isn't cancelled", ok: !order.cancelled, detail: order.cancelled ? "It's already cancelled." : "" },
-    { id: "shipped", label: "Nothing has shipped yet", ok: unshipped, detail: unshipped ? "" : "It has shipped, so it can't be cancelled. The customer can return it instead." },
+    { id: "shipped", label: "Not everything has shipped", ok: !shipped, detail: shipped ? "It has shipped, so it can't be cancelled. The customer can return it instead." : "" },
+    { id: "partial", label: "Nothing has shipped yet", ok: !partial, warning: true, detail: partial ? "Part of the order has shipped. Only the items not shipped yet can still be cancelled." : "" },
+  ];
+}
+
+// What the customer asks to cancel: everything not shipped yet, or only the items they pick.
+export const cancelScopes = ["Whole order", "Selected items"] as const;
+
+// The order as Shopify has it now, for the team's review before cancelling
+// (OrderDetails in help-desk-orders.server.ts).
+export type CancelReviewOrder = {
+  cancelled: boolean; fulfilled: "none" | "partial" | "full"; fulfillmentStatus: string;
+  financialStatus: string; returnStatus: string; refunded: number; capturable: boolean; currency: string;
+};
+// What staff check before cancelling in Shopify: the payment, returns and
+// shipping. Blocking checks (ok false, no warning) stop Shopify's
+// cancellation; warnings are for staff to weigh (a refund or an authorization).
+export function cancelReview(order: CancelReviewOrder): AddressCheck[] {
+  const money = (amount: number) => new Intl.NumberFormat("en", { style: "currency", currency: order.currency || "USD" }).format(amount);
+  const status = order.financialStatus;
+  const readable = status.toLowerCase().replace(/_/g, " ");
+  const payment: AddressCheck = status === "REFUNDED"
+    ? { id: "payment", label: "Payment", ok: false, warning: true, detail: "Refunded in full, but the order isn't cancelled. Cancel it without a refund." }
+    : status === "PARTIALLY_REFUNDED" || order.refunded > 0
+    ? { id: "payment", label: "Payment", ok: false, warning: true, detail: `${money(order.refunded)} has already been refunded. Shopify refunds only what's left.` }
+    : order.capturable || ["PENDING", "AUTHORIZED", "PARTIALLY_PAID", "EXPIRED"].includes(status)
+    ? { id: "payment", label: "Payment", ok: false, warning: true, detail: `The payment is ${readable || "not captured"}. Check it in Shopify: cancelling voids what's only authorized, so there may be nothing to refund.` }
+    : { id: "payment", label: "Payment", ok: true, detail: status === "PAID" ? "Paid" : readable ? `${readable[0].toUpperCase()}${readable.slice(1)}` : "" };
+  const returning = order.returnStatus && order.returnStatus !== "NO_RETURN";
+  const packing = ["IN_PROGRESS", "PENDING_FULFILLMENT"].includes(order.fulfillmentStatus);
+  return [
+    payment,
+    { id: "return", label: "No return on the order", ok: !returning,
+      detail: returning ? `Shopify shows a return (${order.returnStatus.toLowerCase().replace(/_/g, " ")}). Close it in Shopify before cancelling the order.` : "" },
+    order.fulfilled === "full"
+      ? { id: "shipped", label: "Nothing has shipped yet", ok: false, detail: "The order has already shipped, so it can't be cancelled. Reject the request and offer a return instead." }
+      : order.fulfilled === "partial"
+      ? { id: "shipped", label: "Nothing has shipped yet", ok: false, detail: "Part of the order has shipped, so Shopify can't cancel the whole order. Remove the items not shipped yet with Edit order in Shopify, or reject the request." }
+      : packing
+      ? { id: "shipped", label: "Nothing has shipped yet", ok: false, warning: true, detail: "The order is being fulfilled. Shopify won't cancel it while a fulfillment request is open: check with the warehouse and cancel that request first." }
+      : { id: "shipped", label: "Nothing has shipped yet", ok: true, detail: "" },
   ];
 }
 
 // What the customer is told on the storefront when their order can't be
 // changed, by the first failing check. Staff see the checks' own details.
-export const CUSTOMER_BLOCKED: Record<"cancel" | "address", Record<string, string>> = {
+export const CUSTOMER_BLOCKED: Record<"cancel" | "address" | "edit" | "lost", Record<string, string>> = {
+  lost: {},
   cancel: {
     cancelled: "This order is already cancelled.",
-    shipped: "This order has already shipped, so it can no longer be cancelled. Once it arrives, you can send it back: choose Returns, Exchanges & Refunds.",
+    shipped: "This order has already shipped, so it can no longer be cancelled. Once it arrives, you can send it back: choose Returns, Exchanges & Refunds. If you need help with it, contact our support team.",
   },
   address: {
     cancelled: "This order is cancelled, so its address can't be changed.",
     shipped: "This order has already shipped or is being packed, so its address can no longer be changed. Please contact the carrier using your tracking number to redirect it.",
     shipping: "This order isn't delivered to an address (for example, it's a pickup order), so there's no address to change.",
     country: "We can only change the address to one in the same country as your order. To ship to another country, please cancel this order and place a new one.",
+  },
+  // Editing the items: only while the order is still at our warehouse, not dispatched
+// (nor packed, nor labelled in ShipStation).
+  edit: {
+    cancelled: "This order is cancelled, so it can't be changed.",
+    shipped: "This order has already been dispatched or is being packed at our warehouse, so it can no longer be changed. Once it arrives, you can choose Returns, Exchanges & Refunds.",
   },
 };
 
@@ -181,7 +232,73 @@ export const deliveryIssues = [
 // Which part has the problem, so tickets can be counted per part (risers, lids, locks...).
 export const productParts = ["Case or body", "Lid", "Risers", "Acrylic or guard", "Lock or latch", "Wheels or handle", "Foam or insert", "Bag strap or zipper", "Complimentary gift (sling bag)", "Accessory (labels, card holders)", "Other"];
 // What the customer would like done about a damaged, defective or missing item. The team decides.
-export const issueResolutions = ["Replacement", "Replacement part", "Refund", "Not sure"];
+export const issueResolutions = ["Replacement", "Replacement part", "Refund", "Exchange", "Not sure"];
+
+// A damaged or defective item goes back to the warehouse (the Process
+// Guidelines on the form): within 6 months of purchase, unused and in its
+// original packaging, for a refund or an exchange. The team approves it and
+// sends the return label; the next step comes once the product is received
+// and verified. Missing parts, wrong items and warranty claims aren't returns.
+export const returnResolutions = ["Refund", "Exchange"];
+export const RETURN_WINDOW_MONTHS = 6;
+export const returnStatuses = ["Pending", "Label sent", "Received", "Rejected"] as const;
+export type ReturnStatus = (typeof returnStatuses)[number];
+// Editing an order (app/services/help-desk-edit.server.ts): what the customer
+// wants done to each item, and where the request stands. The team updates the
+// order in Shopify once the price difference is confirmed, or rejects it.
+export const editActions = ["Remove", "Change quantity", "Change color or size"];
+export const editStatuses = ["Pending", "Updated", "Rejected"] as const;
+export type EditStatus = (typeof editStatuses)[number];
+// The request as the team works from it: each order line and what to do, and products to add.
+export type EditLine = { id: string; title: string; action: string; quantity: number | null; variant: string };
+export type EditAdd = { id: string; title: string; quantity: number };
+export type EditRequest = { lines: EditLine[]; adds: EditAdd[] };
+export function parseEditRequest(value: string | undefined): EditRequest {
+  try {
+    const parsed = JSON.parse(value || "{}") as Partial<EditRequest>;
+    return { lines: Array.isArray(parsed.lines) ? parsed.lines : [], adds: Array.isArray(parsed.adds) ? parsed.adds : [] };
+  } catch { return { lines: [], adds: [] }; }
+}
+// A missing or lost part (the Procedure Guidelines on the form): the team
+// checks the order (still in transit? in the original shipment?), confirms the
+// replacement, then ships it and shares the tracking (help-desk-replacement.server.ts).
+export const replacementStatuses = ["Pending", "Approved", "Shipped", "Rejected"] as const;
+export type ReplacementStatus = (typeof replacementStatuses)[number];
+export const isMissingClaim = (values: HelpDeskValues) => values.topic === topics[3] && values.orderType === orderTypes[1] && values.issue === issues[2];
+// A warranty claim takes the same steps: the team checks the purchase date and
+// coverage, approves a solution, then shares the next steps (and tracking, if any).
+export const isWarrantyClaim = (values: HelpDeskValues, category: string) => values.topic === topics[3] && values.orderType === orderTypes[1] && values.issue === issues[0] && category === "Warranty";
+export const warrantySolutions = ["Replacement", "Repair", "Store credit", "Other"];
+// A lost package: the customer picks the missing products and whether they'd
+// like them sent again or refunded; the team confirms and follows the same steps.
+export const lostPreferences = ["Send the missing product", "Refund"];
+export const isLostClaim = (values: HelpDeskValues) => values.topic === topics[3] && values.orderType === orderTypes[3] && values.delivery === deliveryIssues[8];
+export const solutionsFor = (kind: string) => kind === "warranty" ? warrantySolutions : kind === "lost" ? lostPreferences : [];
+// International shipping quotes (help-desk-quote.server.ts): the customer picks
+// the products, the address and Regular or Expedited shipping; the team checks
+// availability and carriers, then sends the estimated delivery, shipping cost
+// and taxes (Quoted), or says it isn't available there (Unavailable).
+export const shippingMethods = ["Regular", "Expedited"];
+export const quoteStatuses = ["Pending", "Quoted", "Unavailable"] as const;
+export type QuoteStatus = (typeof quoteStatuses)[number];
+export const RETURN_CATEGORIES = ["Product Damage", "Manufacturing Defect", "Shipping Damage"];
+export const isReturnClaim = (values: HelpDeskValues, category: string) =>
+  values.topic === topics[3] && values.orderType === orderTypes[1] && values.issue === issues[0] && RETURN_CATEGORIES.includes(category);
+// The last day a product can be returned: 6 months after it was bought (the order date).
+export function returnDeadline(from: string | Date) {
+  const date = new Date(from);
+  date.setMonth(date.getMonth() + RETURN_WINDOW_MONTHS);
+  return date;
+}
+// Why an order's products can't be returned, or null when they can.
+export function returnBlocker(order: { placedAt: string; shipped: boolean; cancelled: boolean }, now = new Date()): string | null {
+  if (order.cancelled) return "This order was cancelled, so there's nothing to return.";
+  if (!order.shipped) return "This order hasn't shipped yet. If you no longer want it, you can ask to cancel it instead.";
+  if (!Number.isNaN(Date.parse(order.placedAt)) && returnDeadline(order.placedAt) < now) {
+    return `Returns are accepted within ${RETURN_WINDOW_MONTHS} months of purchase, and this order was placed on ${new Date(order.placedAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}. If it stopped working, please send a Warranty Claim instead.`;
+  }
+  return null;
+}
 // A warranty claim without an order we can find: where and when it was bought.
 export const purchasePlaces = ["Zion Cases website", "Amazon", "A store or dealer", "Gift or other"];
 export const issues = ["Defective product received", "Wrong product received", "Missing items", "Wrong item ordered"];
@@ -225,7 +342,7 @@ export const MAX_IMAGES = 5;
 // for returns the customer simply changed their mind about.
 export function imagesRequired(values: HelpDeskValues) {
   return (values.topic === topics[4] && issues.slice(0, 3).includes(values.issue))
-    || (values.topic === topics[3] && (values.orderType === orderTypes[2] || (values.orderType === orderTypes[1] && issues.slice(0, 2).includes(values.issue))));
+    || (values.topic === topics[3] && (values.orderType === orderTypes[2] || (values.orderType === orderTypes[1] && issues.slice(0, 3).includes(values.issue))));
 }
 
 export function validateHelpDesk(values: HelpDeskValues, products: string[], files: Attachment[], receivedProducts: string[] = []) {
@@ -246,10 +363,17 @@ export function validateHelpDesk(values: HelpDeskValues, products: string[], fil
   }
   if (values.topic === topics[3]) {
     required("orderNumber", "Order number"); choice("orderType", orderTypes, "an order query type");
-    if (values.orderType === orderTypes[0] && values.update === updates[2]) {
-      // Cancelling the whole order: a reason from the list, explained when it's "Other".
+    if (values.orderType === orderTypes[0] && values.update === updates[0]) {
+      // Editing the order: the items to change (or products to add), and the charges accepted.
+      if (!products.length && !values.addedProducts?.trim()) errors.products = "Select the items you'd like to change, or add a product.";
+      if (values.chargesAccepted !== "Yes") errors.chargesAccepted = "Please confirm that any price difference will be confirmed before your order is updated.";
+    } else if (values.orderType === orderTypes[0] && values.update === updates[2]) {
+      // Cancelling: a reason from the list, explained when it's "Other". The
+      // whole order unless they pick items (none given: the whole order).
       choice("cancelReason", cancelReasons, "a reason for cancelling");
       if (values.cancelReason === "Other") required("details", "Reason for cancelling");
+      if (values.cancelScope && !(cancelScopes as readonly string[]).includes(values.cancelScope)) errors.cancelScope = "Choose what to cancel.";
+      if (values.cancelScope === cancelScopes[1] && !products.length) errors.products = "Select the items to cancel.";
     } else if (values.orderType === orderTypes[0] && values.update === updates[1]) {
       // A new shipping address, part by part, checked the way Shopify will check it.
       const field = { name: "shipName", address1: "shipAddress1", address2: "shipAddress2", city: "shipCity", province: "shipProvince", zip: "shipZip", country: "shipCountry", phone: "shipPhone" } as const;
@@ -362,7 +486,7 @@ export const fieldLabels: Record<string, string> = {
   phone: "Phone", orderNumber: "Order number", orderType: "Order query", update: "Order update", cancelReason: "Cancellation reason",
   shipName: "New address: recipient", shipAddress1: "New address: street", shipAddress2: "New address: apartment, suite", shipCity: "New address: city",
   shipProvince: "New address: state or province", shipZip: "New address: ZIP or postal code", shipCountry: "New address: country", shipPhone: "New address: phone", delivery: "Delivery problem",
-  issue: "Issue", part: "Part with the problem", resolution: "Requested resolution", replacement: "Replacement wanted", purchasedFrom: "Bought from", purchaseDate: "Bought in (month)",
+  lostPreference: "Would like", shippingMethod: "Shipping method", addedProducts: "Products to add", chargesAccepted: "Price difference confirmed first", issue: "Issue", part: "Part with the problem", returnCondition: "Unused, in original packaging", resolution: "Requested resolution", replacement: "Replacement wanted", purchasedFrom: "Bought from", purchaseDate: "Bought in (month)",
   orderDetails: "Order details", productDetails: "Product details",
   details: "Details", existing: "Existing partner", registeredEmail: "Registered email", query: "Query",
   country: "Country", address: "Address", otherDetails: "Other details", transcript: "Chat transcript", quantities: "Quantities",

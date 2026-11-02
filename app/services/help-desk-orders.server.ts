@@ -5,7 +5,7 @@
 // scope, not read_customers; without it (or on any error) the form falls back
 // to the orders the theme can see, or a typed order number.
 import type { PrismaClient } from "@prisma/client";
-import { addressBlockers, addressChangeChecks, addressCheckOrder, cancelChecks, CUSTOMER_BLOCKED, sameAddress, type ShippingAddress } from "./help-desk";
+import { addressBlockers, addressChangeChecks, addressCheckOrder, cancelChecks, CUSTOMER_BLOCKED, returnBlocker, sameAddress, type ShippingAddress } from "./help-desk";
 import { updateTickets } from "./help-desk.server";
 import { queueEmail } from "./help-desk-outbox.server";
 
@@ -21,7 +21,7 @@ const ORDERS_QUERY = `#graphql
       nodes {
         name createdAt displayFulfillmentStatus cancelledAt
         lineItems(first: 30) {
-          nodes { title variantTitle quantity product { id title } image { url(transform: { maxWidth: 120 }) } }
+          nodes { id title variantTitle quantity product { id title } image { url(transform: { maxWidth: 120 }) } }
         }
       }
     }
@@ -30,7 +30,7 @@ const ORDERS_QUERY = `#graphql
 
 type OrderNode = {
   name: string; createdAt: string; displayFulfillmentStatus: string; cancelledAt: string | null;
-  lineItems: { nodes: { title: string; variantTitle: string | null; quantity: number; product: { id: string; title: string } | null; image: { url: string } | null }[] };
+  lineItems: { nodes: { id?: string; title: string; variantTitle: string | null; quantity: number; product: { id: string; title: string } | null; image: { url: string } | null }[] };
 };
 
 export async function customerOrders(admin: AdminClient | undefined, customerId: string | null): Promise<CustomerOrder[] | null> {
@@ -46,7 +46,8 @@ export async function customerOrders(admin: AdminClient | undefined, customerId:
       fulfillment: order.displayFulfillmentStatus === "FULFILLED" ? "fulfilled" : order.displayFulfillmentStatus === "PARTIALLY_FULFILLED" ? "partial" : null,
       cancelled: Boolean(order.cancelledAt),
       items: order.lineItems.nodes.map(item => ({
-        id: item.product?.id || "",
+        // A deleted product's item keeps its order line's gid, so it can still be picked.
+        id: item.product?.id || item.id || "",
         title: item.product?.title || item.title,
         variant: item.variantTitle && item.variantTitle !== "Default Title" ? item.variantTitle : "",
         quantity: item.quantity,
@@ -70,22 +71,30 @@ export type OrderDetails = {
   id: string; name: string; email: string; createdAt: string; cancelled: boolean;
   // fulfillmentStatus: Shopify's OrderDisplayFulfillmentStatus, e.g. UNFULFILLED or ON_HOLD.
   payment: string; fulfillment: string; fulfillmentStatus: string; fulfilled: "none" | "partial" | "full";
+  // For a cancellation: Shopify's OrderDisplayFinancialStatus (e.g. AUTHORIZED,
+  // REFUNDED) and OrderReturnStatus (e.g. IN_PROGRESS), what's been refunded
+  // already, and whether a payment is only authorized (capturable).
+  financialStatus: string; returnStatus: string; refunded: number; capturable: boolean;
   total: string; amount: number; currency: string; city: string; province: string; country: string;
   // The full shipping address (null: pickup, digital, or none given) and whether anything ships.
   shippingAddress: ShippingAddress | null; requiresShipping: boolean;
   // The shipping rate chosen at checkout, e.g. "Standard".
   shippingMethod: string;
   // productId: the Shopify product (a gid), when the item is still a product.
-  items: { productId: string; title: string; variant: string; sku: string; quantity: number; image: string }[];
+  // lineItemId: the order line's own gid, for an item whose product was deleted.
+  // current: how many are still on the order (after edits and removals);
+  // unfulfilled: how many of those haven't shipped.
+  items: { productId: string; lineItemId: string; title: string; variant: string; sku: string; quantity: number; current: number; unfulfilled: number; image: string }[];
   shipments: Shipment[];
 };
 
 const ORDER_FIELDS = `
   id legacyResourceId name email createdAt cancelledAt displayFinancialStatus displayFulfillmentStatus requiresShipping
+  returnStatus capturable totalRefundedSet { shopMoney { amount } }
   totalPriceSet { shopMoney { amount currencyCode } }
   shippingAddress { name address1 address2 city provinceCode zip countryCodeV2 phone }
   shippingLine { title }
-  lineItems(first: 30) { nodes { title variantTitle sku quantity product { id } image { url(transform: { maxWidth: 120 }) } } }
+  lineItems(first: 30) { nodes { id title variantTitle sku quantity currentQuantity unfulfilledQuantity product { id } image { url(transform: { maxWidth: 120 }) } } }
   fulfillments(first: 10) {
     createdAt status displayStatus deliveredAt estimatedDeliveryAt inTransitAt
     trackingInfo(first: 5) { company number url }
@@ -105,12 +114,13 @@ const ORDER_BY_ID_QUERY = `#graphql
 type OrderNodeFull = {
   legacyResourceId: string; name: string; email: string | null; createdAt: string; cancelledAt: string | null;
   displayFinancialStatus: string | null; displayFulfillmentStatus: string; requiresShipping?: boolean;
+  returnStatus?: string | null; capturable?: boolean; totalRefundedSet?: { shopMoney: { amount: string } } | null;
   totalPriceSet: { shopMoney: { amount: string; currencyCode: string } };
   shippingAddress: {
     name?: string | null; address1?: string | null; address2?: string | null; city: string | null; provinceCode: string | null; zip?: string | null; countryCodeV2: string | null; phone?: string | null;
   } | null;
   shippingLine?: { title: string | null } | null;
-  lineItems: { nodes: { title: string; variantTitle: string | null; sku: string | null; quantity: number; product?: { id: string } | null; image: { url: string } | null }[] };
+  lineItems: { nodes: { id?: string; title: string; variantTitle: string | null; sku: string | null; quantity: number; currentQuantity?: number; unfulfilledQuantity?: number; product?: { id: string } | null; image: { url: string } | null }[] };
   fulfillments: {
     createdAt: string; status: string; displayStatus: string | null; deliveredAt: string | null; estimatedDeliveryAt: string | null; inTransitAt: string | null;
     trackingInfo: { company: string | null; number: string | null; url: string | null }[];
@@ -139,6 +149,8 @@ export function shapeOrder(node: OrderNodeFull): OrderDetails {
     id: node.legacyResourceId, name: node.name, email: node.email || "", createdAt: node.createdAt, cancelled: Boolean(node.cancelledAt),
     payment: readable(node.displayFinancialStatus), fulfillment: readable(node.displayFulfillmentStatus), fulfillmentStatus: node.displayFulfillmentStatus,
     fulfilled: node.displayFulfillmentStatus === "FULFILLED" ? "full" : node.displayFulfillmentStatus === "PARTIALLY_FULFILLED" ? "partial" : "none",
+    financialStatus: node.displayFinancialStatus || "", returnStatus: node.returnStatus || "NO_RETURN",
+    refunded: Number(node.totalRefundedSet?.shopMoney.amount) || 0, capturable: Boolean(node.capturable),
     total: new Intl.NumberFormat("en", { style: "currency", currency: money.currencyCode }).format(amount), amount, currency: money.currencyCode,
     city: node.shippingAddress?.city || "", province: node.shippingAddress?.provinceCode || "", country: node.shippingAddress?.countryCodeV2 || "",
     shippingAddress: node.shippingAddress ? {
@@ -147,8 +159,8 @@ export function shapeOrder(node: OrderNodeFull): OrderDetails {
     } : null,
     requiresShipping: node.requiresShipping !== false, shippingMethod: node.shippingLine?.title || "",
     items: node.lineItems.nodes.map((item) => ({
-      productId: item.product?.id ?? "", title: item.title, variant: item.variantTitle && item.variantTitle !== "Default Title" ? item.variantTitle : "",
-      sku: item.sku || "", quantity: item.quantity, image: item.image?.url || "",
+      productId: item.product?.id ?? "", lineItemId: item.id ?? "", title: item.title, variant: item.variantTitle && item.variantTitle !== "Default Title" ? item.variantTitle : "",
+      sku: item.sku || "", quantity: item.quantity, current: item.currentQuantity ?? item.quantity, unfulfilled: item.unfulfilledQuantity ?? item.quantity, image: item.image?.url || "",
     })),
     // Newest shipment first, the one customers usually ask about.
     shipments: [...node.fulfillments].filter((fulfillment) => fulfillment.status !== "CANCELLED")
@@ -257,21 +269,51 @@ export async function lookupTracking(admin: AdminClient | undefined, orderNumber
 // the request is sent. Like tracking, it only answers about an order placed
 // with the given email, so order numbers can't be probed for other people's orders.
 // allowed: true, or false with what to tell the customer; undefined: Shopify couldn't be asked.
-export type OrderChangeAnswer = { allowed: true; country: string; orderId: string; orderName: string } | { allowed: false; error: string; notFound?: boolean };
+// For a cancellation, also the items that haven't shipped (the customer may ask
+// to cancel only some of them; id: the order line's gid) and whether part of
+// the order has already shipped (the team then decides what can still be cancelled).
+export type CancelItem = { id: string; title: string; variant: string; quantity: number; image: string };
+// status and shipments: for a lost package, the order as Shopify has it, shown to the customer.
+export type LostShipment = { label: string; carrier: string; number: string; url: string; deliveredAt: string | null };
+export type OrderChangeAnswer = { allowed: true; country: string; orderId: string; orderName: string; items?: CancelItem[]; partial?: boolean; status?: string; shipments?: LostShipment[] } | { allowed: false; error: string; notFound?: boolean };
 export async function checkOrderChange(
-  admin: AdminClient | undefined, kind: "cancel" | "address", orderNumber: string, email: string, newAddress?: ShippingAddress,
+  admin: AdminClient | undefined, kind: "cancel" | "address" | "edit" | "lost", orderNumber: string, email: string, newAddress?: ShippingAddress,
 ): Promise<OrderChangeAnswer | undefined> {
   const order = await findOrder(admin, orderNumber);
   if (order === undefined) return undefined;
   if (!order || !email.trim() || order.email.trim().toLowerCase() !== email.trim().toLowerCase()) {
     return { allowed: false, notFound: true, error: "We couldn't find an order with that number and email. Please check both. If you placed the order in the last few minutes, wait a moment and try again." };
   }
+  // A lost package: the order must have shipped. Its items to pick from, and where Shopify says it is.
+  if (kind === "lost") {
+    if (order.cancelled) return { allowed: false, error: "This order was cancelled, so it wasn't shipped." };
+    if (order.fulfilled === "none" && !order.shipments.length) return { allowed: false, error: "This order hasn't shipped yet, so it can't be lost in transit. Choose Track Order to see where it stands." };
+    return {
+      allowed: true, country: order.country, orderId: order.id, orderName: order.name, status: order.fulfillment,
+      items: order.items.filter((item) => item.productId || item.lineItemId).map(({ productId, lineItemId, title, variant, quantity, image }) => ({ id: productId || lineItemId, title, variant, quantity, image })),
+      shipments: order.shipments.map(({ label, carrier, number, url, deliveredAt }) => ({ label, carrier, number, url: /^https:\/\//i.test(url) ? url : "", deliveredAt })),
+    };
+  }
   const view = addressCheckOrder(order, email);
-  const checks = kind === "cancel" ? cancelChecks(view) : addressChangeChecks(view, newAddress?.country ?? "");
+  // Editing: the address checks for an order still at the warehouse (not packed, labelled or shipped), whatever its address.
+  const checks = kind === "cancel" ? cancelChecks(view)
+    : kind === "edit" ? addressChangeChecks(view, order.country).filter((check) => check.id === "cancelled" || check.id === "shipped")
+    : addressChangeChecks(view, newAddress?.country ?? "");
   const blocked = addressBlockers(checks)[0];
   if (blocked) return { allowed: false, error: CUSTOMER_BLOCKED[kind][blocked.id] ?? blocked.detail };
   if (newAddress && order.shippingAddress && sameAddress(newAddress, order.shippingAddress)) {
     return { allowed: false, error: "Your order is already going to this address, so there's nothing to change." };
+  }
+  if (kind === "cancel") {
+    const items = order.items.filter((item) => item.lineItemId && item.unfulfilled > 0)
+      .map(({ lineItemId, title, variant, unfulfilled, image }) => ({ id: lineItemId, title, variant, quantity: unfulfilled, image }));
+    return { allowed: true, country: order.country, orderId: order.id, orderName: order.name, items, partial: order.fulfilled === "partial" };
+  }
+  // Editing: every item still on the order, to pick the ones to change.
+  if (kind === "edit") {
+    const items = order.items.filter((item) => item.lineItemId && item.current > 0)
+      .map(({ lineItemId, title, variant, current, image }) => ({ id: lineItemId, title, variant, quantity: current, image }));
+    return { allowed: true, country: order.country, orderId: order.id, orderName: order.name, items };
   }
   return { allowed: true, country: order.country, orderId: order.id, orderName: order.name };
 }
@@ -279,12 +321,14 @@ export async function checkOrderChange(
 // Another open request that makes this one pointless: the same change already
 // asked for, or (for an address) a cancellation in progress. Returns what to
 // tell the customer, or "".
-export async function conflictingRequest(db: PrismaClient, shop: string, kind: "cancel" | "address", order: { orderId: string; orderName: string }) {
+export async function conflictingRequest(db: PrismaClient, shop: string, kind: "cancel" | "address" | "edit" | "lost", order: { orderId: string; orderName: string }) {
   const sameOrder = { shop, OR: [{ orderId: order.orderId }, { orderName: order.orderName }] };
   const cancel = await db.helpDeskTicket.findFirst({ where: { ...sameOrder, cancelStatus: { in: ["Pending", "Approved"] } }, select: { number: true } });
   if (cancel) {
     return kind === "cancel"
       ? `You've already asked to cancel this order (request #${cancel.number}). We'll update you there.`
+      : kind === "lost" ? `You've asked to cancel this order (request #${cancel.number}). We'll update you there.`
+      : kind === "edit" ? `You've asked to cancel this order (request #${cancel.number}), so it can't be changed while that's open.`
       : `You've asked to cancel this order (request #${cancel.number}), so its address can't be changed while that's open.`;
   }
   if (kind === "address") {
@@ -300,16 +344,20 @@ export async function conflictingRequest(db: PrismaClient, shop: string, kind: "
 // tracking, only for an order placed with the given email. null: no such order
 // for that email; undefined: Shopify couldn't be asked.
 // partial: only part of the order has shipped, so a "missing" item may still be on its way.
-export type IssueItems = { order: string; deliveredAt: string | null; partial: boolean; items: { id: string; title: string; variant: string; quantity: number; image: string }[] };
+// returnBlocker: why its products can't be returned (help-desk.ts), or null; only damaged or defective items go by it.
+export type IssueItems = { order: string; deliveredAt: string | null; partial: boolean; returnBlocker: string | null; items: { id: string; title: string; variant: string; quantity: number; image: string }[] };
 export async function issueItems(admin: AdminClient | undefined, orderNumber: string, email: string): Promise<IssueItems | null | undefined> {
   const order = await findOrder(admin, orderNumber);
   if (order === undefined) return undefined;
   if (!order || !email.trim() || order.email.trim().toLowerCase() !== email.trim().toLowerCase()) return null;
+  const deliveredAt = order.shipments.map((shipment) => shipment.deliveredAt).filter((at): at is string => Boolean(at)).sort().at(-1) ?? null;
   return {
     order: order.name,
-    deliveredAt: order.shipments.map((shipment) => shipment.deliveredAt).filter(Boolean).sort().at(-1) ?? null,
+    deliveredAt,
     partial: order.fulfilled === "partial",
-    items: order.items.filter((item) => item.productId).map(({ productId, title, variant, quantity, image }) => ({ id: productId, title, variant, quantity, image })),
+    returnBlocker: returnBlocker({ placedAt: order.createdAt, shipped: order.fulfilled !== "none" || order.shipments.length > 0, cancelled: order.cancelled }),
+    // An item whose product was deleted is still on the order: its line stands in.
+    items: order.items.filter((item) => item.productId || item.lineItemId).map(({ productId, lineItemId, title, variant, quantity, image }) => ({ id: productId || lineItemId, title, variant, quantity, image })),
   };
 }
 

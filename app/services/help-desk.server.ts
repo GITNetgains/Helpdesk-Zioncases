@@ -1,9 +1,9 @@
 import { randomBytes } from "node:crypto";
 import type { Prisma, PrismaClient } from "@prisma/client";
 import { categoryNames, classifyTicket, classifyWithChoice, resolutionTypes, rootCauses, subcategoriesOf } from "./help-desk-taxonomy";
-import { ADDRESS_FIELDS, CHAT_TOPIC, imagesRequired, ticketStatuses, countries, MAX_IMAGES, MAX_IMAGE_BYTES, MAX_MESSAGE_LENGTH, MAX_VIDEO_BYTES, VIDEO_FORMATS_LABEL, looksLikeVideo, videoFormat, issueResolutions, orderTypes, priorities, productParts, topics, updates, validateHelpDesk, type HelpDeskValues } from "./help-desk";
+import { ADDRESS_FIELDS, cancelScopes, CHAT_TOPIC, editActions, deliveryIssues, imagesRequired, shippingMethods, isLostClaim, isMissingClaim, isReturnClaim, isWarrantyClaim, lostPreferences, returnResolutions, ticketStatuses, countries, MAX_IMAGES, MAX_IMAGE_BYTES, MAX_MESSAGE_LENGTH, MAX_VIDEO_BYTES, VIDEO_FORMATS_LABEL, looksLikeVideo, videoFormat, issueResolutions, orderTypes, priorities, productParts, topics, updates, validateHelpDesk, type HelpDeskValues } from "./help-desk";
 
-const fields = ["name", "email", "phone", "topic", "country", "address", "otherDetails", "existing", "registeredEmail", "query", "orderNumber", "orderType", "update", "cancelReason", ...ADDRESS_FIELDS, "delivery", "issue", "part", "details", "orderDetails", "productDetails", "resolution", "replacement", "purchasedFrom", "purchaseDate"];
+const fields = ["name", "email", "phone", "topic", "country", "address", "otherDetails", "existing", "registeredEmail", "query", "orderNumber", "orderType", "update", "cancelReason", "cancelScope", ...ADDRESS_FIELDS, "delivery", "issue", "part", "returnCondition", "lostPreference", "shippingMethod", "addedProducts", "chargesAccepted", "details", "orderDetails", "productDetails", "resolution", "replacement", "purchasedFrom", "purchaseDate"];
 // created is false when a retried submission returns the ticket saved earlier.
 export type TicketResult = { errors: Record<string, string>; ticketId?: string; number?: number; token?: string; created?: boolean };
 
@@ -38,19 +38,65 @@ export async function submitTicket(db: PrismaClient, shop: string, form: FormDat
   const returns = values.topic === topics[4];
   const question = values.topic === topics[5];
   const active = new Set(["name", "email", "phone", "topic",
-    ...(shipping ? ["country", "address", "otherDetails"] : []),
+    ...(shipping ? ["country", "address", "otherDetails", "shippingMethod"] : []),
     ...(partner ? ["existing", "query", ...(values.existing === "Yes" ? ["registeredEmail"] : [])] : []),
     ...(order || returns ? ["orderNumber", "details"] : []),
-    ...(order ? ["orderType", ...(values.orderType === orderTypes[0] ? ["update", ...(values.update === updates[2] ? ["cancelReason"] : []), ...(values.update === updates[1] ? ADDRESS_FIELDS : [])] : []), ...(values.orderType === orderTypes[1] ? ["issue", "part", "resolution", "replacement", "purchasedFrom", "purchaseDate"] : []), ...(values.orderType === orderTypes[2] ? ["resolution", "replacement"] : []), ...(values.orderType === orderTypes[3] ? ["delivery"] : [])] : []),
+    ...(order ? ["orderType", ...(values.orderType === orderTypes[0] ? ["update", ...(values.update === updates[0] ? ["addedProducts", "chargesAccepted"] : []), ...(values.update === updates[2] ? ["cancelReason", "cancelScope"] : []), ...(values.update === updates[1] ? ADDRESS_FIELDS : [])] : []), ...(values.orderType === orderTypes[1] ? ["issue", "part", "returnCondition", "resolution", "replacement", "purchasedFrom", "purchaseDate"] : []), ...(values.orderType === orderTypes[2] ? ["returnCondition", "resolution", "replacement"] : []), ...(values.orderType === orderTypes[3] ? ["delivery", ...(values.delivery === deliveryIssues[8] ? ["lostPreference"] : [])] : [])] : []),
     ...(returns ? ["orderDetails", "productDetails", "issue", "part", "resolution"] : []),
     // country: where it ships to, for a customs or tax question.
     ...(question ? ["query", "orderNumber", "country"] : []),
   ]);
   for (const key of Object.keys(values)) if (!active.has(key)) delete values[key];
   const wrongProduct = order && values.orderType === orderTypes[2];
+  // The category the customer picked is stored on the ticket, not with the request's fields.
+  const chosen = { category: String(form.get("category") ?? "").trim(), subcategory: String(form.get("subcategory") ?? "").trim() };
+  // A damaged or defective item to send back (isReturnClaim): unused, in its packaging, for a refund or an exchange.
+  // A wrong item is returned the same way (without the 6-month window: the mistake was ours).
+  const returnClaim = isReturnClaim(values, chosen.category) || Boolean(wrongProduct);
+  // A missing part: the part itself is replaced once the team confirms it.
+  const missingClaim = isMissingClaim(values);
+  // A warranty claim: the team decides the solution, so the customer asks for none.
+  const warrantyClaim = isWarrantyClaim(values, chosen.category);
+  if (!returnClaim) delete values.returnCondition;
   // A damaged, defective or missing item: the products it's about, and an optional video.
   const productIssue = order && values.orderType === orderTypes[1];
-  const products = shipping || wrongProduct || productIssue ?form.getAll("products").filter((value): value is string => typeof value === "string") : [];
+  // A cancellation of selected items: the order lines picked (LineItem gids).
+  const cancelItems = order && values.orderType === orderTypes[0] && values.update === updates[2] && values.cancelScope === cancelScopes[1];
+  // Editing the order: the order lines picked to change (LineItem gids).
+  const editItems = order && values.orderType === orderTypes[0] && values.update === updates[0];
+  let editProblem = "";
+  // A lost package: the products that didn't arrive, and sent again or refunded.
+  const lostClaim = isLostClaim(values);
+  const products = shipping || wrongProduct || productIssue || cancelItems || editItems || lostClaim ? form.getAll("products").filter((value): value is string => typeof value === "string") : [];
+  // Editing: what to do with each order line picked, and the products to add (JSON from the form).
+  if (editItems) {
+    const text = (key: string, max = 200) => String(form.get(key) ?? "").trim().slice(0, max);
+    const lines = [...new Set(products)].slice(0, 50).map((id) => {
+      const action = editActions.includes(text(`itemAction:${id}`)) ? text(`itemAction:${id}`) : "";
+      const wanted = Math.trunc(Number(text(`itemWanted:${id}`)));
+      return {
+        id, title: text(`itemTitle:${id}`) || "Item", action,
+        quantity: action === editActions[1] && Number.isFinite(wanted) ? Math.min(Math.max(wanted, 1), 999) : action === editActions[0] ? 0 : null,
+        variant: action === editActions[2] ? text(`itemVariant:${id}`) : "",
+      };
+    });
+    let adds: { id: string; title: string; quantity: number }[] = [];
+    try {
+      const parsed = JSON.parse(text("addedItems", 20000) || "[]") as { id?: unknown; title?: unknown; quantity?: unknown }[];
+      adds = (Array.isArray(parsed) ? parsed : []).filter((entry) => typeof entry?.id === "string" && /^gid:\/\/shopify\/Product\/\d+$/.test(entry.id)).slice(0, 20)
+        .map((entry) => ({ id: entry.id as string, title: String(entry.title ?? "Product").trim().slice(0, 200), quantity: Math.min(Math.max(Math.trunc(Number(entry.quantity)) || 1, 1), 99) }));
+    } catch { adds = []; }
+    const note = values.details ?? "";
+    values.addedProducts = adds.map((entry) => `${entry.title} × ${entry.quantity}`).join(", ");
+    values.details = [
+      ...lines.map((line) => `${line.title}: ${line.action === editActions[0] ? "Remove" : line.action === editActions[1] ? `change quantity to ${line.quantity}` : line.action === editActions[2] ? `change to ${line.variant || "another color or size"}` : "change"}`),
+      ...adds.map((entry) => `Add: ${entry.title} × ${entry.quantity}`),
+      note,
+    ].filter(Boolean).join("\n");
+    values.editRequest = JSON.stringify({ lines, adds });
+    editProblem = lines.some((line) => !line.action) ? "Choose what you'd like to do with each item."
+      : lines.some((line) => line.action === editActions[2] && !line.variant) ? "Tell us which color or size you'd like." : "";
+  }
   const receivedProducts = wrongProduct ? form.getAll("receivedProducts").filter((value): value is string => typeof value === "string") : [];
   // A product issue or wrong item: for each product picked from the order,
   // what's wrong with it (or what came instead) and its own photos and video,
@@ -69,8 +115,8 @@ export async function submitTicket(db: PrismaClient, shop: string, form: FormDat
     const wanted = count("itemWanted", 1);
     const asked = [variant && `wants ${variant}`, received !== null && `received ${received}`, wanted !== null && `wants ${wanted}`].filter(Boolean).join(", ");
     // What they'd like for this product: a refund, or a replacement (and with what).
-    const resolution = issueResolutions.includes(text("itemResolution")) ? text("itemResolution") : "";
-    const replacement = resolution === "Replacement" ? text("itemReplacement", 1000) : "";
+    const resolution = warrantyClaim ? "" : missingClaim ? "Replacement" : (returnClaim ? returnResolutions : issueResolutions).includes(text("itemResolution")) ? text("itemResolution") : "";
+    const replacement = !missingClaim && (resolution === "Replacement" || resolution === "Exchange") ? text("itemReplacement", 1000) : "";
     return { id, title: text("itemTitle"), note: text("itemNote", 5000) || (part ? "" : text("itemPart")), part, quantity, asked, resolution, replacement, images: fileList(`images:${id}`), videos: fileList(`videos:${id}`) };
   }).filter((item) => item.note || item.part || item.asked || item.images.length || item.videos.length) : [];
   // Shipping products: how many of each they want, as the team reads it.
@@ -99,20 +145,33 @@ export async function submitTicket(db: PrismaClient, shop: string, form: FormDat
   const image = (file: File) => ["image/jpeg", "image/png", "image/webp"].includes(file.type) && file.size > 0 && file.size <= MAX_IMAGE_BYTES;
   const video = (file: File) => looksLikeVideo(file) && file.size > 0 && file.size <= MAX_VIDEO_BYTES;
   if (perProduct.some((item) => !item.note && !item.part && !item.asked)) errors.details = "Tell us what's wrong with each product.";
+  if (editProblem) errors.products = editProblem;
+  // International shipping: Regular or Expedited, and the team sends a quote.
+  const quote = shipping && chosen.subcategory === "International Shipping";
+  if (quote && !shippingMethods.includes(values.shippingMethod ?? "")) errors.shippingMethod = "Choose Regular or Expedited shipping.";
+  if (!quote) delete values.shippingMethod;
+  if (lostClaim) {
+    if (!products.length) errors.products = "Select the missing products.";
+    if (!lostPreferences.includes(values.lostPreference ?? "")) errors.lostPreference = "Choose whether you'd like the product sent again or a refund.";
+    if (!values.details?.trim()) errors.details = "Tell us a little about what happened.";
+  }
+  if (returnClaim) {
+    if (values.returnCondition !== "Yes") errors.returnCondition = "Returns are accepted only unused and in the original packaging. Confirm this to continue.";
+    if (perProduct.some((item) => !item.resolution)) errors.resolution = "Choose a refund or an exchange for each product.";
+  }
   if (imagesRequired(values) && perProduct.some((item) => !item.images.length)) errors.images = "Add a photo of each product.";
   if (perProduct.some((item) => item.images.length > MAX_IMAGES || !item.images.every(image))) errors.images = `Use up to ${MAX_IMAGES} JPG, PNG or WebP images per product, 10 MB each.`;
   if (perProduct.some((item) => item.videos.length > 1)) errors.videos = "Attach one video per product.";
   else if (perProduct.some((item) => !item.videos.every(video))) errors.videos = `Use a video (${VIDEO_FORMATS_LABEL}), up to 50 MB.`;
   for (const [key, value] of Object.entries(values)) if (value.length > 5000) errors[key] = "Use no more than 5,000 characters.";
   if (values.country && !countries.some(country => country.code === values.country)) errors.country = "Select a valid country.";
-  const validIds = (ids: string[]) => ids.length <= 100 && ids.every(id => /^gid:\/\/shopify\/Product\/\d+$/.test(id));
-  if (!validIds(products)) errors.products = "Select up to 100 valid products.";
+  // A product, or (picked from the order) the order line of a product since deleted.
+  const validIds = (ids: string[]) => ids.length <= 100 && ids.every(id => /^gid:\/\/shopify\/(Product|LineItem)\/\d+$/.test(id));
+  if (!validIds(products) || ((cancelItems || editItems) && !products.every((id) => id.startsWith("gid://shopify/LineItem/")))) errors.products = "Select up to 100 valid products.";
   if (!validIds(receivedProducts)) errors.receivedProducts = "Select up to 100 valid products.";
   const requestKey = form.get("requestKey");
   if (typeof requestKey !== "string" || !/^[a-zA-Z0-9-]{16,80}$/.test(requestKey)) errors.form = "Reload the page and try again.";
   if (Object.keys(errors).length) return { errors };
-  // The category the customer picked is stored on the ticket, not with the request's fields.
-  const chosen = { category: String(form.get("category") ?? "").trim(), subcategory: String(form.get("subcategory") ?? "").trim() };
   const existing = await db.helpDeskTicket.findUnique({ where: { shop_requestKey: { shop, requestKey: requestKey as string } }, select: { id: true, number: true, accessToken: true } });
   if (existing) return { errors: {}, ticketId: existing.id, number: existing.number, token: existing.accessToken, created: false };
   const images = await readImages(perProduct.length ? [] : files);
@@ -130,7 +189,7 @@ export async function submitTicket(db: PrismaClient, shop: string, form: FormDat
   if (videos.some((file) => !looksLikeVideo(file) || !file.size || file.size > MAX_VIDEO_BYTES)) return { errors: { videos: `Use a video (${VIDEO_FORMATS_LABEL}), up to 50 MB.` } };
   const clips = await readVideos(videos);
   if ("error" in clips) return { errors: { videos: clips.error } };
-  // A request to cancel the whole order waits for the team's decision.
+  // A request to cancel the order (or some of its items) waits for the team's decision.
   const cancellation = order && values.orderType === orderTypes[0] && values.update === updates[2];
   // So does a new shipping address.
   const addressChange = order && values.orderType === orderTypes[0] && values.update === updates[1];
@@ -138,6 +197,12 @@ export async function submitTicket(db: PrismaClient, shop: string, form: FormDat
   return createNumberedTicket(db, {
     ...(cancellation ? { cancelStatus: "Pending", tags: "cancel" } : {}),
     ...(addressChange ? { addressStatus: "Pending", tags: "address-change" } : {}),
+    ...(returnClaim ? { returnStatus: "Pending", tags: "return" } : {}),
+    ...(editItems ? { editStatus: "Pending", tags: "order-edit" } : {}),
+    ...(missingClaim ? { replacementStatus: "Pending", replacementKind: "missing", tags: "missing-part" } : {}),
+    ...(warrantyClaim ? { replacementStatus: "Pending", replacementKind: "warranty", tags: "warranty" } : {}),
+    ...(quote ? { quoteStatus: "Pending", tags: "shipping-quote" } : {}),
+    ...(lostClaim ? { replacementStatus: "Pending", replacementKind: "lost", replacementSolution: values.lostPreference, tags: "lost-package" } : {}),
     shop, requestKey: requestKey as string, name: values.name, email: values.email, topic: values.topic, details: JSON.stringify(values), ...classifyWithChoice(values.topic, values, chosen),
     products: JSON.stringify([...new Set(products)]), receivedProducts: JSON.stringify([...new Set(receivedProducts)]),
     customerId: /^\d+$/.test(customerId) ? customerId : "", attachments: { create: [...images.attachments, ...clips.attachments, ...productFiles] },

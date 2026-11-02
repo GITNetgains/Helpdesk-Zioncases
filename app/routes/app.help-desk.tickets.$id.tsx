@@ -3,13 +3,13 @@ import type { LoaderFunctionArgs } from "react-router";
 import { useFetcher, useFetchers, useLoaderData, useNavigate } from "react-router";
 import { useAppBridge } from "@shopify/app-bridge-react";
 import {
-  addressBlockers, addressChangeChecks, addressCheckOrder, shipStationCheck, addressFromValues, addressLines, countries, countryName, fieldLabels as LABELS, fillMacro, MAX_MESSAGE_LENGTH, PLAYABLE_VIDEO, priorities, PROVINCES, ticketStatuses, type MacroOrder,
+  addressBlockers, addressChangeChecks, addressCheckOrder, cancelReview, cancelScopes, parseEditRequest, solutionsFor, returnBlocker, RETURN_WINDOW_MONTHS, shipStationCheck, addressFromValues, addressLines, countries, countryName, fieldLabels as LABELS, fillMacro, MAX_MESSAGE_LENGTH, PLAYABLE_VIDEO, priorities, PROVINCES, ticketStatuses, type MacroOrder,
 } from "../services/help-desk";
 import { adminContext, helpDeskAction, loadTicket } from "../services/help-desk-admin.server";
 import type { TicketProduct } from "../services/help-desk-email.server";
 import { categoryNames, describeCategory, groupMacros, resolutionTypes, rootCauses, subcategoriesOf, teamFor } from "../services/help-desk-taxonomy";
 import { buildChecks, PHOTO_VERDICT, PhotoCheckButton, PhotoReportModal } from "../components/PhotoReport";
-import { AddressBadge, ago, CancelBadge, DAY, DeleteConfirm, duration, formatDate, StatusBadge, ticketHref, useLiveRefresh, useResultToast } from "../components/help-desk/shared";
+import { AddressBadge, EditBadge, QuoteBadge, ReplacementBadge, ReturnBadge, ago, CancelBadge, DAY, DeleteConfirm, duration, formatDate, StatusBadge, ticketHref, useLiveRefresh, useResultToast } from "../components/help-desk/shared";
 
 // One ticket: /app/help-desk/tickets/:id.
 export const loader = async ({ request, params }: LoaderFunctionArgs) => loadTicket(await adminContext(request), params.id ?? "");
@@ -81,7 +81,10 @@ function ProductList({ heading, products }: { heading: string; products: TicketP
     {products.map((product) => (
       <s-stack key={product.id} direction="inline" gap="base" alignItems="center">
         <s-thumbnail src={product.image || undefined} alt={product.title} size="small" />
-        <s-link href={`shopify://admin/products/${product.id.split("/").pop()}`} target="_blank">{product.title}</s-link>
+        {/* An order line (a product since deleted, or an item asked to cancel) has no product page. */}
+        {product.id.includes("/Product/")
+          ? <s-link href={`shopify://admin/products/${product.id.split("/").pop()}`} target="_blank">{product.title}</s-link>
+          : <s-text>{product.title}</s-text>}
       </s-stack>
     ))}
   </s-stack>;
@@ -283,6 +286,10 @@ function ChatHeader({ ticket, count }: { ticket: TicketData["ticket"]; count: nu
       {ticket.channel === "chat" && chip("Live Chat", "#5B8DEF")}
       <CancelBadge status={ticket.cancelStatus} />
       <AddressBadge status={ticket.addressStatus} />
+      <ReturnBadge status={ticket.returnStatus} />
+      <EditBadge status={ticket.editStatus} />
+      <ReplacementBadge status={ticket.replacementStatus} kind={ticket.replacementKind} />
+      <QuoteBadge status={ticket.quoteStatus} />
       <span title="New messages appear here by themselves" style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, color: "#8FE3B0", fontWeight: 600 }}>
         <span aria-hidden="true" style={{ width: 8, height: 8, borderRadius: "50%", background: "#34A86B", animation: "hd-live 2s infinite" }} />Live · {count} message{count === 1 ? "" : "s"}
       </span>
@@ -735,28 +742,46 @@ function OrderTracking({ screen }: { screen: TicketData }) {
 // Each step of a cancellation request, as the customer sees it too.
 const CANCEL_STEPS = ["Pending", "Approved", "Cancelled"];
 const CANCEL_COPY: Record<string, string> = {
-  Pending: "The customer asked to cancel their whole order. Nothing has changed yet: approving cancels it in Shopify (and ShipStation); rejecting keeps it. The customer sees the decision on their request page and by email.",
-  Approved: "Approved. Shopify is cancelling the order; this changes to Cancelled as soon as it's done. If it doesn't, cancel it in Shopify again.",
-  Rejected: "Rejected. The customer was told the order can't be cancelled.",
-  Cancelled: "The order is cancelled in Shopify. The customer has been told.",
+  Pending: "Nothing has changed in Shopify. Check the order below, then approve or reject the request. Approving doesn't cancel anything: the order (or its items) is cancelled in Shopify as the next step, and the request is marked Cancelled only once Shopify shows it. The customer sees each decision on their request page and by email.",
+  Approved: "Approved, but not cancelled yet. Cancel it in Shopify now; this changes to Cancelled as soon as Shopify shows it. If Shopify is already cancelling the order, this happens by itself.",
+  Rejected: "Rejected. The customer was told the order can't be cancelled. The order is unchanged.",
+  Cancelled: "Cancelled in Shopify. The customer has been told.",
 };
+const REFUND_CHOICES = [
+  ["original", "Refund to the original payment method"],
+  ["store-credit", "Refund as store credit"],
+  ["none", "Don't refund (e.g. refunded already, or never paid)"],
+] as const;
+const money = (amount: number, currency: string) => new Intl.NumberFormat("en", { style: "currency", currency: currency || "USD" }).format(amount);
 
-// The customer's request to cancel their order, and the team's decision.
+function CheckRow({ check }: { check: { id: string; label: string; ok: boolean; detail: string; warning?: boolean } }) {
+  return <s-stack direction="inline" gap="small-200" alignItems="start">
+    <s-icon type={check.ok ? "check-circle" : check.warning ? "alert-triangle" : "x-circle"} tone={check.ok ? "success" : check.warning ? "warning" : "critical"} size="small" />
+    <s-stack gap="none">
+      <s-text>{check.label}</s-text>
+      {check.detail && <s-text color="subdued">{check.detail}</s-text>}
+    </s-stack>
+  </s-stack>;
+}
+
+// The customer's request to cancel their order (or some of its items), and the
+// team's decision: approve or reject, then cancel in Shopify. Nothing here
+// changes the order until staff choose to cancel it in Shopify.
 function CancellationPanel({ screen }: { screen: TicketData }) {
   const { ticket, order, shipStation } = screen;
   const fetcher = useFetcher<typeof action>();
   const shopify = useAppBridge();
   const [note, setNote] = useState("");
   const [confirming, setConfirming] = useState(false);
-  const [options, setOptions] = useState({ refund: true, restock: true, notifyCustomer: false });
+  const [options, setOptions] = useState({ refund: "original", restock: true, notifyCustomer: false });
   const busy = fetcher.state !== "idle";
   useEffect(() => {
     if (fetcher.state !== "idle" || !fetcher.data) return;
     const errors = Object.values(fetcher.data.errors);
     if (errors.length) { if (!fetcher.data.errors.note) shopify.toast.show(errors[0], { isError: true }); return; }
     if (fetcher.data.warning) shopify.toast.show(fetcher.data.warning, { isError: true, duration: 10000 });
-    else shopify.toast.show(fetcher.data.notice === "Cancelled" ? "Approved: order cancelled in Shopify"
-      : fetcher.data.notice === "Approved" ? "Approved: Shopify is cancelling the order" : `Cancellation request ${(fetcher.data.notice || "updated").toLowerCase()}`);
+    else shopify.toast.show(fetcher.data.notice === "Cancelled" ? "Cancelled in Shopify"
+      : fetcher.data.notice === "Approved" ? "Cancellation request approved" : `Cancellation request ${(fetcher.data.notice || "updated").toLowerCase()}`);
     setNote("");
     setConfirming(false);
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -767,19 +792,27 @@ function CancellationPanel({ screen }: { screen: TicketData }) {
     intent: "cancellation", id: ticket.id, decision, note, author: screen.me || "Staff",
     ...(decision === "cancel-shopify" ? Object.fromEntries(Object.entries(options).map(([key, value]) => [key, String(value)])) : {}),
   }, { method: "post" });
-  const shipped = order && order.fulfilled !== "none";
   const open = status === "Pending" || status === "Approved";
-  // Has the warehouse bought a label in ShipStation? (Only asked while the order can still be cancelled.)
+  // Only some items, or a whole order that has partly shipped: Shopify's
+  // orderCancel can't do it, so staff remove the items with Edit order.
+  const someItems = ticket.details.cancelScope === cancelScopes[1];
+  const byEdit = someItems || order?.fulfilled === "partial";
+  // What Shopify says now (payment, returns, shipping), then ShipStation's labels.
+  const shipped = order?.fulfilled === "full";
   const labelCheck = order && !order.cancelled && !shipped && status !== "Cancelled" ? shipStationCheck(shipStation, "cancel") : null;
-  const labelBlocked = Boolean(labelCheck && !labelCheck.ok && !labelCheck.warning);
-  const stillOpen = status === "Cancelled" && order && !order.cancelled;
+  const checks = [...(order && !order.cancelled ? cancelReview(order) : []), ...(labelCheck ? [labelCheck] : [])];
+  // What stops Shopify cancelling the whole order (a partly shipped one goes through Edit order).
+  const blocking = checks.filter((check) => !check.ok && !check.warning && !(byEdit && check.id === "shipped" && !shipped));
+  const stillOpen = status === "Cancelled" && order && !order.cancelled && !byEdit;
   const current = status === "Rejected" ? 1 : CANCEL_STEPS.indexOf(status);
   const reason = ticket.details.cancelReason;
+  // The items asked about, with how many have been removed so far.
+  const lines = new Map((order?.items ?? []).map((item) => [item.lineItemId, item]));
   return <s-section heading="Cancellation request">
     <s-stack gap="base">
       <s-stack direction="inline" gap="small-200" alignItems="center">
         <CancelBadge status={status} />
-        {order && <s-text color="subdued">Whole order {order.name} · {order.total}</s-text>}
+        {order && <s-text color="subdued">{someItems ? `Selected items on ${order.name}` : `Whole order ${order.name}`} · {order.total} · {order.payment || "Payment unknown"} · {order.fulfillment || "Unfulfilled"}</s-text>}
       </s-stack>
       <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
         {(status === "Rejected" ? ["Pending", "Rejected"] : CANCEL_STEPS).map((step, index) => {
@@ -799,27 +832,32 @@ function CancellationPanel({ screen }: { screen: TicketData }) {
       </div>
       <s-paragraph color="subdued">{CANCEL_COPY[status]}</s-paragraph>
       <s-grid gridTemplateColumns="minmax(130px, 1fr) 3fr" gap="small-200">
+        <s-text color="subdued">To cancel</s-text>
+        <s-stack gap="none">
+          {someItems ? ticket.products.map((product) => {
+            const line = lines.get(product.id);
+            return <s-text key={product.id}>{product.title}{line ? ` × ${line.quantity}${line.current < line.quantity ? ` (${line.quantity - line.current} removed)` : ""}` : ""}</s-text>;
+          }) : <s-text>The whole order{order?.fulfilled === "partial" ? " (everything not shipped yet)" : ""}</s-text>}
+        </s-stack>
         <s-text color="subdued">Reason</s-text><s-text>{reason || "Not given"}</s-text>
         {ticket.details.details && <><s-text color="subdued">Customer&apos;s note</s-text><div style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{ticket.details.details}</div></>}
+        {order && order.refunded > 0 && <><s-text color="subdued">Refunded so far</s-text><s-text>{money(order.refunded, order.currency)} of {order.total}</s-text></>}
         {ticket.cancelDecidedAt && <><s-text color="subdued">Decided</s-text>
           <s-text>{ticket.cancelDecidedBy || "Staff"} · <span suppressHydrationWarning>{formatDate(ticket.cancelDecidedAt)}</span></s-text></>}
         {ticket.cancelNote && <><s-text color="subdued">Told the customer</s-text><div style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{ticket.cancelNote}</div></>}
       </s-grid>
-      {open && shipped && <s-banner tone="warning" heading={`Order ${order.name} has already shipped`}>
-        It can no longer be cancelled. Reject the request and offer a return instead.
-      </s-banner>}
-      {labelCheck && <s-stack direction="inline" gap="small-200" alignItems="start">
-        <s-icon type={labelCheck.ok ? "check-circle" : labelCheck.warning ? "alert-triangle" : "x-circle"} tone={labelCheck.ok ? "success" : labelCheck.warning ? "warning" : "critical"} size="small" />
-        <s-stack gap="none">
-          <s-text>{labelCheck.label}</s-text>
-          {labelCheck.detail && <s-text color="subdued">{labelCheck.detail}</s-text>}
+      {(open || status === "Rejected") && checks.length > 0 && <>
+        <s-divider />
+        <s-stack gap="small-200">
+          <s-text type="strong">Before cancelling: Shopify{labelCheck ? " and ShipStation" : ""} now</s-text>
+          {checks.map((check) => <CheckRow key={check.id} check={check} />)}
         </s-stack>
-      </s-stack>}
-      {labelBlocked && <s-banner tone="warning" heading="Void the ShipStation label first">
-        {labelCheck!.detail} Or reject the request with a note for the customer.
-      </s-banner>}
+      </>}
       {open && order?.cancelled && <s-banner tone="info" heading={`Order ${order.name} is already cancelled in Shopify`}>
-        Choose &ldquo;Approve &amp; cancel order&rdquo; to close the request and let the customer know.
+        Choose &ldquo;Cancel in Shopify&rdquo; to close the request and let the customer know.
+      </s-banner>}
+      {open && byEdit && order && !order.cancelled && !shipped && <s-banner tone="info" heading={someItems ? "Only some items" : `Part of order ${order.name} has shipped`}>
+        Shopify can&apos;t cancel {someItems ? "single items" : "a partly shipped order"}. Approve the request, remove {someItems ? "these items" : "the items not shipped yet"} with Edit order in Shopify (refund and restock there), then choose &ldquo;Confirm items removed&rdquo;. The Help Desk checks Shopify before marking it Cancelled.
       </s-banner>}
       {/* Marked cancelled here before the Help Desk cancelled orders itself. */}
       {stillOpen && <s-banner tone="critical" heading={`Order ${order.name} is still open in Shopify`}>
@@ -828,13 +866,16 @@ function CancellationPanel({ screen }: { screen: TicketData }) {
       {(status !== "Cancelled" || stillOpen) && <>
         <s-text-area label="Message to the customer" rows={3} value={note} maxLength={MAX_MESSAGE_LENGTH} disabled={busy}
           details={status === "Rejected" ? "Shown with the new decision." : "Shown on their request page and in the email. Required when you reject the request."}
-          placeholder={shipped ? "e.g. Your order shipped this morning, so we can't cancel it. Once it arrives you can return it for a full refund." : "e.g. No problem, we've cancelled it and your refund is on the way."}
+          placeholder={shipped ? "e.g. Your order shipped this morning, so we can't cancel it. Once it arrives you can return it for a full refund." : "e.g. No problem, we're cancelling it and your refund is on the way."}
           error={fetcher.data?.errors.note} onInput={(event) => setNote(event.currentTarget.value ?? "")} />
         {confirming ? <s-box border="base" borderRadius="base" padding="base" background="subdued">
           <s-stack gap="small-200">
             <s-text type="strong">Cancel {order ? `order ${order.name}` : "this order"} in Shopify?</s-text>
             <s-text color="subdued">The whole order is cancelled. This can&apos;t be undone.{shipStation?.state === "found" ? " The ShipStation order is cancelled too." : ""}</s-text>
-            <s-checkbox label="Refund the customer to their original payment method" checked={options.refund} onChange={() => setOptions({ ...options, refund: !options.refund })} />
+            <s-select label="Refund" value={options.refund} onChange={(event) => setOptions({ ...options, refund: event.currentTarget.value || "original" })}
+              details={order ? `Order total ${order.total}${order.refunded > 0 ? `, ${money(order.refunded, order.currency)} refunded already` : ""}. Shopify refunds what's left in full.` : undefined}>
+              {REFUND_CHOICES.map(([value, label]) => <s-option key={value} value={value}>{label}</s-option>)}
+            </s-select>
             <s-checkbox label="Restock the items" checked={options.restock} onChange={() => setOptions({ ...options, restock: !options.restock })} />
             <s-checkbox label="Also send Shopify's order cancellation email" details="The Help Desk already emails the customer about the decision." checked={options.notifyCustomer}
               onChange={() => setOptions({ ...options, notifyCustomer: !options.notifyCustomer })} />
@@ -845,10 +886,16 @@ function CancellationPanel({ screen }: { screen: TicketData }) {
           </s-stack>
         </s-box>
         : <s-stack direction="inline" gap="small-200">
-          <s-button variant="primary" icon="check" disabled={busy || Boolean(shipped) || labelBlocked} onClick={() => order?.cancelled ? decide("cancel-shopify") : setConfirming(true)}>
-            {stillOpen || status === "Approved" ? "Cancel order in Shopify" : status === "Rejected" ? "Approve instead & cancel order" : "Approve & cancel order"}
-          </s-button>
-          {(status === "Pending" || status === "Approved") && <s-button icon="x" tone="critical" disabled={busy} onClick={() => decide("reject")}>Reject</s-button>}
+          {(status === "Pending" || status === "Rejected") && !order?.cancelled && <s-button icon="check" disabled={busy || shipped} onClick={() => decide("approve")}>
+            {status === "Rejected" ? "Approve instead" : "Approve"}
+          </s-button>}
+          {byEdit && !order?.cancelled ? <>
+            {order && !shipped && <s-button href={`shopify://admin/orders/${order.id}`} target="_blank" disabled={busy}>Edit order in Shopify</s-button>}
+            {status !== "Rejected" && <s-button variant="primary" icon="check" disabled={busy || shipped} onClick={() => decide("confirm-items")}>Confirm items removed</s-button>}
+          </> : <s-button variant="primary" icon="check" disabled={busy || blocking.length > 0} onClick={() => order?.cancelled ? decide("cancel-shopify") : setConfirming(true)}>
+            {stillOpen || status === "Approved" || order?.cancelled ? "Cancel in Shopify" : status === "Rejected" ? "Approve instead & cancel in Shopify" : "Approve & cancel in Shopify"}
+          </s-button>}
+          {open && <s-button icon="x" tone="critical" disabled={busy} onClick={() => decide("reject")}>Reject</s-button>}
         </s-stack>}
       </>}
     </s-stack>
@@ -980,6 +1027,443 @@ function AddressPanel({ screen }: { screen: TicketData }) {
   </s-section>;
 }
 
+// The return label staff sent, to open or download.
+function LabelLink({ id }: { id: string }) {
+  const fetcher = useFetcher<{ url?: string; name?: string; error?: string }>();
+  useEffect(() => {
+    if (fetcher.state === "idle" && !fetcher.data) void fetcher.load(`/app/help-desk-attachment?id=${encodeURIComponent(id)}`);
+  }, [fetcher, id]);
+  if (fetcher.data?.error) return <s-text tone="critical">The label is no longer available.</s-text>;
+  if (!fetcher.data?.url) return <s-spinner size="base" />;
+  return <s-link href={fetcher.data.url} download={fetcher.data.name}>Download return label ({fetcher.data.name})</s-link>;
+}
+
+const RETURN_COPY: Record<string, string> = {
+  Pending: "Check the conditions below. If they're met, send the return label: it approves the return and the customer gets it by email and on their request page.",
+  "Label sent": "The customer has the return label. Once the product arrives at the warehouse and you've checked it, mark it received, then refund or exchange it.",
+  Received: "The product is back and verified. Refund or exchange it, then resolve the ticket.",
+  Rejected: "The return was rejected. You can still approve it by sending a label.",
+};
+
+// A damaged or defective item sent back, by the Process Guidelines: the
+// conditions to check, then the label, then the product received and verified.
+function ReturnPanel({ screen }: { screen: TicketData }) {
+  const { ticket, order, orderError } = screen;
+  const fetcher = useFetcher<typeof action>();
+  const shopify = useAppBridge();
+  const [note, setNote] = useState("");
+  const [label, setLabel] = useState<File | null>(null);
+  const busy = fetcher.state !== "idle";
+  useEffect(() => {
+    if (fetcher.state !== "idle" || !fetcher.data) return;
+    const errors = fetcher.data.errors;
+    if (errors.form) shopify.toast.show(errors.form, { isError: true });
+    if (Object.keys(errors).length) return;
+    shopify.toast.show(fetcher.data.notice === "Label sent" ? "Return label sent to the customer" : fetcher.data.notice === "Received" ? "Return marked as received" : "Return rejected");
+    setNote("");
+    setLabel(null);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fetcher.state, fetcher.data]);
+  if (!ticket.returnStatus) return null;
+  const status = ticket.returnStatus;
+  const values = ticket.details;
+  const errors = fetcher.data?.errors ?? {};
+  const deliveredAt = order?.shipments.map((shipment) => shipment.deliveredAt).filter((at): at is string => Boolean(at)).sort().at(-1) ?? null;
+  // A wrong item has no return window: the mistake was ours.
+  const wrongItem = values.orderType === "Wrong Product Received";
+  const blocker = order && !wrongItem ? returnBlocker({ placedAt: order.createdAt, shipped: order.fulfilled !== "none" || order.shipments.length > 0, cancelled: order.cancelled }) : null;
+  const photos = ticket.attachments.filter((file) => !file.messageId && file.type.startsWith("image/")).length;
+  const checks = [
+    { id: "order", ok: Boolean(order) && !blocker, warning: !order, label: `Order status: ${order ? `${order.name} · ${order.fulfillment || "Unfulfilled"}` : orderError ? "Shopify couldn't be reached" : "order not found"}`,
+      detail: blocker || (order ? `Placed ${formatDate(order.createdAt)}${deliveredAt ? ` · delivered ${formatDate(deliveredAt)}` : ""}` : "Check the order number with the customer.") },
+    ...(wrongItem ? [] : [{ id: "window", ok: Boolean(order) && !blocker, warning: !order, label: `Within ${RETURN_WINDOW_MONTHS} months of purchase`, detail: "" }]),
+    { id: "photos", ok: photos > 0, warning: false, label: "Issue described with photos", detail: photos ? `${photos} photo${photos === 1 ? "" : "s"}` : "No photos: ask the customer for some." },
+    { id: "condition", ok: values.returnCondition === "Yes", warning: false, label: "Unused condition + original packaging", detail: values.returnCondition === "Yes" ? "Confirmed by the customer. Check it again when it arrives." : "Not confirmed by the customer." },
+    { id: "resolution", ok: Boolean(values.resolution), warning: false, label: `Wants: ${values.resolution || "not chosen"}`, detail: values.replacement ? `Exchange for ${values.replacement}` : "" },
+  ];
+  const submit = (decision: "label" | "received" | "reject") => {
+    const body = new FormData();
+    for (const [key, value] of Object.entries({ intent: "return", id: ticket.id, decision, note, author: screen.me || "Staff" })) body.append(key, value);
+    if (decision === "label" && label) body.append("label", label);
+    void fetcher.submit(body, { method: "post", encType: "multipart/form-data" });
+  };
+  const pending = status === "Pending" || status === "Rejected";
+  return <s-section heading="Return request">
+    <s-stack gap="base">
+      <s-stack direction="inline" gap="small-200" alignItems="center">
+        <ReturnBadge status={status} />
+        {order && <s-text color="subdued">Order {order.name}</s-text>}
+      </s-stack>
+      <s-paragraph color="subdued">{RETURN_COPY[status]}</s-paragraph>
+      {ticket.returnLabelId && status !== "Rejected" && <LabelLink id={ticket.returnLabelId} />}
+      {ticket.returnDecidedAt && <s-text color="subdued">{status} by {ticket.returnDecidedBy || "Staff"} · <span suppressHydrationWarning>{formatDate(ticket.returnDecidedAt)}</span>
+        {ticket.returnNote ? ` · Told the customer: ${ticket.returnNote}` : ""}</s-text>}
+      {status !== "Received" && <>
+        <s-divider />
+        <s-stack gap="small-200">
+          <s-text type="strong">Conditions to match</s-text>
+          {checks.map((check) => <s-stack key={check.id} direction="inline" gap="small-200" alignItems="start">
+            <s-icon type={check.ok ? "check-circle" : check.warning ? "alert-triangle" : "x-circle"} tone={check.ok ? "success" : check.warning ? "warning" : "critical"} size="small" />
+            <s-stack gap="none">
+              <s-text>{check.label}</s-text>
+              {check.detail && <s-text color="subdued">{check.detail}</s-text>}
+            </s-stack>
+          </s-stack>)}
+        </s-stack>
+        <s-divider />
+        {pending && <s-stack gap="small-100">
+          <s-text type="strong">Return label</s-text>
+          <input type="file" accept="application/pdf,image/png,image/jpeg" disabled={busy} aria-label="Return label" onChange={(event) => setLabel(event.currentTarget.files?.[0] ?? null)} />
+          <s-text color={errors.label ? undefined : "subdued"} tone={errors.label ? "critical" : undefined}>{errors.label || "PDF, PNG or JPG, up to 10 MB. Sending it approves the return."}</s-text>
+        </s-stack>}
+        <s-text-area label="Message to the customer" rows={2} value={note} maxLength={MAX_MESSAGE_LENGTH} disabled={busy} error={errors.note}
+          details="Shown on their request page and in the email. Required when you reject the return."
+          placeholder={pending ? "e.g. Please print the label, attach it to the box and drop it off within 14 days." : "e.g. We've received your case and checked it. Your refund is on its way."}
+          onInput={(event) => setNote(event.currentTarget.value ?? "")} />
+        <s-stack direction="inline" gap="small-200">
+          {pending && <s-button variant="primary" icon="email" loading={busy && fetcher.formData?.get("decision") === "label"} disabled={busy || !label} onClick={() => submit("label")}>Approve &amp; send return label</s-button>}
+          {status === "Label sent" && <s-button variant="primary" icon="check" loading={busy && fetcher.formData?.get("decision") === "received"} disabled={busy} onClick={() => submit("received")}>Mark received &amp; verified</s-button>}
+          {status === "Pending" && <s-button icon="x" tone="critical" disabled={busy} onClick={() => submit("reject")}>Reject</s-button>}
+        </s-stack>
+      </>}
+    </s-stack>
+  </s-section>;
+}
+
+const EDIT_COPY: Record<string, string> = {
+  Pending: "Check the order is still at the warehouse, set the new quantities (0 removes an item) and add products by SKU. Preview the new total, confirm any price difference with the customer, then update the order in Shopify.",
+  Updated: "The order was updated in Shopify.",
+  Rejected: "The request was rejected.",
+};
+type AddRow = { variantId: string; title: string; sku: string; price: string; quantity: number };
+const editMoney = (value: { amount: string; currencyCode: string } | null | undefined) => value
+  ? new Intl.NumberFormat("en", { style: "currency", currency: value.currencyCode }).format(Number(value.amount)) : "—";
+
+// An order edit request, by its Process Guidelines: still at the warehouse
+// (Shopify and ShipStation), the changes set line by line and products added by
+// SKU, the price difference previewed, then the order updated in Shopify.
+function EditPanel({ screen }: { screen: TicketData }) {
+  const { ticket, order, orderError, shipStation } = screen;
+  const fetcher = useFetcher<typeof action>();
+  const finder = useFetcher<typeof action>();
+  const preview = useFetcher<typeof action>();
+  const shopify = useAppBridge();
+  const request = parseEditRequest(ticket.details.editRequest);
+  const asked = new Map(request.lines.map((line) => [line.id, line]));
+  const lines = (order?.items ?? []).filter((item) => item.lineItemId && item.current > 0);
+  const [quantities, setQuantities] = useState<Record<string, number>>(() => Object.fromEntries(lines.map((item) => {
+    const line = asked.get(item.lineItemId);
+    return [item.lineItemId, line?.action === "Remove" ? 0 : line?.action === "Change quantity" && line.quantity !== null ? line.quantity : item.current];
+  })));
+  const [adds, setAdds] = useState<AddRow[]>([]);
+  const [sku, setSku] = useState("");
+  const [note, setNote] = useState("");
+  const [notify, setNotify] = useState(true);
+  const busy = fetcher.state !== "idle";
+  useEffect(() => {
+    if (fetcher.state !== "idle" || !fetcher.data) return;
+    const errors = fetcher.data.errors;
+    if (errors.form) shopify.toast.show(errors.form, { isError: true });
+    if (Object.keys(errors).length) return;
+    shopify.toast.show(fetcher.data.notice === "Updated" ? "Order updated in Shopify" : "Order edit request rejected");
+    setNote("");
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fetcher.state, fetcher.data]);
+  useEffect(() => {
+    if (preview.state === "idle" && preview.data?.errors.form) shopify.toast.show(preview.data.errors.form, { isError: true });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [preview.state, preview.data]);
+  if (!ticket.editStatus) return null;
+  const status = ticket.editStatus;
+  const pending = status === "Pending";
+  // Still at the warehouse: not cancelled, packed or shipped in Shopify, and no label in ShipStation.
+  const labelCheck = order ? shipStationCheck(shipStation) : null;
+  const checks = orderError ? [] : [
+    ...addressChangeChecks(order && addressCheckOrder(order, ticket.email), order?.country ?? "").filter((check) => ["found", "cancelled", "shipped", "verified"].includes(check.id)),
+    ...(labelCheck ? [{ ...labelCheck, label: "No shipping label in ShipStation (still at the warehouse)" }] : []),
+  ];
+  const blocked = addressBlockers(checks);
+  const ops = {
+    lines: lines.filter((item) => quantities[item.lineItemId] !== undefined && quantities[item.lineItemId] !== item.current)
+      .map((item) => ({ lineItemId: item.lineItemId, quantity: quantities[item.lineItemId] })),
+    adds: adds.map((add) => ({ variantId: add.variantId, quantity: add.quantity })),
+  };
+  const summary = [
+    ...lines.filter((item) => ops.lines.some((line) => line.lineItemId === item.lineItemId))
+      .map((item) => quantities[item.lineItemId] === 0 ? `removed ${item.title}` : `${item.title} × ${quantities[item.lineItemId]} (was ${item.current})`),
+    ...adds.map((add) => `added ${add.title}${add.sku ? ` (${add.sku})` : ""} × ${add.quantity}`),
+  ].join("; ");
+  const changed = ops.lines.length + ops.adds.length > 0;
+  const send = (decision: "preview" | "apply" | "reject") => {
+    const target = decision === "preview" ? preview : fetcher;
+    void target.submit({ intent: "edit", id: ticket.id, decision, ops: JSON.stringify(ops), note, author: screen.me || "Staff", notifyCustomer: String(notify), summary }, { method: "post" });
+  };
+  const totals = preview.state === "idle" ? preview.data?.totals : undefined;
+  const difference = totals ? Number(totals.outstanding.amount) : 0;
+  const errors = fetcher.data?.errors ?? {};
+  return <s-section heading="Order edit request">
+    <s-stack gap="base">
+      <s-stack direction="inline" gap="small-200" alignItems="center">
+        <EditBadge status={status} />
+        {order && <s-text color="subdued">Order {order.name} · {order.fulfillment || "Unfulfilled"} · {order.total}</s-text>}
+      </s-stack>
+      <s-paragraph color="subdued">{EDIT_COPY[status]}</s-paragraph>
+      <s-stack gap="small-100">
+        <s-text type="strong">The customer asked for</s-text>
+        {request.lines.map((line) => <s-text key={line.id}>• {line.title}: {line.action === "Remove" ? "remove" : line.action === "Change quantity" ? `quantity ${line.quantity}` : `change to ${line.variant}`}</s-text>)}
+        {request.adds.map((add) => <s-text key={add.id}>• Add {add.title} × {add.quantity}</s-text>)}
+        {ticket.details.details && <s-text color="subdued">Customer&apos;s note: {ticket.details.details.split("\n").filter((row) => !request.lines.some((line) => row.startsWith(`${line.title}:`)) && !row.startsWith("Add: ")).join(" ") || "—"}</s-text>}
+      </s-stack>
+      {ticket.editDecidedAt && <s-text color="subdued">{status} by {ticket.editDecidedBy || "Staff"} · <span suppressHydrationWarning>{formatDate(ticket.editDecidedAt)}</span>
+        {ticket.editNote ? ` · Told the customer: ${ticket.editNote}` : ""}</s-text>}
+      {pending && <>
+        <s-divider />
+        <s-stack gap="small-200">
+          <s-text type="strong">Is the order still at the warehouse?</s-text>
+          {orderError ? <s-text color="subdued">Shopify couldn&apos;t be reached to check the order. Reload the page to try again.</s-text>
+            : checks.map((check) => <s-stack key={check.id} direction="inline" gap="small-200" alignItems="start">
+              <s-icon type={check.ok ? "check-circle" : check.id === "verified" || check.warning ? "alert-triangle" : "x-circle"} tone={check.ok ? "success" : check.id === "verified" || check.warning ? "warning" : "critical"} size="small" />
+              <s-stack gap="none"><s-text>{check.label}</s-text>{check.detail && <s-text color="subdued">{check.detail}</s-text>}</s-stack>
+            </s-stack>)}
+        </s-stack>
+        {blocked.length > 0 && <s-banner tone="critical" heading="This order can't be edited any more">
+          {blocked.map((check) => check.detail).join(" ")} Reject the request with a note for the customer.
+        </s-banner>}
+        {!blocked.length && order && <>
+          <s-divider />
+          <s-text type="strong">Items on the order</s-text>
+          {lines.map((item) => {
+            const line = asked.get(item.lineItemId);
+            return <s-grid key={item.lineItemId} gridTemplateColumns="1fr 120px" gap="base" alignItems="center">
+              <s-stack gap="none">
+                <s-text>{item.title}{item.variant ? ` - ${item.variant}` : ""}</s-text>
+                <s-text color="subdued">{[item.sku && `SKU ${item.sku}`, `Ordered ${item.current}`, line && `Asked: ${line.action === "Change color or size" ? `change to ${line.variant}: set 0 and add the new variant by SKU` : line.action.toLowerCase()}`].filter(Boolean).join(" · ")}</s-text>
+              </s-stack>
+              <s-number-field label="New quantity" labelAccessibilityVisibility="exclusive" min={0} max={999} value={String(quantities[item.lineItemId] ?? item.current)} disabled={busy}
+                onInput={(event) => setQuantities({ ...quantities, [item.lineItemId]: Math.max(0, Math.trunc(Number(event.currentTarget.value)) || 0) })} />
+            </s-grid>;
+          })}
+          <s-text color="subdued">Set 0 to remove an item.</s-text>
+          <s-divider />
+          <s-text type="strong">Add products by SKU</s-text>
+          <s-stack direction="inline" gap="small-200" alignItems="end">
+            <s-text-field label="SKU or product name" value={sku} error={finder.data?.errors.sku} onInput={(event) => setSku(event.currentTarget.value ?? "")} />
+            <s-button icon="search" loading={finder.state !== "idle"} onClick={() => void finder.submit({ intent: "edit", decision: "sku", sku }, { method: "post" })}>Find</s-button>
+          </s-stack>
+          {finder.state === "idle" && finder.data?.variants && (finder.data.variants.length
+            ? finder.data.variants.map((variant) => <s-stack key={variant.id} direction="inline" gap="small-200" alignItems="center" justifyContent="space-between">
+              <s-text>{variant.title}{variant.sku ? ` · SKU ${variant.sku}` : ""} · {variant.price}{variant.available !== null ? ` · ${variant.available} in stock` : ""}</s-text>
+              <s-button icon="plus" disabled={adds.some((add) => add.variantId === variant.id)} onClick={() => setAdds([...adds, { variantId: variant.id, title: variant.title, sku: variant.sku, price: variant.price, quantity: 1 }])}>Add</s-button>
+            </s-stack>)
+            : <s-text color="subdued">No products match that SKU.</s-text>)}
+          {adds.map((add, index) => <s-grid key={add.variantId} gridTemplateColumns="1fr 120px auto" gap="base" alignItems="center">
+            <s-text>{add.title}{add.sku ? ` · SKU ${add.sku}` : ""} · {add.price}</s-text>
+            <s-number-field label="Quantity" labelAccessibilityVisibility="exclusive" min={1} max={99} value={String(add.quantity)}
+              onInput={(event) => setAdds(adds.map((entry, at) => at === index ? { ...entry, quantity: Math.min(99, Math.max(1, Math.trunc(Number(event.currentTarget.value)) || 1)) } : entry))} />
+            <s-button icon="delete" tone="critical" accessibilityLabel={`Remove ${add.title}`} onClick={() => setAdds(adds.filter((_, at) => at !== index))} />
+          </s-grid>)}
+          <s-divider />
+          <s-stack direction="inline" gap="small-200" alignItems="center">
+            <s-button icon="calculator" disabled={!changed} loading={preview.state !== "idle"} onClick={() => send("preview")}>Preview new total</s-button>
+            {totals && <s-text>Was {editMoney(totals.before)} · now {editMoney(totals.after)} · {difference > 0 ? `customer owes ${editMoney(totals.outstanding)}` : difference < 0 ? `refund due ${editMoney({ ...totals.outstanding, amount: String(-difference) })}` : "no difference"}</s-text>}
+          </s-stack>
+        </>}
+        <s-text-area label="Message to the customer" rows={2} value={note} maxLength={MAX_MESSAGE_LENGTH} disabled={busy} error={errors.note}
+          details="Shown on their request page and in the email. Required when you reject the request."
+          placeholder={blocked.length ? "e.g. Your order has already left our warehouse, so we can't change it." : "e.g. Done! We've swapped the case to Blue. The price is the same."}
+          onInput={(event) => setNote(event.currentTarget.value ?? "")} />
+        {!blocked.length && <s-checkbox label="Send Shopify's order update email (with any invoice for the difference)" checked={notify} disabled={busy} onChange={() => setNotify(!notify)} />}
+        <s-stack direction="inline" gap="small-200">
+          {!blocked.length && order && <s-button variant="primary" icon="edit" disabled={busy || !changed} loading={busy && fetcher.formData?.get("decision") === "apply"} onClick={() => send("apply")}>Update order in Shopify</s-button>}
+          <s-button icon="x" tone={blocked.length ? undefined : "critical"} variant={blocked.length ? "primary" : undefined} disabled={busy} onClick={() => send("reject")}>Reject</s-button>
+        </s-stack>
+      </>}
+    </s-stack>
+  </s-section>;
+}
+
+const REPLACEMENT_COPY: Record<string, string> = {
+  Pending: "Check the order below: is the part still in transit, or was it in the original shipment? Then approve the replacement, or reject it with a note.",
+  Approved: "The replacement is approved. Ship the part, then enter its tracking so the customer can follow it.",
+  Shipped: "The replacement part has shipped and the customer has its tracking.",
+  Rejected: "The replacement was rejected. You can still approve it.",
+};
+const LOST_COPY: Record<string, string> = {
+  Pending: "Check the order's shipments below and the carrier's tracking. Then approve sending the product again or a refund (the customer's choice is selected), or reject the request with a note.",
+  Approved: "Approved. Send the product again and enter its tracking, or refund it in Shopify and tell the customer in the message.",
+  Shipped: "The customer has the next steps for this lost package.",
+  Rejected: "The request was rejected. You can still approve it.",
+};
+const WARRANTY_COPY: Record<string, string> = {
+  Pending: "Check the purchase date and warranty coverage below, and the customer's photos. Then approve a solution (replacement, repair...), or reject the claim with a note.",
+  Approved: "The claim is approved. Send the customer the next steps: the instructions, and the tracking if something ships.",
+  Shipped: "The customer has the next steps for this claim.",
+  Rejected: "The claim was rejected. You can still approve it.",
+};
+
+// A missing or lost part, by its Procedure Guidelines: the order checked,
+// the replacement confirmed, then shipped with tracking.
+function ReplacementPanel({ screen }: { screen: TicketData }) {
+  const { ticket, order, orderError } = screen;
+  const fetcher = useFetcher<typeof action>();
+  const shopify = useAppBridge();
+  const [note, setNote] = useState("");
+  const [tracking, setTracking] = useState({ carrier: "", number: "", url: "" });
+  const warranty = ticket.replacementKind === "warranty";
+  const lost = ticket.replacementKind === "lost";
+  // A lost package starts with what the customer asked for.
+  const [solution, setSolution] = useState(lost ? ticket.replacementSolution : "");
+  const busy = fetcher.state !== "idle";
+  const solutions = solutionsFor(ticket.replacementKind);
+  const special = warranty || lost;
+  useEffect(() => {
+    if (fetcher.state !== "idle" || !fetcher.data) return;
+    const errors = fetcher.data.errors;
+    if (errors.form) shopify.toast.show(errors.form, { isError: true });
+    if (Object.keys(errors).length) return;
+    shopify.toast.show(fetcher.data.notice === "Approved" ? (warranty ? "Warranty claim approved" : lost ? "Lost package request approved" : "Replacement approved")
+      : fetcher.data.notice === "Shipped" ? "Next steps sent to the customer" : special ? "Request rejected" : "Replacement rejected");
+    setNote("");
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fetcher.state, fetcher.data]);
+  if (!ticket.replacementStatus) return null;
+  const status = ticket.replacementStatus;
+  const errors = fetcher.data?.errors ?? {};
+  const submit = (decision: "approve" | "ship" | "reject") => void fetcher.submit({
+    intent: "replacement", id: ticket.id, decision, note, author: screen.me || "Staff", solution, ...(decision === "ship" ? tracking : {}),
+  }, { method: "post" });
+  // Check Order Status: shipped in full? delivered? still in transit?
+  const delivered = order?.shipments.filter((shipment) => shipment.deliveredAt) ?? [];
+  // A warranty: when it was bought (the order, or the month they gave), for the coverage.
+  const bought = order?.createdAt || (ticket.details.purchaseDate ? `${ticket.details.purchaseDate}-01` : "");
+  const months = bought ? Math.floor((Date.now() - Date.parse(bought)) / (30.44 * 86400000)) : null;
+  const warrantyChecks = [
+    { id: "bought", ok: Boolean(bought), warning: !bought, label: "Purchase date",
+      detail: bought ? `${order ? `Order ${order.name}, placed` : `Bought${ticket.details.purchasedFrom ? ` from ${ticket.details.purchasedFrom}` : ""} in`} ${formatDate(bought)}${months !== null ? ` (${months} month${months === 1 ? "" : "s"} ago)` : ""}` : "No order or purchase date: ask the customer for a receipt." },
+    { id: "coverage", ok: true, warning: false, label: "Warranty coverage", detail: "Check the product's warranty period and that the damage is covered (not wear, misuse or an accident)." },
+    { id: "photos", ok: ticket.attachments.some((file) => !file.messageId && file.type.startsWith("image/")), warning: false, label: "Defect shown in photos", detail: "" },
+  ];
+  const checks = warranty ? warrantyChecks : order ? [
+    { id: "shipped", ok: order.fulfilled === "full", warning: order.fulfilled === "partial", label: "Whole order shipped",
+      detail: order.fulfilled === "full" ? "" : order.fulfilled === "partial" ? "Part of the order hasn't shipped yet: the part may still be coming." : "Nothing has shipped yet." },
+    { id: "delivered", ok: delivered.length > 0 && delivered.length === order.shipments.length, warning: true, label: "Delivered",
+      detail: order.shipments.length ? order.shipments.map((shipment) => `${shipment.label}${shipment.carrier ? ` · ${shipment.carrier}` : ""}${shipment.number ? ` ${shipment.number}` : ""}`).join("; ") : "No shipments yet." },
+    ...(lost ? [{ id: "carrier", ok: true, warning: false, label: "Carrier's tracking", detail: "Open the tracking and check for a delivery scan or exception. Open a claim with the carrier if it's lost." }]
+      : [{ id: "packed", ok: true, warning: false, label: "Was it in the original shipment?", detail: "Check the packing record or ShipStation, and the customer's photos." }]),
+  ] : [];
+  return <s-section heading={warranty ? "Warranty claim" : lost ? "Lost package" : "Missing part"}>
+    <s-stack gap="base">
+      <s-stack direction="inline" gap="small-200" alignItems="center">
+        <ReplacementBadge status={status} kind={ticket.replacementKind} />
+        {order && <s-text color="subdued">Order {order.name} · {order.fulfillment || "Unfulfilled"}</s-text>}
+      </s-stack>
+      <s-paragraph color="subdued">{(warranty ? WARRANTY_COPY : lost ? LOST_COPY : REPLACEMENT_COPY)[status]}</s-paragraph>
+      {ticket.details.details && <s-text>{warranty ? "Problem" : lost ? "Customer's details" : "Missing"}: {ticket.details.details}</s-text>}
+      {special && ticket.replacementSolution && <s-text>{lost && status === "Pending" ? "Customer would like" : "Approved solution"}: {ticket.replacementSolution}</s-text>}
+      {ticket.replacementTracking && <s-text>Replacement tracking: {[ticket.replacementCarrier, ticket.replacementTracking].filter(Boolean).join(" ")}
+        {ticket.replacementTrackingUrl && <> · <s-link href={ticket.replacementTrackingUrl} target="_blank">Track</s-link></>}</s-text>}
+      {ticket.replacementDecidedAt && <s-text color="subdued">{status} by {ticket.replacementDecidedBy || "Staff"} · <span suppressHydrationWarning>{formatDate(ticket.replacementDecidedAt)}</span>
+        {ticket.replacementNote ? ` · Told the customer: ${ticket.replacementNote}` : ""}</s-text>}
+      {status !== "Shipped" && <>
+        <s-divider />
+        <s-stack gap="small-200">
+          <s-text type="strong">{warranty ? "Check warranty eligibility" : "Check order status"}</s-text>
+          {orderError && !warranty ? <s-text color="subdued">Shopify couldn&apos;t be reached to check the order. Reload the page to try again.</s-text>
+            : !order && !warranty ? <s-text color="subdued">The order wasn&apos;t found in Shopify. Check the order number with the customer.</s-text>
+            : checks.map((check) => <s-stack key={check.id} direction="inline" gap="small-200" alignItems="start">
+              <s-icon type={["packed", "coverage", "carrier"].includes(check.id) ? "info" : check.ok ? "check-circle" : check.warning ? "alert-triangle" : "x-circle"} tone={["packed", "coverage", "carrier"].includes(check.id) ? "info" : check.ok ? "success" : check.warning ? "warning" : "critical"} size="small" />
+              <s-stack gap="none"><s-text>{check.label}</s-text>{check.detail && <s-text color="subdued">{check.detail}</s-text>}</s-stack>
+            </s-stack>)}
+        </s-stack>
+        <s-divider />
+        {special && (status === "Pending" || status === "Rejected") && <s-select label="Solution to approve" value={solution} error={errors.solution} disabled={busy} onChange={(event) => setSolution(event.currentTarget.value ?? "")}>
+          <s-option value="">Select a solution</s-option>
+          {solutions.map((entry) => <s-option key={entry} value={entry}>{entry}</s-option>)}
+        </s-select>}
+        {status === "Approved" && special && <s-text color="subdued">{lost ? "Sending it again: add the tracking. A refund: refund it in Shopify, then tell the customer in the message." : "If something ships (a replacement, or the repaired item), add its tracking. Otherwise write the next steps in the message."}</s-text>}
+        {status === "Approved" && <s-grid gridTemplateColumns="1fr 1fr" gap="base">
+          <s-text-field label="Carrier" value={tracking.carrier} disabled={busy} placeholder="e.g. USPS" onInput={(event) => setTracking({ ...tracking, carrier: event.currentTarget.value ?? "" })} />
+          <s-text-field label={special ? "Tracking number (optional)" : "Tracking number"} value={tracking.number} error={errors.number} disabled={busy} onInput={(event) => setTracking({ ...tracking, number: event.currentTarget.value ?? "" })} />
+          <s-text-field label="Tracking link (optional)" value={tracking.url} error={errors.url} disabled={busy} placeholder="https://" onInput={(event) => setTracking({ ...tracking, url: event.currentTarget.value ?? "" })} />
+        </s-grid>}
+        <s-text-area label="Message to the customer" rows={2} value={note} maxLength={MAX_MESSAGE_LENGTH} disabled={busy} error={errors.note}
+          details="Shown on their request page and in the email. Required when you reject the request."
+          placeholder={warranty ? (status === "Approved" ? "e.g. Please send the case to our warehouse with the prepaid label attached; we'll repair it within 5 days." : "e.g. Good news: your lock is covered, and we'll replace it.")
+            : status === "Approved" ? "e.g. Your replacement risers are on their way." : "e.g. Good news: we'll send you a replacement lid."}
+          onInput={(event) => setNote(event.currentTarget.value ?? "")} />
+        <s-stack direction="inline" gap="small-200">
+          {(status === "Pending" || status === "Rejected") && <s-button variant="primary" icon="check" loading={busy && fetcher.formData?.get("decision") === "approve"} disabled={busy || (special && !solution)} onClick={() => submit("approve")}>{warranty ? "Approve claim" : lost ? "Approve" : "Approve replacement"}</s-button>}
+          {status === "Approved" && <s-button variant="primary" icon="delivery" loading={busy && fetcher.formData?.get("decision") === "ship"} disabled={busy || (special ? !tracking.number.trim() && !note.trim() : !tracking.number.trim())} onClick={() => submit("ship")}>{special ? "Send next steps" : "Mark shipped & send tracking"}</s-button>}
+          {(status === "Pending" || status === "Approved") && <s-button icon="x" tone="critical" disabled={busy} onClick={() => submit("reject")}>Reject</s-button>}
+        </s-stack>
+      </>}
+    </s-stack>
+  </s-section>;
+}
+
+const QUOTE_COPY: Record<string, string> = {
+  Pending: "Check the products are available and which carriers can ship them to this address with the method asked for. Then send the estimated delivery date, shipping cost and taxes, or tell the customer it isn't available.",
+  Quoted: "The shipping details were sent to the customer.",
+  Unavailable: "The customer was told it can't be shipped there.",
+};
+
+// An international shipping quote, by its Process Guidelines: availability
+// and carriers checked, then the delivery date, shipping cost and taxes sent.
+function QuotePanel({ screen }: { screen: TicketData }) {
+  const { ticket } = screen;
+  const fetcher = useFetcher<typeof action>();
+  const shopify = useAppBridge();
+  const [quote, setQuote] = useState({ carrier: "", delivery: "", shipping: "", taxes: "" });
+  const [note, setNote] = useState("");
+  const busy = fetcher.state !== "idle";
+  useEffect(() => {
+    if (fetcher.state !== "idle" || !fetcher.data) return;
+    const errors = fetcher.data.errors;
+    if (errors.form) shopify.toast.show(errors.form, { isError: true });
+    if (Object.keys(errors).length) return;
+    shopify.toast.show(fetcher.data.notice === "Quoted" ? "Shipping details sent to the customer" : "Customer told it isn't available");
+    setNote("");
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fetcher.state, fetcher.data]);
+  if (!ticket.quoteStatus) return null;
+  const status = ticket.quoteStatus;
+  const values = ticket.details;
+  const errors = fetcher.data?.errors ?? {};
+  const set = (key: keyof typeof quote) => (event: Event) => setQuote({ ...quote, [key]: (event.currentTarget as HTMLInputElement).value ?? "" });
+  const submit = (decision: "send" | "unavailable") => void fetcher.submit({ intent: "quote", id: ticket.id, decision, note, author: screen.me || "Staff", ...quote }, { method: "post" });
+  return <s-section heading="International shipping quote">
+    <s-stack gap="base">
+      <s-stack direction="inline" gap="small-200" alignItems="center"><QuoteBadge status={status} /></s-stack>
+      <s-paragraph color="subdued">{QUOTE_COPY[status]}</s-paragraph>
+      <s-stack gap="small-100">
+        {values.quantities && <s-text>Products: {values.quantities.split("\n").join(", ")}</s-text>}
+        <s-text>Ship to: {[values.address, values.country ? countryName(values.country) : ""].filter(Boolean).join(", ")}</s-text>
+        <s-text>Shipping method: {values.shippingMethod || "—"}</s-text>
+      </s-stack>
+      {status === "Quoted" && <s-text>Sent: {[ticket.quoteCarrier, `delivery ${ticket.quoteDelivery}`, `shipping ${ticket.quoteShipping}`, `taxes ${ticket.quoteTaxes}`].filter(Boolean).join(" · ")}</s-text>}
+      {ticket.quoteDecidedAt && <s-text color="subdued">{status} by {ticket.quoteDecidedBy || "Staff"} · <span suppressHydrationWarning>{formatDate(ticket.quoteDecidedAt)}</span>
+        {ticket.quoteNote ? ` · Told the customer: ${ticket.quoteNote}` : ""}</s-text>}
+      {status === "Pending" && <>
+        <s-divider />
+        <s-text type="strong">Shipping details for the customer</s-text>
+        <s-grid gridTemplateColumns="1fr 1fr" gap="base">
+          <s-text-field label="Carrier and service (optional)" value={quote.carrier} disabled={busy} placeholder="e.g. DHL Express" onInput={set("carrier")} />
+          <s-text-field label="Estimated delivery date" value={quote.delivery} error={errors.delivery} disabled={busy} placeholder="e.g. Nov 18-22, 2026" onInput={set("delivery")} />
+          <s-text-field label="Shipping cost" value={quote.shipping} error={errors.shipping} disabled={busy} placeholder="e.g. $45.00" onInput={set("shipping")} />
+          <s-text-field label="Taxes and duties" value={quote.taxes} error={errors.taxes} disabled={busy} placeholder="e.g. About $12 VAT, paid on delivery" onInput={set("taxes")} />
+        </s-grid>
+        <s-text-area label="Message to the customer" rows={2} value={note} maxLength={MAX_MESSAGE_LENGTH} disabled={busy} error={errors.note}
+          details="Shown on their request page and in the email. Required when it isn't available."
+          placeholder="e.g. The case is in stock. Reply here and we'll send you a checkout link." onInput={(event) => setNote(event.currentTarget.value ?? "")} />
+        <s-stack direction="inline" gap="small-200">
+          <s-button variant="primary" icon="email" loading={busy && fetcher.formData?.get("decision") === "send"} disabled={busy} onClick={() => submit("send")}>Send shipping details</s-button>
+          <s-button icon="x" tone="critical" disabled={busy} onClick={() => submit("unavailable")}>Not available</s-button>
+        </s-stack>
+      </>}
+    </s-stack>
+  </s-section>;
+}
+
 function TicketDetail({ screen }: { screen: TicketData }) {
   const { ticket, others, orders, trackingUrl: link } = screen;
   const shopify = useAppBridge();
@@ -1028,6 +1512,10 @@ function TicketDetail({ screen }: { screen: TicketData }) {
 
     <CancellationPanel screen={screen} />
     <AddressPanel screen={screen} />
+    <ReturnPanel screen={screen} />
+    <EditPanel screen={screen} />
+    <ReplacementPanel screen={screen} />
+    <QuotePanel screen={screen} />
 
     <SideCard heading="Customer">
       <s-stack gap="small-200">

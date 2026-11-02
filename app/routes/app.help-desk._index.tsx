@@ -6,7 +6,7 @@ import { adminContext, helpDeskAction, loadInbox } from "../services/help-desk-a
 import { categoryNames, rootCauses, subcategoriesOf } from "../services/help-desk-taxonomy";
 import { PAGE_SIZE, PERIODS, SORTS, TOPICS, VIEWS, type View } from "../services/help-desk-views";
 import { StatTile, TONES } from "../components/HelpDeskUi";
-import { AddressBadge, ago, CancelBadge, DeleteConfirm, duration, HelpDeskNavigation, PriorityBadge, setupSteps, StatusBadge, ticketHref, useInboxLink, useLiveRefresh, useResultToast } from "../components/help-desk/shared";
+import { AddressBadge, EditBadge, QuoteBadge, ReplacementBadge, ReturnBadge, ago, CancelBadge, DeleteConfirm, duration, HelpDeskNavigation, PriorityBadge, setupSteps, StatusBadge, ticketHref, useInboxLink, useLiveRefresh, useResultToast } from "../components/help-desk/shared";
 
 // The Help Desk inbox: /app/help-desk, with its views and filters in the query.
 export const loader = async ({ request }: LoaderFunctionArgs) => {
@@ -262,6 +262,10 @@ function TicketList({ screen }: { screen: InboxData }) {
                       {(ticket.priority === "High" || ticket.priority === "Urgent") && <PriorityBadge priority={ticket.priority} />}
                       <CancelBadge status={ticket.cancelStatus} />
                       <AddressBadge status={ticket.addressStatus} />
+                      <ReturnBadge status={ticket.returnStatus} />
+                      <EditBadge status={ticket.editStatus} />
+                      <ReplacementBadge status={ticket.replacementStatus} kind={ticket.replacementKind} />
+                      <QuoteBadge status={ticket.quoteStatus} />
                       {ticket.photoFlag && <s-badge tone={ticket.photoFlag === "likely_ai" ? "critical" : "warning"} icon="image">{ticket.photoFlag === "likely_ai" ? "AI photo" : "Reused photo"}</s-badge>}
                     </s-stack>}
                     {[ticket.reference, ticket.images ? `${ticket.images} image${ticket.images === 1 ? "" : "s"}` : "", ticket.tags].filter(Boolean).length > 0
