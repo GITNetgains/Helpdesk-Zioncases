@@ -158,6 +158,10 @@
       // On the topic step there's nothing chosen yet: Help Desk alone.
       crumbs.replaceChildren(list);
       crumbs.hidden = step === 0;
+      // Under the step's Back button, above its heading.
+      const panel = panels[step];
+      const back = panel && [...panel.children].find((child) => child.classList.contains('help-desk-back'));
+      if (back) back.after(crumbs); else panel?.prepend(crumbs);
     }
     // Back at the top of a step, where it's easy to reach.
     function backButton(panel, back) {
@@ -555,7 +559,6 @@
       signed.append(node('span', initials, { class: 'help-desk-avatar', 'aria-hidden': 'true' }), text);
       aside.prepend(signed);
     }
-    controls.prepend(crumbs);
     form.append(aside, controls);
     prefill();
     // Signed-in customers' earlier requests, each linking to its private request page.

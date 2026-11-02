@@ -1020,7 +1020,7 @@
 .help-desk-lost-status h4 { margin: 0 0 2px; color: var(--hd-text); font-size: 14px; }
 
 /* Breadcrumbs above the steps: what the customer chose, earlier steps clickable. */
-.help-desk .help-desk-crumbs { margin: 0 0 14px; }
+.help-desk .help-desk-crumbs { justify-self: start; max-width: 100%; margin: 0 0 -8px; }
 .help-desk .help-desk-crumbs[hidden] { display: none; }
 .help-desk .help-desk-crumbs ol { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 0; margin: 0; padding: 8px 14px; list-style: none; border: 1px solid #eceef2; border-radius: 999px; background: #fff; width: fit-content; max-width: 100%; font-size: 13px; line-height: 1.4; }
 .help-desk .help-desk-crumbs li { display: inline-flex; align-items: center; min-width: 0; }
