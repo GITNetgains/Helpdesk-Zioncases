@@ -4,25 +4,30 @@ import type { ReactNode } from "react";
 // tiles and the setup checklist. Colours follow the Zion Cases brand (red
 // #EF3A24, navy #172351, blue #334FB4) on top of Polaris web components.
 
+// soft and ink are CSS variables so dark mode (app.tsx) can swap them; accent
+// stays a plain hex because callers append alpha to it (`${accent}66`).
 export const TONES = {
-  red: { accent: "#EF3A24", soft: "#FDECE9", ink: "#B3261E" },
-  navy: { accent: "#172351", soft: "#E8EBF5", ink: "#172351" },
-  blue: { accent: "#334FB4", soft: "#E9EDFB", ink: "#2A409A" },
-  green: { accent: "#0C7A43", soft: "#E3F5EA", ink: "#0C5132" },
-  amber: { accent: "#D98F00", soft: "#FFF4D6", ink: "#7A5600" },
-  gray: { accent: "#8A8F9C", soft: "#F1F2F4", ink: "#4A4F5C" },
+  red: { accent: "#EF3A24", soft: "var(--hd-tone-red-soft, #FDECE9)", ink: "var(--hd-tone-red-ink, #B3261E)" },
+  navy: { accent: "#172351", soft: "var(--hd-tone-navy-soft, #E8EBF5)", ink: "var(--hd-tone-navy-ink, #172351)" },
+  blue: { accent: "#334FB4", soft: "var(--hd-tone-blue-soft, #E9EDFB)", ink: "var(--hd-tone-blue-ink, #2A409A)" },
+  green: { accent: "#0C7A43", soft: "var(--hd-tone-green-soft, #E3F5EA)", ink: "var(--hd-tone-green-ink, #0C5132)" },
+  amber: { accent: "#D98F00", soft: "var(--hd-tone-amber-soft, #FFF4D6)", ink: "var(--hd-tone-amber-ink, #7A5600)" },
+  gray: { accent: "#8A8F9C", soft: "var(--hd-tone-gray-soft, #F1F2F4)", ink: "var(--hd-tone-gray-ink, #4A4F5C)" },
 } as const;
 export type Tone = keyof typeof TONES;
 
 const card = (accent?: string): React.CSSProperties => ({
-  position: "relative", overflow: "hidden", height: "100%", background: "#fff", border: "1px solid #E5E7EB", borderRadius: 12,
+  position: "relative", overflow: "hidden", height: "100%", background: "var(--hd-surface, #fff)", border: "1px solid var(--hd-border, #E5E7EB)", borderRadius: 12,
   boxShadow: "0 1px 2px rgba(16,24,40,.04)", ...(accent ? { borderTop: `3px solid ${accent}` } : {}),
 });
 
 type IconName = Parameters<typeof IconTile>[0]["icon"];
 
 export function IconTile({ icon, tone, size = 40 }: { icon: "chat" | "image" | "wand" | "notification" | "email" | "team" | "store" | "settings" | "check-circle" | "alert-triangle" | "clock" | "person" | "order" | "flag"; tone: Tone; size?: number }) {
-  return <div aria-hidden="true" style={{ flex: "none", display: "grid", placeItems: "center", width: size, height: size, borderRadius: 12, background: TONES[tone].soft, color: TONES[tone].ink }}>
+  return <div className="hd-icon-tile" aria-hidden="true" style={{
+    flex: "none", display: "grid", placeItems: "center", width: size, height: size, borderRadius: 12,
+    "--hd-icon-tone": TONES[tone].accent, "--hd-icon-soft": TONES[tone].soft, "--hd-icon-ink": TONES[tone].ink,
+  } as React.CSSProperties}>
     <s-icon type={icon as never} />
   </div>;
 }
@@ -33,7 +38,7 @@ export function FeatureCard({ tone, icon, title, status, statusTone, description
   tone: Tone; icon: IconName; title: string; status: string; statusTone: "success" | "warning" | "critical" | "info" | "neutral";
   description: string; metrics: { label: string; value: string }[]; children?: ReactNode;
 }) {
-  return <div style={card(TONES[tone].accent)}>
+  return <div className="hd-admin-card" style={card(TONES[tone].accent)}>
     <div style={{ padding: 20, display: "grid", gap: 16, height: "100%", alignContent: "start" }}>
       <div style={{ display: "flex", gap: 12, alignItems: "center", justifyContent: "space-between" }}>
         <div style={{ display: "flex", gap: 12, alignItems: "center", minWidth: 0 }}>
@@ -44,8 +49,8 @@ export function FeatureCard({ tone, icon, title, status, statusTone, description
       </div>
       <div style={{ display: "grid", gridTemplateColumns: `repeat(${metrics.length}, minmax(0, 1fr))`, gap: 8 }}>
         {metrics.map((metric) => (
-          <div key={metric.label} style={{ padding: "12px", border: "1px solid #EDF0F3", borderRadius: 9, background: "#F8F9FB" }}>
-            <div style={{ fontSize: 20, fontWeight: 700, color: "#1A1A1A", lineHeight: 1.2 }}>{metric.value}</div>
+          <div key={metric.label} style={{ padding: "12px", border: "1px solid var(--hd-border, #EDF0F3)", borderRadius: 9, background: "var(--hd-surface-muted, #F8F9FB)" }}>
+            <div style={{ fontSize: 20, fontWeight: 700, color: "var(--hd-ink, #1A1A1A)", lineHeight: 1.2 }}>{metric.value}</div>
             <s-text color="subdued">{metric.label}</s-text>
           </div>
         ))}
@@ -58,11 +63,11 @@ export function FeatureCard({ tone, icon, title, status, statusTone, description
 
 // A number with a coloured marker, for metric rows.
 export function StatTile({ label, value, detail, tone = "navy", icon }: { label: string; value: string; detail?: string; tone?: Tone; icon?: IconName }) {
-  return <div style={{ ...card(), display: "flex", gap: 12, alignItems: "center", padding: "14px 16px" }}>
+  return <div className="hd-admin-card" style={{ ...card(), display: "flex", gap: 12, alignItems: "center", padding: "14px 16px" }}>
     {icon ? <IconTile icon={icon} tone={tone} size={38} /> : <span aria-hidden="true" style={{ alignSelf: "stretch", width: 4, borderRadius: 4, background: TONES[tone].accent }} />}
     <div style={{ minWidth: 0 }}>
       <s-text color="subdued">{label}</s-text>
-      <div style={{ fontSize: 22, fontWeight: 700, color: "#1A1A1A", lineHeight: 1.25 }}>{value}</div>
+      <div style={{ fontSize: 22, fontWeight: 700, color: "var(--hd-ink, #1A1A1A)", lineHeight: 1.25 }}>{value}</div>
       {detail && <s-text color="subdued">{detail}</s-text>}
     </div>
   </div>;
@@ -74,7 +79,7 @@ export type ChecklistItem = { id: string; title: string; description: string; do
 export function SetupChecklist({ items, title = "Get your Help Desk ready" }: { items: ChecklistItem[]; title?: string }) {
   const done = items.filter((item) => item.done).length;
   const percent = Math.round((done / items.length) * 100);
-  return <s-section>
+  return <div className="hd-admin-section"><s-section>
     <s-stack gap="base">
       <s-stack direction="inline" gap="base" alignItems="center" justifyContent="space-between">
         <s-stack gap="small-100">
@@ -83,15 +88,15 @@ export function SetupChecklist({ items, title = "Get your Help Desk ready" }: { 
         </s-stack>
         <s-badge tone={done === items.length ? "success" : "warning"}>{percent}% complete</s-badge>
       </s-stack>
-      <div aria-hidden="true" style={{ height: 8, borderRadius: 8, background: "#EEF0F3", overflow: "hidden" }}>
+      <div aria-hidden="true" style={{ height: 8, borderRadius: 8, background: "var(--hd-surface-muted, #EEF0F3)", overflow: "hidden" }}>
         <div style={{ width: `${percent}%`, height: "100%", borderRadius: 8, background: done === items.length ? TONES.green.accent : `linear-gradient(90deg, ${TONES.red.accent}, #FF8A5C)` }} />
       </div>
       <div style={{ display: "grid", gap: 2 }}>
         {items.map((item) => (
-          <div key={item.id} style={{ display: "flex", gap: 14, alignItems: "flex-start", padding: "12px 4px", borderTop: "1px solid #F1F1F1" }}>
+          <div key={item.id} style={{ display: "flex", gap: 14, alignItems: "flex-start", padding: "12px 4px", borderTop: "1px solid var(--hd-border, #F1F1F1)" }}>
             <span aria-label={item.done ? "Done" : "To do"} style={{
               flex: "none", display: "grid", placeItems: "center", width: 24, height: 24, marginTop: 1, borderRadius: "50%", fontSize: 13, fontWeight: 700,
-              background: item.done ? TONES.green.accent : "#fff", color: "#fff", border: item.done ? "none" : "2px dashed #B5B9C3",
+              background: item.done ? TONES.green.accent : "var(--hd-surface, #fff)", color: "#fff", border: item.done ? "none" : "2px dashed #B5B9C3",
             }}>{item.done ? "✓" : ""}</span>
             <div style={{ flex: 1, minWidth: 0 }}>
               <s-text type="strong">{item.title}</s-text>
@@ -102,7 +107,7 @@ export function SetupChecklist({ items, title = "Get your Help Desk ready" }: { 
         ))}
       </div>
     </s-stack>
-  </s-section>;
+  </s-section></div>;
 }
 
 // "2 minutes ago" for "last seen" style statuses.

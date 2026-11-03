@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import type { LoaderFunctionArgs, ShouldRevalidateFunction } from "react-router";
-import { useFetcher, useLoaderData, useParams } from "react-router";
+import { Link, useFetcher, useLoaderData, useParams } from "react-router";
 import { useAppBridge } from "@shopify/app-bridge-react";
 import { countries, macroPlaceholders, MAX_MESSAGE_LENGTH, PROVINCES } from "../services/help-desk";
 import { describeRate, parseDays, processingDays, rateTransit, shippingAnswer, type TransitSource } from "../services/help-desk-shipping";
@@ -8,12 +8,13 @@ import { adminContext, helpDeskAction, loadSettings } from "../services/help-des
 import { articleActions, articleCollections } from "../services/help-desk-articles";
 import { ASSISTANT_COPY, ASSISTANT_COPY_FIELDS, MAX_ASSISTANT_COPY } from "../services/help-desk-assistant";
 import { categories, categoryNames, describeCategory, resolutionTypes, rootCauses, rootCauseTeams, subcategoriesOf } from "../services/help-desk-taxonomy";
-import { IconTile, since } from "../components/HelpDeskUi";
-import SectionNavigation from "../components/SectionNavigation";
+import { IconTile, since, type Tone } from "../components/HelpDeskUi";
 import { DAY, HelpDeskNavigation, useResultToast } from "../components/help-desk/shared";
+import { saveThemeMode, THEME_MODES, useThemeMode, type ThemeMode } from "../components/help-desk/theme";
 
-// Help Desk settings: /app/help-desk/settings/:part (emails by default).
-const SETTINGS_PARTS = ["email", "team", "articles", "replies", "categories", "photos", "shipping", "shipstation", "storefront"];
+// Help Desk settings: /app/help-desk/settings/:part, with every part and how
+// it stands on the settings home (/app/help-desk/settings).
+const SETTINGS_PARTS = ["overview", "email", "team", "storefront", "assistant", "articles", "replies", "categories", "photos", "shipping", "shipstation", "appearance"];
 
 export const loader = async ({ request }: LoaderFunctionArgs) => loadSettings(await adminContext(request));
 
@@ -170,9 +171,19 @@ function AssistantSettings({ assistant }: { assistant: SettingsData["assistant"]
   const [copy, setCopy] = useState<Record<string, string>>(assistant.copy);
   useEffect(() => { setEnabled(assistant.enabled); setCopy(assistant.copy); }, [assistant]);
   useResultToast(fetcher, "Chat assistant saved");
-  return <s-section heading="Chat assistant">
+  return <>
+    {assistant.ai
+      ? <s-banner tone="success" heading="AI understanding is on">The assistant reads each message the way a person would (any wording, typos, other languages) and answers only from your articles, policies, pages, shipping settings and products. If Claude can&apos;t be reached, keyword matching answers instead.</s-banner>
+      : <s-banner tone="info" heading="Answering with keyword matching">The assistant matches customers&apos; words to your articles. For answers that understand any wording, add an ANTHROPIC_API_KEY to the app server&apos;s environment and restart it.</s-banner>}
+    <s-section heading="How it works">
+      <s-unordered-list>
+        <s-list-item>A customer writes on their request page: the assistant answers straight away, with the steps on the form when they ask how.</s-list-item>
+        <s-list-item>Not sure what they mean? It asks back and suggests the closest answers. It never guesses.</s-list-item>
+        <s-list-item>The chat only comes to your team when the customer asks for a person: you&apos;re emailed, and it shows in Waiting for a person.</s-list-item>
+      </s-unordered-list>
+    </s-section>
+  <s-section heading="Assistant and wording">
     <s-stack gap="base">
-      <s-paragraph color="subdued">When a customer writes on their request page, the assistant answers straight away from your help articles, shipping settings, policies, pages and products, but only when it&apos;s sure. Otherwise, or when the customer asks for a person, it passes the chat to your team: you&apos;re emailed, and the request shows in Waiting for a person.</s-paragraph>
       <s-switch label="Answer customers' questions on their request page" checked={enabled} onChange={(event) => setEnabled(event.currentTarget.checked ?? false)}
         details="Off: every message goes straight to your team, as before." />
       {ASSISTANT_COPY_FIELDS.map((field) => <s-text-area key={field.key} label={field.label} rows={2} maxLength={MAX_ASSISTANT_COPY} value={copy[field.key] ?? ""}
@@ -183,7 +194,8 @@ function AssistantSettings({ assistant }: { assistant: SettingsData["assistant"]
         <s-button variant="tertiary" onClick={() => setCopy({ ...ASSISTANT_COPY })}>Use the default wording</s-button>
       </s-stack>
     </s-stack>
-  </s-section>;
+  </s-section>
+  </>;
 }
 
 function HelpArticles({ screen }: { screen: SettingsData }) {
@@ -205,8 +217,6 @@ function HelpArticles({ screen }: { screen: SettingsData }) {
     <s-section heading="How it works">
       <s-paragraph color="subdued">Customers search at the top of your storefront form. They see your articles first, then matching parts of your store policies, online store pages and products, read straight from Shopify. Each article can end with a button that opens the right request, so if the answer isn&apos;t enough they&apos;re one click from the right form.</s-paragraph>
     </s-section>
-
-    <AssistantSettings assistant={screen.assistant} />
 
     {unanswered.length > 0 && <s-section heading="Searches nothing answered (last 30 days)">
       <s-stack gap="small-200">
@@ -465,8 +475,10 @@ function StaffList({ staff, me }: { staff: SettingsData["staff"]; me: string }) 
 }
 
 // The top of each settings tab: what it's for and how it stands right now.
+type SettingsIcon = Parameters<typeof IconTile>[0]["icon"];
+type StatusTone = "success" | "warning" | "info" | "neutral";
 function SettingsIntro({ icon, tone, title, description, status, statusTone }: {
-  icon: "email" | "team" | "chat" | "image" | "store" | "flag" | "clock" | "order"; tone: "blue" | "navy" | "green" | "red" | "amber"; title: string; description: string; status: string; statusTone: "success" | "warning" | "info" | "neutral";
+  icon: SettingsIcon; tone: Tone; title: string; description: string; status: string; statusTone: StatusTone;
 }) {
   return <s-section>
     <div style={{ display: "flex", flexWrap: "wrap", gap: 16, alignItems: "center", justifyContent: "space-between" }}>
@@ -480,6 +492,34 @@ function SettingsIntro({ icon, tone, title, description, status, statusTone }: {
       <s-badge tone={statusTone}>{status}</s-badge>
     </div>
   </s-section>;
+}
+
+const THEME_LABELS: Record<ThemeMode, { label: string; details: string }> = {
+  auto: { label: "Auto", details: "Follows your computer: light by day, dark when your system is in dark mode." },
+  light: { label: "Light", details: "Always light." },
+  dark: { label: "Dark", details: "Always dark. Easier on the eyes in a dim room or late shift." },
+};
+
+// Light or dark admin. Saved in this browser only, so each person picks their own.
+function AppearanceSettings() {
+  const { mode, dark } = useThemeMode();
+  return <>
+    <SettingsIntro icon="settings" tone="navy" title="Appearance" description="Light or dark Help Desk screens. Only changes this browser, so everyone on the team can choose their own."
+      status={dark ? "Dark now" : "Light now"} statusTone="info" />
+    <s-section heading="Theme">
+      <s-choice-list label="Colour scheme" name="theme" values={[mode]}
+        onChange={(event) => { const next = event.currentTarget.values?.[0]; if (THEME_MODES.includes(next as ThemeMode)) saveThemeMode(next as ThemeMode); }}>
+        {THEME_MODES.map((value) => <s-choice key={value} value={value} selected={mode === value}>{THEME_LABELS[value].label}<s-text slot="details">{THEME_LABELS[value].details}</s-text></s-choice>)}
+      </s-choice-list>
+    </s-section>
+    <s-section heading="Good to know">
+      <s-unordered-list>
+        <s-list-item>The change applies straight away on every Help Desk page and in your other open tabs. There&apos;s nothing to save.</s-list-item>
+        <s-list-item>The Shopify admin around the app keeps its own look. Only the Help Desk screens change.</s-list-item>
+        <s-list-item>Customer emails, the storefront form and the customer&apos;s chat page aren&apos;t affected.</s-list-item>
+      </s-unordered-list>
+    </s-section>
+  </>;
 }
 
 // How the team classifies tickets: what each category means, which team owns
@@ -504,7 +544,7 @@ function CategoriesGuide() {
       <s-stack gap="base">
         <s-text color="subdued">Pick the category for what the problem <i>is</i>, not what the customer asked for. A broken case they want refunded is Product Damage, with Refund as the resolution.</s-text>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: 12 }}>
-          {categories.map((category) => <div key={category.name} style={{ border: "1px solid #E3E3E3", borderRadius: 12, padding: 14, display: "grid", gap: 8, alignContent: "start" }}>
+          {categories.map((category) => <div key={category.name} style={{ border: "1px solid var(--hd-border, #E3E3E3)", borderRadius: 12, padding: 14, display: "grid", gap: 8, alignContent: "start" }}>
             <s-text type="strong">{category.name}</s-text>
             <s-text color="subdued">{category.description}</s-text>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
@@ -596,7 +636,7 @@ function ShippingTimes({ shipping }: { shipping: SettingsData["shipping"] }) {
       const entry = map.get(rate.name) ?? { rate, zones: [] as string[] };
       if (!entry.zones.includes(zone)) entry.zones.push(zone);
       return map.set(rate.name, entry);
-    }, new Map<string, { rate: (typeof setup & {})["zones"][number]["rates"][number]; zones: string[] }>()).values()];
+    }, new Map<string, { rate: NonNullable<typeof setup>["zones"][number]["rates"][number]; zones: string[] }>()).values()];
   const preview = setup ? shippingAnswer(setup, current, country, province) : null;
   const day = (value: string) => new Intl.DateTimeFormat("en", { weekday: "short", month: "short", day: "numeric", timeZone: "UTC" }).format(new Date(value));
   const dates = (range: [string, string]) => range[0] === range[1] ? day(range[0]) : `${day(range[0])} – ${day(range[1])}`;
@@ -703,9 +743,73 @@ function ShippingTimes({ shipping }: { shipping: SettingsData["shipping"] }) {
   </>;
 }
 
+// One settings part: where it lives, what it's for and how it stands now.
+type SettingsPart = { id: string; label: string; icon: SettingsIcon; tone: Tone; description: string; status: string; statusTone: StatusTone };
+const PART_GROUPS = [
+  { label: "Customer experience", parts: ["storefront", "assistant", "articles", "replies"] },
+  { label: "Team and alerts", parts: ["email", "team"] },
+  { label: "Orders and shipping", parts: ["shipping", "shipstation", "categories"] },
+  { label: "Security and display", parts: ["photos", "appearance"] },
+];
+const DOT: Record<StatusTone, string> = { success: "#29a36a", warning: "#e0a100", info: "#4c6fff", neutral: "#9aa1ad" };
+const partHref = (id: string) => `/app/help-desk/settings/${id}`;
+
+// Settings home: every part, grouped, with what needs doing first.
+function SettingsHome({ parts }: { parts: SettingsPart[] }) {
+  const byId = new Map(parts.map((item) => [item.id, item]));
+  const todo = parts.filter((item) => item.statusTone === "warning");
+  return <>
+    <s-section>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 16, alignItems: "center", justifyContent: "space-between" }}>
+        <div style={{ display: "flex", gap: 14, alignItems: "center", flex: "1 1 320px", minWidth: 0 }}>
+          <IconTile icon="settings" tone="navy" size={46} />
+          <s-stack gap="small-100">
+            <s-heading>All settings</s-heading>
+            <s-text color="subdued">Everything the Help Desk does for your customers and your team, and how each part stands right now.</s-text>
+          </s-stack>
+        </div>
+        <s-badge tone={todo.length ? "warning" : "success"}>{todo.length ? `${todo.length} to finish` : "All set"}</s-badge>
+      </div>
+    </s-section>
+    {PART_GROUPS.map((group) => <s-section key={group.label} heading={group.label}>
+      <div className="hd-settings-cards">
+        {group.parts.map((id) => byId.get(id)).filter((item): item is SettingsPart => Boolean(item)).map((item) =>
+          <Link key={item.id} to={partHref(item.id)} className="hd-settings-card">
+            <IconTile icon={item.icon} tone={item.tone} size={40} />
+            <span className="hd-settings-card-copy">
+              <strong>{item.label}</strong>
+              <span>{item.description}</span>
+              <em><i aria-hidden="true" style={{ background: DOT[item.statusTone] }} />{item.status}</em>
+            </span>
+            <span className="hd-settings-card-arrow" aria-hidden="true">›</span>
+          </Link>)}
+      </div>
+    </s-section>)}
+  </>;
+}
+
+// The parts down the side, grouped, each with its state. On narrow screens it
+// becomes a row above the content.
+function SettingsSidebar({ parts, current }: { parts: SettingsPart[]; current: string }) {
+  const byId = new Map(parts.map((item) => [item.id, item]));
+  return <nav className="hd-settings-nav" aria-label="Settings">
+    <Link to="/app/help-desk/settings" className="hd-settings-link" aria-current={current === "overview" ? "page" : undefined}>
+      <span>All settings</span>
+    </Link>
+    {PART_GROUPS.map((group) => <div key={group.label} className="hd-settings-group">
+      <span className="hd-settings-group-label">{group.label}</span>
+      {group.parts.map((id) => byId.get(id)).filter((item): item is SettingsPart => Boolean(item)).map((item) =>
+        <Link key={item.id} to={partHref(item.id)} className="hd-settings-link" aria-current={current === item.id ? "page" : undefined} title={item.status}>
+          <span>{item.label}</span>
+          <i aria-label={item.status} style={{ background: DOT[item.statusTone] }} />
+        </Link>)}
+    </div>)}
+  </nav>;
+}
+
 function SettingsScreen({ screen }: { screen: SettingsData }) {
-  const { part: requested = "email" } = useParams();
-  const part = SETTINGS_PARTS.includes(requested) ? requested : "email";
+  const { part: requested = "overview" } = useParams();
+  const part = SETTINGS_PARTS.includes(requested) ? requested : "overview";
   const { settings, storeEmail, configured } = screen;
   const save = useFetcher<typeof action>();
   const test = useFetcher<typeof action>();
@@ -719,23 +823,46 @@ function SettingsScreen({ screen }: { screen: SettingsData }) {
   const detectorConnected = screen.ai.provider === "truthscan" ? screen.ai.hasTruthscanKey : Boolean(screen.ai.sightengineUser && screen.ai.hasSightengineSecret);
   const shipStationConnected = screen.shipStation.hasKeys && screen.shipStation.keysWork && Boolean(screen.shipStation.storeId);
   const formLive = Boolean(screen.storefront.formLastSeenAt && Date.now() - new Date(screen.storefront.formLastSeenAt).getTime() < 30 * DAY);
+  const { mode } = useThemeMode();
+  const parts: SettingsPart[] = [
+    { id: "storefront", label: "Storefront form", icon: "store", tone: "red", description: "The form customers use to send requests, and their private chat page.",
+      status: formLive ? "Live on your store" : "Not added yet", statusTone: formLive ? "success" : "warning" },
+    { id: "assistant", label: "Chat assistant", icon: "wand", tone: "blue", description: "Answers customers on their request page, and passes the chat on when they ask for a person.",
+      status: !screen.assistant.enabled ? "Off" : screen.assistant.ai ? "On, with AI" : "On, keyword matching", statusTone: !screen.assistant.enabled ? "neutral" : screen.assistant.ai ? "success" : "info" },
+    { id: "articles", label: "Help articles", icon: "chat", tone: "blue", description: "Answers customers find by searching your form, and that the assistant answers from.",
+      status: `${screen.articles.length} article${screen.articles.length === 1 ? "" : "s"}`, statusTone: screen.articles.length ? "success" : "warning" },
+    { id: "replies", label: "Saved replies", icon: "chat", tone: "green", description: "Ready answers your team inserts into any reply with one click.",
+      status: `${screen.macros.length} saved`, statusTone: screen.macros.length ? "success" : "warning" },
+    { id: "email", label: "Emails", icon: "email", tone: "blue", description: "Who gets alerts about new requests, and what customers receive by email.",
+      status: configured ? "Sending on" : "Not set up yet", statusTone: configured ? "success" : "warning" },
+    { id: "team", label: "Team", icon: "team", tone: "navy", description: "People who can be assigned tickets and chosen in Reply as.",
+      status: `${screen.team.length} ${screen.team.length === 1 ? "person" : "people"}`, statusTone: screen.team.length ? "success" : "warning" },
+    { id: "shipping", label: "Shipping times", icon: "clock", tone: "amber", description: "How long orders take to ship and arrive, for answers with real dates.",
+      status: screen.shipping.setup ? "From your Shopify rates" : "Set up in Shopify first", statusTone: screen.shipping.setup ? "success" : "info" },
+    { id: "shipstation", label: "ShipStation", icon: "order", tone: "blue", description: "Checks for labels before an address changes, and keeps ShipStation in step.",
+      status: shipStationConnected ? "Connected" : screen.shipStation.hasKeys ? "Choose a store" : "Not connected", statusTone: shipStationConnected ? "success" : "warning" },
+    { id: "categories", label: "Categories", icon: "flag", tone: "navy", description: "How tickets are classified, who can fix each root cause, and what to record.",
+      status: "Guide", statusTone: "neutral" },
+    { id: "photos", label: "AI photo check", icon: "image", tone: "green", description: "Checks customer photos for AI generation, reuse and editing.",
+      status: !screen.ai.enabled ? "Off" : detectorConnected ? "Detector connected" : "Detector not connected", statusTone: !screen.ai.enabled ? "neutral" : detectorConnected ? "success" : "warning" },
+    { id: "appearance", label: "Appearance", icon: "settings", tone: "navy", description: "Light or dark Help Desk screens, for this browser.",
+      status: mode === "auto" ? "Auto" : mode === "dark" ? "Dark" : "Light", statusTone: "neutral" },
+  ];
   return <s-page heading="Help Desk settings" inlineSize="large">
     <s-link slot="breadcrumb-actions" href="/app/help-desk">Help Desk</s-link>
     {(part === "email" || part === "team") && <s-button slot="primary-action" variant="primary" disabled={!dirty} loading={save.state !== "idle"}
       onClick={() => void save.submit({ intent: "settings", ...Object.fromEntries(Object.entries(values).map(([key, value]) => [key, String(value)])) }, { method: "post" })}>Save</s-button>}
-
+    <div className="hd-admin-page">
     <HelpDeskNavigation current="settings" />
-    <SectionNavigation label="Settings categories" current={part} items={[
-      { id: "email", label: "Emails", href: "/app/help-desk/settings" },
-      { id: "team", label: "Team", href: "/app/help-desk/settings/team" },
-      { id: "articles", label: "Help articles", href: "/app/help-desk/settings/articles" },
-      { id: "replies", label: "Saved replies", href: "/app/help-desk/settings/replies" },
-      { id: "categories", label: "Categories", href: "/app/help-desk/settings/categories" },
-      { id: "photos", label: "AI photo check", href: "/app/help-desk/settings/photos" },
-      { id: "shipping", label: "Shipping times", href: "/app/help-desk/settings/shipping" },
-      { id: "shipstation", label: "ShipStation", href: "/app/help-desk/settings/shipstation" },
-      { id: "storefront", label: "Storefront form", href: "/app/help-desk/settings/storefront" },
-    ]} />
+    <div className="hd-settings">
+    <SettingsSidebar parts={parts} current={part} />
+    <div className="hd-settings-body">
+    {part === "overview" && <SettingsHome parts={parts} />}
+    {part === "assistant" && <>
+      <SettingsIntro icon="wand" tone="blue" title="Chat assistant" description="Answers customers on their request page straight away, and passes the chat to your team when they ask for a person."
+        status={parts.find((item) => item.id === "assistant")!.status} statusTone={parts.find((item) => item.id === "assistant")!.statusTone} />
+      <AssistantSettings assistant={screen.assistant} />
+    </>}
     {part === "email" && <>
     <SettingsIntro icon="email" tone="blue" title="Emails" description="Who gets alerts about new requests, and what customers receive by email."
       status={configured ? "Sending on" : "Not set up yet"} statusTone={configured ? "success" : "warning"} />
@@ -778,6 +905,8 @@ function SettingsScreen({ screen }: { screen: SettingsData }) {
     </>}
 
     {part === "categories" && <CategoriesGuide />}
+
+    {part === "appearance" && <AppearanceSettings />}
 
     {part === "photos" && <>
       <SettingsIntro icon="image" tone="green" title="AI photo check" description="Checks every customer photo for AI generation, reuse from another request and editing."
@@ -833,6 +962,9 @@ function SettingsScreen({ screen }: { screen: SettingsData }) {
         </s-unordered-list>
       </s-section>
     </>}
+    </div>
+    </div>
+    </div>
   </s-page>;
 }
 

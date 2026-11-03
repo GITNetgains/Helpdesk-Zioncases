@@ -136,24 +136,24 @@ function OriginalRequest({ ticket }: { ticket: TicketData["ticket"] }) {
   const loose = files.filter((file) => !file.productId || !ticket.products.some((product) => product.id === file.productId));
   const media = ticket.receivedProducts.length > 0 || ticket.products.length > 0 || files.length > 0;
   // The request as the first message of the chat: a card in the chat's own colours.
-  return <div style={{ maxWidth: "min(720px, 92%)", borderRadius: "4px 14px 14px 14px", background: "#18224A", border: "1px solid rgba(255,255,255,.1)", boxShadow: "0 2px 8px rgba(0,0,0,.25)", overflow: "hidden" }}>
-    <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "4px 10px", padding: "10px 14px", borderBottom: "1px solid rgba(255,255,255,.08)", background: "rgba(255,255,255,.03)" }}>
-      <span style={{ color: "#FF9C8C", fontWeight: 650, fontSize: 13 }}>{ticket.name}</span>
-      <span style={{ color: "#667085", fontSize: 12.5 }}>submitted a request · <span suppressHydrationWarning>{formatDate(ticket.createdAt)}</span></span>
+  return <div style={{ maxWidth: "min(720px, 92%)", borderRadius: "4px 14px 14px 14px", background: "var(--hdc-card-bg)", border: "1px solid var(--hdc-card-border)", boxShadow: "var(--hdc-bubble-shadow)", overflow: "hidden" }}>
+    <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "4px 10px", padding: "10px 14px", borderBottom: "1px solid var(--hdc-card-border)", background: "var(--hdc-card-head)" }}>
+      <span style={{ color: "var(--hdc-card-name)", fontWeight: 650, fontSize: 13 }}>{ticket.name}</span>
+      <span style={{ color: "var(--hdc-label)", fontSize: 12.5 }}>submitted a request · <span suppressHydrationWarning>{formatDate(ticket.createdAt)}</span></span>
     </div>
     <div style={{ display: "grid", gap: 8, padding: "12px 14px" }}>
-      {rows.length === 0 && <span style={{ color: "#A9B3D3", fontSize: 13.5 }}>No additional details were submitted.</span>}
+      {rows.length === 0 && <span style={{ color: "var(--hdc-label)", fontSize: 13.5 }}>No additional details were submitted.</span>}
       {rows.map((key) => (
         <div key={key} style={{ display: "grid", gridTemplateColumns: "minmax(110px, 160px) 1fr", gap: 12, fontSize: 13.5, lineHeight: 1.45 }}>
-          <span style={{ color: "#8C97BD" }}>{LABELS[key]}</span>
-          <span style={{ color: "#F2F4FA", whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>
-            {key === "country" || key === "shipCountry" ? countryName(values[key]) : key === "registeredEmail" ? <a href={`mailto:${values[key]}`} style={{ color: "#9DB4FF" }}>{values[key]}</a> : values[key]}
+          <span style={{ color: "var(--hdc-label)" }}>{LABELS[key]}</span>
+          <span style={{ color: "var(--hdc-value)", whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>
+            {key === "country" || key === "shipCountry" ? countryName(values[key]) : key === "registeredEmail" ? <a href={`mailto:${values[key]}`} style={{ color: "var(--hdc-link)" }}>{values[key]}</a> : values[key]}
           </span>
         </div>
       ))}
     </div>
-    {/* Products, photos and videos on a light panel, so pictures show true to colour. */}
-    {media && <div style={{ display: "grid", gap: 12, margin: "0 10px 10px", padding: 12, borderRadius: 10, background: "#fff", color: "#1A1F36" }}>
+    {/* Products, photos and videos on a quiet neutral panel, so pictures show true to colour. */}
+    {media && <div style={{ display: "grid", gap: 12, margin: "0 10px 10px", padding: 12, borderRadius: 10, background: "var(--hdc-media-bg)", border: "1px solid var(--hdc-card-border)", color: "var(--hdc-value)" }}>
       {ticket.receivedProducts.length > 0 && <ProductList heading="Received by mistake" products={ticket.receivedProducts} />}
       {ticket.products.length > 0 && <ProductList heading={ticket.receivedProducts.length ? "Wanted instead" : "Products"} products={ticket.products} />}
       {/* A product issue's photos and videos, under the product they show. */}
@@ -197,13 +197,14 @@ const dayLabel = (value: string | Date) => {
   return new Intl.DateTimeFormat("en", { weekday: "short", day: "numeric", month: "short", year: date.getFullYear() === today.getFullYear() ? undefined : "numeric" }).format(date);
 };
 
-// WhatsApp-style bubble: the customer and the assistant on the left (white),
-// your team on the right (green), internal notes on the right (yellow).
+// Messaging-app bubble: the customer and the assistant on the left, your team
+// on the right in Zion blue, internal notes on the right in amber. Colours come
+// from the chat's light and dark palettes (--hdc-* in LAYOUT_CSS).
 // Time and delivery sit inside the bubble.
 function Message({ message, files, email, isNew, grouped, pending = false }: { message: TicketData["ticket"]["messages"][number]; files: TicketFile[]; email?: TicketEmail; isNew: boolean; grouped: boolean; pending?: boolean }) {
   if (message.kind === "event") {
     return <div style={{ display: "flex", justifyContent: "center", margin: "4px 0" }}>
-      <span style={{ maxWidth: "85%", padding: "4px 10px", borderRadius: 8, background: "rgba(255,255,255,.08)", color: "#C9D1EA", fontSize: 12, textAlign: "center" }}>
+      <span style={{ maxWidth: "85%", padding: "4px 10px", borderRadius: 8, background: "var(--hdc-event-bg)", color: "var(--hdc-event-ink)", fontSize: 12, textAlign: "center" }}>
         {message.body} · {message.author} · <span suppressHydrationWarning>{timeOnly(message.createdAt)}</span>
       </span>
     </div>;
@@ -212,24 +213,23 @@ function Message({ message, files, email, isNew, grouped, pending = false }: { m
   const customer = message.kind === "customer";
   const bot = message.kind === "bot";
   const mine = !customer && !bot;
-  // Dark Zion theme: the customer in lighter navy, your team in Zion blue, notes in dark amber.
   const team = mine && !note;
-  const background = note ? "#FFF4D6" : team ? "#334FB4" : "#FFFFFF";
+  const tone = note ? "note" : team ? "team" : bot ? "bot" : "in";
   const delivery = pending ? "Sending…" : note ? "🔒 Internal note" : !mine ? "" : email ? "" : message.emailed ? "✓✓ Emailed" : "✓ On request page";
   return <div style={{ display: "flex", justifyContent: mine ? "flex-end" : "flex-start", marginTop: grouped ? 2 : 10, opacity: pending ? 0.7 : 1 }}>
     <div style={{
-      position: "relative", maxWidth: "min(620px, 78%)", minWidth: 120, padding: "9px 13px 7px", background, color: note ? "#704F00" : team ? "#FFFFFF" : "#252B36",
-      borderRadius: grouped ? 14 : mine ? "14px 4px 14px 14px" : "4px 14px 14px 14px", boxShadow: "0 1px 3px rgba(16,24,40,.08)",
-      border: bot ? "1px dashed #C7CCD6" : note ? "1px solid #F0D98D" : team ? "1px solid #2B449E" : "1px solid #E5E7EB",
+      position: "relative", maxWidth: "min(620px, 78%)", minWidth: 120, padding: "9px 13px 7px", background: `var(--hdc-${tone}-bg)`, color: `var(--hdc-${tone}-ink)`,
+      borderRadius: grouped ? 14 : mine ? "14px 4px 14px 14px" : "4px 14px 14px 14px", boxShadow: "var(--hdc-bubble-shadow)",
+      border: `1px ${bot ? "dashed" : "solid"} var(--hdc-${tone}-border)`,
     }}>
-      {!grouped && <div style={{ display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center", marginBottom: 2, fontSize: 12.5, fontWeight: 650, color: note ? "#8A6400" : team ? "#DCE3FF" : bot ? "#667085" : "#172351" }}>
+      {!grouped && <div style={{ display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center", marginBottom: 2, fontSize: 12.5, fontWeight: 650, color: `var(--hdc-${tone}-author)` }}>
         {message.author}
-        {isNew && <span style={{ padding: "0 6px", borderRadius: 6, background: "#E6EFFC", color: "#003A80", fontSize: 11 }}>New</span>}
-        {bot && <span style={{ fontWeight: 500, color: "#A9B3D3" }}>· Automated answer</span>}
+        {isNew && <span style={{ padding: "0 6px", borderRadius: 6, background: "var(--hdc-new-bg)", color: "var(--hdc-new-ink)", fontSize: 11 }}>New</span>}
+        {bot && <span style={{ fontWeight: 500, color: "var(--hdc-meta)" }}>· Automated answer</span>}
       </div>}
       <div style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere", fontSize: 14, lineHeight: 1.45 }}>{message.body}</div>
-      {files.length > 0 && <div style={{ marginTop: 8, padding: 8, borderRadius: 10, background: "#FFFFFF", color: "#1A1F36" }}><Gallery files={files} /></div>}
-      <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 6, marginTop: 3, fontSize: 11, color: note ? "#9B7A22" : team ? "rgba(255,255,255,.72)" : "#858D9A" }}>
+      {files.length > 0 && <div style={{ marginTop: 8, padding: 8, borderRadius: 10, background: "var(--hdc-media-bg)", color: "var(--hdc-value)" }}><Gallery files={files} /></div>}
+      <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 6, marginTop: 3, fontSize: 11, color: `var(--hdc-${tone}-meta)` }}>
         {delivery && <span>{delivery}</span>}
         <span suppressHydrationWarning>{timeOnly(message.createdAt)}</span>
       </div>
@@ -238,25 +238,135 @@ function Message({ message, files, email, isNew, grouped, pending = false }: { m
   </div>;
 }
 
-// The ticket screen: chat on the left, details on the right; one column on narrow screens.
+// Keep ticket details readable and let the conversation open as a docked widget.
 const LAYOUT_CSS = `
-.hd-ticket { display: grid; grid-template-columns: minmax(0, 1.04fr) minmax(360px, .96fr); gap: 18px; align-items: start; }
-.hd-ticket-main, .hd-ticket-side { display: grid; gap: 16px; min-width: 0; }
-.hd-ticket-main { position: sticky; top: 70px; height: calc(100vh - 86px); min-height: 420px; align-self: start; }
+.hd-ticket { display: block; }
+.hd-ticket-side { display: grid; grid-template-columns: minmax(0, 1.65fr) minmax(280px, .85fr); gap: 18px; min-width: 0; align-items: start; }
+.hd-ticket-main, .hd-ticket-rail { display: grid; gap: 16px; min-width: 0; align-content: start; }
 .hd-chat { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; height: 100%; min-height: 0; }
+.hd-chat-header { display: grid; gap: 12px; padding: 14px 16px; background: var(--hdc-head-bg); color: var(--hdc-head-title); border-bottom: 1px solid var(--hdc-line); }
+.hd-chat-header-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-width: 0; }
+.hd-chat-identity { display: flex; align-items: center; gap: 11px; min-width: 0; }
+.hd-chat-identity-copy { display: grid; gap: 3px; min-width: 0; }
+.hd-chat-identity-copy strong, .hd-chat-identity-copy span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hd-chat-identity-copy strong { color: var(--hdc-head-title); font-size: 14px; }
+.hd-chat-identity-copy span { color: var(--hdc-head-sub); font-size: 11.5px; }
+.hd-chat-header-actions { display: flex; align-items: center; gap: 7px; flex: none; }
+.hd-chat-header-action { display: grid; place-items: center; width: 34px; height: 34px; padding: 0; border: 1px solid var(--hdc-btn-border); border-radius: 9px; background: var(--hdc-btn-bg); color: var(--hdc-btn-ink); cursor: pointer; transition: background .15s ease, border-color .15s ease; }
+.hd-chat-header-action:hover { background: var(--hdc-btn-hover); }
+.hd-chat-header-action:focus-visible, .hd-chat button:focus-visible { outline: 2px solid var(--hdc-focus); outline-offset: 2px; }
+.hd-chat-header-action svg { width: 17px; height: 17px; }
+.hd-chat-header-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.hd-chat-header-meta > span { display: inline-flex; align-items: center; gap: 6px; padding: 4px 8px; border: 1px solid var(--hdc-chip-border); border-radius: 999px; background: var(--hdc-chip-bg); color: var(--hdc-chip-ink); font-size: 11px; font-weight: 600; line-height: 1.2; }
+.hd-chat-header-meta .hd-chat-live { margin-left: auto; border-color: transparent; background: transparent; color: var(--hdc-live); }
+.hd-chat-live i { width: 7px; height: 7px; border-radius: 50%; background: #34a86b; animation: hd-live 2s infinite; }
 .hd-chat-thread { min-height: 0; overflow: hidden; }
 .hd-chat-scroll { height: 100%; min-height: 0; }
-@media (max-width: 960px) {
-  .hd-ticket { grid-template-columns: minmax(0, 1fr); }
-  .hd-ticket-main { position: static; height: auto; min-height: 0; }
-  .hd-chat { height: min(860px, calc(100vh - 80px)); min-height: 420px; }
+.hd-chat-dock { position: fixed; right: 24px; bottom: 24px; z-index: 10001; display: grid; grid-template-rows: minmax(0, 1fr); width: min(440px, calc(100vw - 32px)); height: min(720px, calc(100dvh - 48px)); min-height: 360px; border: 1px solid var(--hdc-frame-border); border-radius: 16px; background: var(--hdc-frame); box-shadow: var(--hdc-frame-shadow); overflow: hidden; opacity: 0; visibility: hidden; transform: translateY(14px) scale(.985); transform-origin: bottom right; pointer-events: none; transition: opacity .18s ease, transform .18s ease, visibility .18s; }
+.hd-chat-dock[data-open="true"] { opacity: 1; visibility: visible; transform: translateY(0) scale(1); pointer-events: auto; }
+.hd-chat-dock[data-expanded="true"] { top: 12px; right: 12px; bottom: 12px; left: 12px; width: auto; height: auto; min-height: 0; max-height: none; transform: none; }
+.hd-chat-dock .hd-chat { height: 100%; }
+.hd-chat-launcher { position: fixed; right: 24px; bottom: 24px; z-index: 10000; display: flex; align-items: center; gap: 11px; min-width: 220px; max-width: min(320px, calc(100vw - 32px)); padding: 10px 15px 10px 10px; border: 1px solid var(--hdc-launcher-border); border-radius: 999px; background: #172351; color: #fff; box-shadow: 0 8px 28px rgba(12,20,43,.3); cursor: pointer; text-align: left; font: inherit; transition: transform .16s ease, box-shadow .16s ease, opacity .16s ease; }
+.hd-chat-launcher:hover { transform: translateY(-2px); box-shadow: 0 12px 34px rgba(12,20,43,.38); }
+.hd-chat-launcher:focus-visible { outline: 3px solid #7e9cff; outline-offset: 3px; }
+.hd-chat-launcher[data-open="true"] { opacity: 0; pointer-events: none; }
+.hd-chat-launch-icon { display: grid; place-items: center; flex: none; width: 42px; height: 42px; border-radius: 50%; background: #EF3A24; }
+.hd-chat-launch-icon svg { width: 21px; height: 21px; }
+.hd-chat-launch-copy { display: grid; gap: 2px; min-width: 0; flex: 1; }
+.hd-chat-launch-copy strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+.hd-chat-launch-copy small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #B7C2E4; font-size: 11px; }
+.hd-chat-launch-badge { display: grid; place-items: center; min-width: 20px; height: 20px; padding: 0 6px; border-radius: 999px; background: #EF3A24; color: #fff; font-size: 11px; font-weight: 700; }
+.hd-chat-input { display: flex; align-items: flex-end; gap: 8px; padding: 5px 5px 5px 14px; border: 1px solid var(--hdc-input-border); border-radius: 14px; background: var(--hdc-input-bg); transition: border-color .15s ease, box-shadow .15s ease; }
+.hd-chat-input:focus-within { border-color: var(--hdc-focus); box-shadow: 0 0 0 3px var(--hdc-focus-ring); }
+.hd-chat-input textarea { flex: 1; min-width: 0; min-height: 24px; max-height: 180px; margin: 0; padding: 8px 0; border: 0; outline: 0; resize: none; background: transparent; color: var(--hdc-in-ink); font: inherit; font-size: 14px; line-height: 1.45; }
+.hd-chat-input textarea::placeholder { color: var(--hdc-hint); }
+.hd-chat-input[aria-invalid], .hd-chat-input:has(textarea[aria-invalid]) { border-color: var(--hdc-error); }
+.hd-chat-send { flex: none; display: grid; place-items: center; width: 38px; height: 38px; padding: 0; border: 0; border-radius: 50%; background: var(--hdc-send); color: #fff; cursor: pointer; box-shadow: 0 2px 6px rgba(239,58,36,.3); transition: transform .12s ease, opacity .15s ease, box-shadow .15s ease; }
+.hd-chat-input[data-note] .hd-chat-send { background: var(--hdc-send-note); box-shadow: 0 2px 6px rgba(183,121,31,.3); }
+.hd-chat-send:not(:disabled):hover { transform: scale(1.06); }
+.hd-chat-send:disabled { opacity: .35; cursor: not-allowed; box-shadow: none; }
+.hd-chat-send svg { width: 18px; height: 18px; }
+.hd-chat-resolve { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; padding: 6px 12px; border: 1px solid var(--hdc-ghost-border); border-radius: 999px; background: transparent; color: var(--hdc-ghost-ink); font: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer; transition: background .15s ease, opacity .15s ease; }
+.hd-chat-resolve:not(:disabled):hover { background: var(--hdc-seg-bg); }
+.hd-chat-resolve:disabled { opacity: .45; cursor: not-allowed; }
+.hd-chat-resolve svg { width: 14px; height: 14px; color: var(--hdc-ok); }
+@media (prefers-reduced-motion: reduce) { .hd-chat-send, .hd-chat-input { transition: none; } }
+.hd-typing { display: inline-flex; align-items: center; gap: 9px; margin-top: 10px; padding: 9px 13px; border: 1px solid var(--hdc-in-border); border-radius: 4px 14px 14px 14px; background: var(--hdc-in-bg); box-shadow: var(--hdc-bubble-shadow); animation: hd-typing-in .18s ease-out; }
+.hd-typing-dots { display: inline-flex; gap: 4px; }
+.hd-typing-dots i { width: 7px; height: 7px; border-radius: 50%; background: var(--hdc-meta); animation: hd-typing 1.2s infinite ease-in-out; }
+.hd-typing-dots i:nth-child(2) { animation-delay: .15s; }
+.hd-typing-dots i:nth-child(3) { animation-delay: .3s; }
+.hd-typing-name { color: var(--hdc-meta); font-size: 12px; }
+@keyframes hd-typing { 0%, 60%, 100% { transform: translateY(0); opacity: .45; } 30% { transform: translateY(-4px); opacity: 1; } }
+@keyframes hd-typing-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .hd-typing-dots i, .hd-typing { animation: none; } .hd-typing-dots i { opacity: .8; } }
+/* The chat's colours. Light: white panels on a soft grey thread, like a
+   modern help desk. Dark: graphite panels that sit on the Polaris dark admin.
+   Your team's messages stay Zion blue in both, the send button Zion red. */
+.hd-chat-dock, .hd-chat-launcher {
+  --hdc-frame: #e9edf7; --hdc-frame-border: #cfd6e6; --hdc-frame-shadow: 0 24px 64px rgba(23,35,81,.22), 0 2px 6px rgba(23,35,81,.08); --hdc-line: #d5dcec;
+  --hdc-head-bg: linear-gradient(135deg, #172351 0%, #22306b 100%); --hdc-head-title: #ffffff; --hdc-head-sub: #c1cbea;
+  --hdc-btn-bg: rgba(255,255,255,.08); --hdc-btn-border: rgba(255,255,255,.2); --hdc-btn-ink: #ffffff; --hdc-btn-hover: rgba(255,255,255,.16); --hdc-focus: #334fb4; --hdc-focus-ring: rgba(51,79,180,.18);
+  --hdc-chip-bg: rgba(255,255,255,.09); --hdc-chip-border: rgba(255,255,255,.14); --hdc-chip-ink: #e5eaf7; --hdc-live: #8fe3b0;
+  --hdc-thread-bg: #dfe5f3; --hdc-thread-glow: rgba(51,79,180,.18); --hdc-thread-dot: rgba(23,35,81,.08); --hdc-scroll: #a9b3cb;
+  --hdc-input-bg: #ffffff; --hdc-input-border: #c6cee0; --hdc-error: #d92d20;
+  --hdc-pill-bg: #172351; --hdc-pill-border: #172351; --hdc-pill-ink: #ffffff; --hdc-event-bg: rgba(255,255,255,.72); --hdc-event-ink: #3d4a66;
+  --hdc-bubble-shadow: 0 1px 2px rgba(23,35,81,.1), 0 2px 8px rgba(23,35,81,.06);
+  --hdc-in-bg: #ffffff; --hdc-in-border: #d3dae9; --hdc-in-ink: #1d2433; --hdc-in-author: #172351; --hdc-in-meta: #8a92a0;
+  --hdc-bot-bg: #f7f9ff; --hdc-bot-border: #9fabca; --hdc-bot-ink: #1d2433; --hdc-bot-author: #5b6475; --hdc-bot-meta: #8a92a0; --hdc-meta: #8a92a0;
+  --hdc-team-bg: #334fb4; --hdc-team-border: #2b449e; --hdc-team-ink: #ffffff; --hdc-team-author: #dce3ff; --hdc-team-meta: rgba(255,255,255,.75);
+  --hdc-note-bg: #fff6dc; --hdc-note-border: #f0d98d; --hdc-note-ink: #5c4300; --hdc-note-author: #8a6400; --hdc-note-meta: #9b7a22;
+  --hdc-new-bg: #e6effc; --hdc-new-ink: #003a80;
+  --hdc-card-bg: #ffffff; --hdc-card-border: #d3dae9; --hdc-card-head: #f9fafb; --hdc-card-name: #c4320a; --hdc-label: #667085; --hdc-value: #1d2433; --hdc-link: #2458a6; --hdc-media-bg: #f9fafb;
+  --hdc-bar-bg: #e9edf7; --hdc-bar-ink: #344054; --hdc-bar-note-bg: #fffbeb; --hdc-bar-note-border: #f0d98d;
+  --hdc-seg-bg: #ffffff; --hdc-seg-border: #cfd6e6; --hdc-seg-ink: #475467; --hdc-accent: #172351; --hdc-note-accent: #a36d0a;
+  --hdc-hint: #5b6680; --hdc-ok: #0c7a43;
+  --hdc-sugg-bg: #ffffff; --hdc-sugg-border: #c6cee0; --hdc-sugg-ink: #344054;
+  --hdc-ghost-border: #b9c2d8; --hdc-ghost-ink: #172351; --hdc-send: #ef3a24; --hdc-send-note: #b7791f;
+  --hdc-switch-bg: #ffffff; --hdc-switch-border: #cfd6e6; --hdc-switch-ink: #475467; --hdc-track: #c5cad4;
+  --hdc-switch-on-bg: #e3f5ea; --hdc-switch-on-border: rgba(12,122,67,.35); --hdc-switch-on-ink: #0c5132;
+  --hdc-empty-bg: rgba(255,255,255,.7); --hdc-empty-title: #344054; --hdc-empty-ink: #667085;
+  --hdc-launcher-border: #d9dfef;
 }
+.hd-theme-dark .hd-chat-dock, .hd-theme-dark .hd-chat-launcher {
+  --hdc-frame: #1a1a1a; --hdc-frame-border: #333333; --hdc-frame-shadow: 0 24px 70px rgba(0,0,0,.65), 0 0 0 1px rgba(255,255,255,.03); --hdc-line: #2c2c2c;
+  --hdc-head-bg: #1f1f1f; --hdc-head-title: #f2f2f2; --hdc-head-sub: #a3a3a3;
+  --hdc-btn-bg: #262626; --hdc-btn-border: #3a3a3a; --hdc-btn-ink: #e5e5e5; --hdc-btn-hover: #303030; --hdc-focus: #8ea2ff; --hdc-focus-ring: rgba(142,162,255,.2);
+  --hdc-input-bg: #242424; --hdc-input-border: #3a3a3a; --hdc-error: #f97066;
+  --hdc-chip-bg: #262626; --hdc-chip-border: #363636; --hdc-chip-ink: #d6d6d6; --hdc-live: #6ee7a8;
+  --hdc-thread-bg: #121212; --hdc-thread-glow: rgba(59,91,219,.14); --hdc-thread-dot: rgba(255,255,255,.035); --hdc-scroll: #3d3d3d;
+  --hdc-pill-bg: #1f1f1f; --hdc-pill-border: #333333; --hdc-pill-ink: #cfcfcf; --hdc-event-bg: rgba(255,255,255,.06); --hdc-event-ink: #b5b5b5;
+  --hdc-bubble-shadow: 0 1px 2px rgba(0,0,0,.4);
+  --hdc-in-bg: #262626; --hdc-in-border: #333333; --hdc-in-ink: #ececec; --hdc-in-author: #c5ceff; --hdc-in-meta: #8f8f8f;
+  --hdc-bot-bg: #202020; --hdc-bot-border: #474747; --hdc-bot-ink: #e2e2e2; --hdc-bot-author: #a8a8a8; --hdc-bot-meta: #8f8f8f; --hdc-meta: #8f8f8f;
+  --hdc-team-bg: #3b5bdb; --hdc-team-border: #3352c4; --hdc-team-ink: #ffffff; --hdc-team-author: #e0e6ff; --hdc-team-meta: rgba(255,255,255,.75);
+  --hdc-note-bg: #362b10; --hdc-note-border: #6b5520; --hdc-note-ink: #f3dfa2; --hdc-note-author: #f5c95c; --hdc-note-meta: #c9a54f;
+  --hdc-new-bg: #1c2a50; --hdc-new-ink: #b3c3ff;
+  --hdc-card-bg: #1f1f1f; --hdc-card-border: #333333; --hdc-card-head: #242424; --hdc-card-name: #ff9c8c; --hdc-label: #a3a3a3; --hdc-value: #ececec; --hdc-link: #9db4ff; --hdc-media-bg: #262626;
+  --hdc-bar-bg: #1a1a1a; --hdc-bar-ink: #d4d4d4; --hdc-bar-note-bg: #2a2310; --hdc-bar-note-border: #5c4a1a;
+  --hdc-seg-bg: #242424; --hdc-seg-border: #363636; --hdc-seg-ink: #cfcfcf; --hdc-accent: #3b5bdb; --hdc-note-accent: #a36d0a;
+  --hdc-hint: #8f8f8f; --hdc-ok: #6ee7a8;
+  --hdc-sugg-bg: #242424; --hdc-sugg-border: #3a3a3a; --hdc-sugg-ink: #d4d4d4;
+  --hdc-ghost-border: #4a4a4a; --hdc-ghost-ink: #e5e5e5; --hdc-send: #ef3a24; --hdc-send-note: #b7791f;
+  --hdc-switch-bg: #242424; --hdc-switch-border: #3a3a3a; --hdc-switch-ink: #cfcfcf; --hdc-track: #4a4a4a;
+  --hdc-switch-on-bg: rgba(52,168,107,.16); --hdc-switch-on-border: rgba(52,168,107,.5); --hdc-switch-on-ink: #b9f0cf;
+  --hdc-empty-bg: rgba(255,255,255,.06); --hdc-empty-title: #d6d6d6; --hdc-empty-ink: #9a9a9a;
+  --hdc-launcher-border: rgba(255,255,255,.14);
+}
+@media (max-width: 560px) {
+  .hd-ticket-side { grid-template-columns: minmax(0, 1fr); }
+  .hd-chat-dock { right: 12px; bottom: 12px; width: calc(100vw - 24px); height: calc(100dvh - 24px); min-height: 300px; }
+  .hd-chat-launcher { right: 16px; bottom: 16px; min-width: 0; }
+}
+@media (min-width: 561px) and (max-width: 1100px) { .hd-ticket-side { grid-template-columns: minmax(0, 1.3fr) minmax(250px, .9fr); gap: 12px; } }
+@media (max-width: 560px) { .hd-chat-header { gap: 9px; padding: 11px 12px; } .hd-chat-header-meta .hd-chat-live { margin-left: 0; } .hd-chat-header-action { width: 32px; height: 32px; } }
+@media (prefers-reduced-motion: reduce) { .hd-chat-dock, .hd-chat-launcher { transition: none; } }
 `;
 
 // A card in the right-hand column.
 function SideCard({ heading, children }: { heading: string; children: React.ReactNode }) {
-  return <section aria-label={heading} style={{ background: "#fff", border: "1px solid #E3E3E3", borderRadius: 12, boxShadow: "0 1px 0 rgba(26,26,26,.07)", overflow: "hidden" }}>
-    <div style={{ padding: "12px 16px", borderBottom: "1px solid #EBEBEB", background: "#FAFAFA", fontSize: 13, fontWeight: 650, color: "#303030" }}>{heading}</div>
+  return <section className="hd-admin-card" aria-label={heading} style={{ background: "var(--hd-surface, #fff)", border: "1px solid var(--hd-border, #E3E3E3)", borderRadius: 12, boxShadow: "0 1px 0 rgba(26,26,26,.07)", overflow: "hidden" }}>
+    <div style={{ padding: "12px 16px", borderBottom: "1px solid var(--hd-border, #EBEBEB)", background: "var(--hd-surface-muted, #FAFAFA)", fontSize: 13, fontWeight: 650, color: "var(--hd-ink, #303030)" }}>{heading}</div>
     <div style={{ padding: 16 }}>{children}</div>
   </section>;
 }
@@ -265,21 +375,33 @@ const STATUS_DOT: Record<string, string> = { Open: "#F5A524", "In progress": "#5
 
 // The chat window's top bar: the customer, where the ticket stands, and a live
 // dot (the page checks for new messages every second).
-function ChatHeader({ ticket, count }: { ticket: TicketData["ticket"]; count: number }) {
+function ChatHeader({ ticket, count, onClose, onExpand, expanded }: { ticket: TicketData["ticket"]; count: number; onClose: () => void; onExpand: () => void; expanded: boolean }) {
   const initials = ticket.name.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]!.toUpperCase()).join("") || "?";
-  const chip = (text: string, color: string) => <span style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "4px 9px", borderRadius: 999, fontSize: 12, fontWeight: 600, color: "#E5EAF7", background: "rgba(255,255,255,.08)", border: "1px solid rgba(255,255,255,.12)", whiteSpace: "nowrap" }}>
+  const chip = (text: string, color: string) => <span style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "4px 9px", borderRadius: 999, fontSize: 11, fontWeight: 600, color: "var(--hdc-chip-ink)", background: "var(--hdc-chip-bg)", border: "1px solid var(--hdc-chip-border)", whiteSpace: "nowrap" }}>
     <span aria-hidden="true" style={{ width: 7, height: 7, borderRadius: "50%", background: color }} />{text}
   </span>;
-  return <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "10px 14px", padding: "12px 16px", background: "#172351", borderBottom: "1px solid rgba(255,255,255,.1)" }}>
+  return <div className="hd-chat-header">
     <style>{"@keyframes hd-live { 0% { box-shadow: 0 0 0 0 rgba(52,168,107,.6) } 70% { box-shadow: 0 0 0 7px rgba(52,168,107,0) } 100% { box-shadow: 0 0 0 0 rgba(52,168,107,0) } }"}</style>
-    <span aria-hidden="true" style={{ display: "grid", placeItems: "center", width: 40, height: 40, borderRadius: "50%", background: "#334FB4", color: "#FFFFFF", fontWeight: 700, fontSize: 15, flex: "none" }}>{initials}</span>
-    <div style={{ display: "grid", gap: 2, minWidth: 0, flex: "1 1 200px" }}>
-      <span style={{ color: "#FFFFFF", fontWeight: 700, fontSize: 15, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{ticket.name}</span>
-      <span style={{ color: "#B7C2E4", fontSize: 12.5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-        {ticket.email}{ticket.category ? ` · ${ticket.subcategory ? `${ticket.category} › ${ticket.subcategory}` : ticket.category}` : ""}
-      </span>
+    <div className="hd-chat-header-top">
+      <div className="hd-chat-identity">
+        <span aria-hidden="true" style={{ display: "grid", placeItems: "center", width: 40, height: 40, borderRadius: "50%", background: "#334FB4", color: "#FFFFFF", fontWeight: 700, fontSize: 15, flex: "none" }}>{initials}</span>
+        <div className="hd-chat-identity-copy">
+          <strong>{ticket.name}</strong>
+          <span>{ticket.email}{ticket.category ? "\u00b7 " + (ticket.subcategory ? ticket.category + " \u203a " + ticket.subcategory : ticket.category) : ""}</span>
+        </div>
+      </div>
+      <div className="hd-chat-header-actions">
+        <button type="button" className="hd-chat-header-action" aria-label={expanded ? "Exit full screen" : "Open full screen chat"} title={expanded ? "Exit full screen" : "Full screen"} aria-pressed={expanded} onClick={onExpand}>
+          {expanded
+            ? <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><path d="M8 3v5H3m13-5v5h5M3 16h5v5m13-5h-5v5"/></svg>
+            : <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>}
+        </button>
+        <button type="button" className="hd-chat-header-action" aria-label="Close chat" title="Close chat" onClick={onClose}>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" /></svg>
+        </button>
+      </div>
     </div>
-    <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 6 }}>
+    <div className="hd-chat-header-meta">
       {chip(ticket.status, STATUS_DOT[ticket.status] ?? "#8C97BD")}
       {ticket.priority !== "Normal" && chip(`${ticket.priority} priority`, ticket.priority === "Urgent" || ticket.priority === "High" ? "#EF3A24" : "#8C97BD")}
       {chip(ticket.assignee || "Unassigned", ticket.assignee ? "#5B8DEF" : "#8C97BD")}
@@ -290,9 +412,7 @@ function ChatHeader({ ticket, count }: { ticket: TicketData["ticket"]; count: nu
       <EditBadge status={ticket.editStatus} />
       <ReplacementBadge status={ticket.replacementStatus} kind={ticket.replacementKind} />
       <QuoteBadge status={ticket.quoteStatus} />
-      <span title="New messages appear here by themselves" style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, color: "#8FE3B0", fontWeight: 600 }}>
-        <span aria-hidden="true" style={{ width: 8, height: 8, borderRadius: "50%", background: "#34A86B", animation: "hd-live 2s infinite" }} />Live · {count} message{count === 1 ? "" : "s"}
-      </span>
+      <span className="hd-chat-live" title="New messages appear here automatically"><i aria-hidden="true" />Live · {count} message{count === 1 ? "" : "s"}</span>
     </div>
   </div>;
 }
@@ -300,7 +420,7 @@ function ChatHeader({ ticket, count }: { ticket: TicketData["ticket"]; count: nu
 // The conversation as a chat window: fixed height, opens at the newest
 // message and stays there as new ones arrive, unless you've scrolled up to
 // read, then a button offers to jump down.
-function ChatThread({ ticket, replyEmails, readAt }: { ticket: TicketData["ticket"]; replyEmails: Map<string, TicketEmail>; readAt: number }) {
+function ChatThread({ ticket, replyEmails, readAt, typing = false }: { ticket: TicketData["ticket"]; replyEmails: Map<string, TicketEmail>; readAt: number; typing?: boolean }) {
   const box = useRef<HTMLDivElement>(null);
   const content = useRef<HTMLDivElement>(null);
   const pinned = useRef(true);
@@ -341,13 +461,13 @@ function ChatThread({ ticket, replyEmails, readAt }: { ticket: TicketData["ticke
     }} style={{
       // Fills the screen above the reply box, like a chat app.
       // (The whole window, reply box included, fits on screen: it stays in view as the right column scrolls.)
-      height: "100%", minHeight: 0, overflowY: "auto", scrollbarWidth: "thin", scrollbarColor: "#53638F transparent", padding: "12px 14px 14px",
-      // Deep Zion navy with a quiet blue glow and low-contrast texture.
-      backgroundColor: "#111A35", backgroundImage: "radial-gradient(circle at 18% 0%, rgba(51,79,180,.26), transparent 48%), radial-gradient(rgba(255,255,255,.035) 1px, transparent 1px)", backgroundSize: "auto, 18px 18px",
+      height: "100%", minHeight: 0, overflowY: "auto", scrollbarWidth: "thin", scrollbarColor: "var(--hdc-scroll) transparent", padding: "12px 14px 14px",
+      // A quiet thread: a soft glow in Zion blue and a faint dot texture.
+      backgroundColor: "var(--hdc-thread-bg)", backgroundImage: "radial-gradient(circle at 18% 0%, var(--hdc-thread-glow), transparent 48%), radial-gradient(var(--hdc-thread-dot) 1px, transparent 1px)", backgroundSize: "auto, 18px 18px",
     }}>
       <div ref={content}>
       <div style={{ display: "flex", justifyContent: "center", marginBottom: 8 }}>
-        <span suppressHydrationWarning style={{ padding: "4px 11px", borderRadius: 999, background: "#1C2A50", border: "1px solid #35436B", color: "#D8E0F5", fontSize: 11.5, fontWeight: 600 }}>{dayLabel(ticket.createdAt)}</span>
+        <span suppressHydrationWarning style={{ padding: "4px 11px", borderRadius: 999, background: "var(--hdc-pill-bg)", border: "1px solid var(--hdc-pill-border)", color: "var(--hdc-pill-ink)", fontSize: 11.5, fontWeight: 600 }}>{dayLabel(ticket.createdAt)}</span>
       </div>
       <OriginalRequest ticket={ticket} />
       {ticket.messages.map((message) => {
@@ -359,26 +479,35 @@ function ChatThread({ ticket, replyEmails, readAt }: { ticket: TicketData["ticke
         lastAuthor = message.kind === "event" ? "" : author;
         return <div key={message.id}>
           {newDay && <div style={{ display: "flex", justifyContent: "center", margin: "12px 0 4px" }}>
-            <span suppressHydrationWarning style={{ padding: "4px 11px", borderRadius: 999, background: "#1C2A50", border: "1px solid #35436B", color: "#D8E0F5", fontSize: 11.5, fontWeight: 600 }}>{dayLabel(message.createdAt)}</span>
+            <span suppressHydrationWarning style={{ padding: "4px 11px", borderRadius: 999, background: "var(--hdc-pill-bg)", border: "1px solid var(--hdc-pill-border)", color: "var(--hdc-pill-ink)", fontSize: 11.5, fontWeight: 600 }}>{dayLabel(message.createdAt)}</span>
           </div>}
           <Message message={message} email={replyEmails.get(message.id)} grouped={grouped}
             files={ticket.attachments.filter((file) => file.messageId === message.id)}
             isNew={Boolean(readAt) && message.kind === "customer" && new Date(message.createdAt).getTime() > readAt} />
         </div>;
       })}
-      {!ticket.messages.some((message) => message.kind !== "event") && !sending.length && <div style={{ display: "grid", justifyItems: "center", gap: 6, margin: "48px auto 0", maxWidth: 320, textAlign: "center", color: "#8C97BD", fontSize: 13 }}>
-        <span aria-hidden="true" style={{ display: "grid", placeItems: "center", width: 44, height: 44, borderRadius: "50%", background: "rgba(255,255,255,.06)", fontSize: 20 }}>💬</span>
-        <span style={{ color: "#C9D1EA", fontWeight: 600 }}>No replies yet</span>
+      {!ticket.messages.some((message) => message.kind !== "event") && !sending.length && <div style={{ display: "grid", justifyItems: "center", gap: 6, margin: "48px auto 0", maxWidth: 320, textAlign: "center", color: "var(--hdc-empty-ink)", fontSize: 13 }}>
+        <span aria-hidden="true" style={{ display: "grid", placeItems: "center", width: 44, height: 44, borderRadius: "50%", background: "var(--hdc-empty-bg)", fontSize: 20 }}>💬</span>
+        <span style={{ color: "var(--hdc-empty-title)", fontWeight: 600 }}>No replies yet</span>
         <span>Write to {ticket.name.split(" ")[0] || "the customer"} below. They see your reply on their request page right away.</span>
       </div>}
       {sending.map((message) => <Message key={message.id} pending isNew={false} grouped={false} files={[]}
         message={{ ...ticket.messages.at(-1)!, ...message, emailed: false, createdAt: new Date() }} />)}
+      {typing && <TypingBubble name={ticket.name.split(/\s+/)[0] || "The customer"} />}
       </div>
     </div>
     {unseen > 0 && <button type="button" onClick={toBottom} style={{
       position: "absolute", left: "50%", bottom: 14, transform: "translateX(-50%)", padding: "7px 14px", border: 0, borderRadius: 999, cursor: "pointer",
       background: "#EF3A24", color: "#fff", font: "inherit", fontSize: 13, fontWeight: 600, boxShadow: "0 4px 14px rgba(16,24,40,.28)",
     }}>{unseen} new message{unseen === 1 ? "" : "s"} ↓</button>}
+  </div>;
+}
+
+// The customer is writing: three dots in a bubble on their side, like a messaging app.
+function TypingBubble({ name }: { name: string }) {
+  return <div className="hd-typing" role="status" aria-label={`${name} is typing`}>
+    <span className="hd-typing-dots" aria-hidden="true"><i /><i /><i /></span>
+    <span className="hd-typing-name">{name} is typing</span>
   </div>;
 }
 
@@ -393,20 +522,37 @@ const CHANNELS = [
 
 function ChannelPicker({ value, onChange, email }: { value: "page" | "email"; onChange: (value: "page" | "email") => void; email: string }) {
   return <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-    <span style={{ fontSize: 12.5, color: "#A9B3D3" }}>Send via</span>
+    <span style={{ fontSize: 12.5, color: "var(--hdc-hint)" }}>Send via</span>
     <div role="radiogroup" aria-label="Send via" title={`Request page: shown in their chat in your store. Email: also sent to ${email}.`}
-      style={{ display: "flex", padding: 3, gap: 2, borderRadius: 10, background: "rgba(255,255,255,.07)", border: "1px solid rgba(255,255,255,.14)" }}>
+      style={{ display: "flex", padding: 3, gap: 2, borderRadius: 10, background: "var(--hdc-seg-bg)", border: "1px solid var(--hdc-seg-border)" }}>
       {CHANNELS.map((channel) => {
         const active = value === channel.id;
         return <button key={channel.id} type="button" role="radio" aria-checked={active} onClick={() => onChange(channel.id)} style={{
           display: "inline-flex", alignItems: "center", gap: 6, padding: "5px 10px", borderRadius: 8, font: "inherit", fontSize: 12.5, cursor: "pointer",
-          fontWeight: active ? 650 : 500, color: active ? "#fff" : "#D3DCF2", background: active ? "#334FB4" : "transparent", border: 0,
+          fontWeight: active ? 650 : 500, color: active ? "#fff" : "var(--hdc-seg-ink)", background: active ? "var(--hdc-accent)" : "transparent", border: 0,
         }}>
           <s-icon type={channel.icon} size="small" />
           {channel.label}
         </button>;
       })}
     </div>
+  </div>;
+}
+
+// Joins a chat that's waiting for a person: a greeting goes to the customer's
+// request page at once (their chat stops showing "Connecting"), the request is
+// no longer flagged, and the assistant stays quiet while the team chats.
+function JoinChat({ ticket, author, storeName }: { ticket: TicketData["ticket"]; author: string; storeName: string }) {
+  const fetcher = useFetcher<typeof action>();
+  useResultToast(fetcher, `You joined the chat. ${ticket.name.split(/\s+/)[0] || "The customer"} sees your message now.`);
+  const first = ticket.name.trim().split(/\s+/)[0];
+  const body = `Hi${first ? ` ${first}` : ""}, this is ${author.replace(/ Support$/, "")} from the ${storeName} team. I've joined the chat and I'm reading your messages now. How can I help?`;
+  useEffect(() => {
+    if (fetcher.state === "idle" && fetcher.data && !Object.keys(fetcher.data.errors).length) document.querySelector<HTMLTextAreaElement>(".hd-chat textarea")?.focus();
+  }, [fetcher.state, fetcher.data]);
+  return <div style={{ marginTop: 10 }}>
+    <s-button variant="primary" icon="chat" loading={fetcher.state !== "idle"}
+      onClick={() => void fetcher.submit({ intent: "message", id: ticket.id, kind: "reply", channel: "page", author, body, status: "In progress" }, { method: "post" })}>Join chat</s-button>
   </div>;
 }
 
@@ -446,20 +592,29 @@ function Composer({ ticket, macros, storeName, team, configured, me, order }: { 
   const note = kind === "note";
   const pill = (value: "reply" | "note", label: string) => <button type="button" role="tab" aria-selected={kind === value} onClick={() => setKind(value)} style={{
     padding: "7px 14px", borderRadius: 8, font: "inherit", fontSize: 13.5, cursor: "pointer", fontWeight: kind === value ? 650 : 500, border: 0,
-    color: kind === value ? "#fff" : "#D3DCF2", background: kind === value ? (value === "note" ? "#A36D0A" : "#334FB4") : "transparent",
+    color: kind === value ? "#fff" : "var(--hdc-seg-ink)", background: kind === value ? (value === "note" ? "var(--hdc-note-accent)" : "var(--hdc-accent)") : "transparent",
   }}>{label}</button>;
-  // Zion red, like the buttons on zioncases.com, so it stands out on the dark bar.
-  const sendButton = (label: string, onClick: () => void, primary = true) => <button type="button" disabled={!body.trim() || sending} onClick={onClick} style={{
-    padding: "9px 18px", borderRadius: 6, font: "inherit", fontSize: 14, fontWeight: 650, cursor: !body.trim() || sending ? "not-allowed" : "pointer",
-    opacity: !body.trim() || sending ? 0.5 : 1, color: "#fff", background: primary ? (note ? "#B7791F" : "#EF3A24") : "transparent",
-    border: primary ? "1px solid transparent" : "1px solid rgba(255,255,255,.28)", boxShadow: primary ? "0 2px 4px rgba(16,24,40,.12)" : "none",
-  }}>{label}</button>;
+  // The box grows with what's typed, up to a few lines, then scrolls.
+  const input = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => {
+    const node = input.current;
+    if (!node) return;
+    node.style.height = "auto";
+    node.style.height = `${Math.min(node.scrollHeight, 180)}px`;
+  }, [body]);
+  const empty = !body.trim() || sending;
+  const lastPing = useRef(0);
+  const pingTyping = () => {
+    if (note || Date.now() - lastPing.current < 2_000) return;
+    lastPing.current = Date.now();
+    void fetch(`/app/help-desk-pulse?ticket=${encodeURIComponent(ticket.id)}&typing=${encodeURIComponent(author)}`, { headers: { Accept: "application/json" }, cache: "no-store" }).catch(() => {});
+  };
   // The reply box is the bottom bar of the chat window, like a messaging app.
   const where = note ? "🔒 Only your team sees notes" : channel === "email" ? `Shown in their chat and emailed to ${ticket.email}` : "The customer sees this in their chat on the request page";
-  return <div style={{ display: "grid", gap: 9, padding: "12px 14px 13px", background: note ? "#302714" : "#172351", borderTop: `1px solid ${note ? "#735B20" : "#2A3965"}`, color: "#D3DCF2", transition: "background .15s" }}>
-    {ticket.status === "Resolved" && <span style={{ fontSize: 13, color: "#8FE3B0" }}>✓ This ticket is resolved. If the customer replies, it reopens automatically.</span>}
+  return <div style={{ display: "grid", gap: 9, padding: "12px 14px 13px", background: note ? "var(--hdc-bar-note-bg)" : "var(--hdc-bar-bg)", borderTop: `1px solid ${note ? "var(--hdc-bar-note-border)" : "var(--hdc-line)"}`, color: "var(--hdc-bar-ink)", transition: "background .15s" }}>
+    {ticket.status === "Resolved" && <span style={{ fontSize: 13, color: "var(--hdc-ok)" }}>✓ This ticket is resolved. If the customer replies, it reopens automatically.</span>}
     <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
-      <div role="tablist" aria-label="Message type" style={{ display: "flex", padding: 3, gap: 2, borderRadius: 10, background: "rgba(255,255,255,.07)", border: "1px solid rgba(255,255,255,.14)" }}>
+      <div role="tablist" aria-label="Message type" style={{ display: "flex", padding: 3, gap: 2, borderRadius: 10, background: "var(--hdc-seg-bg)", border: "1px solid var(--hdc-seg-border)" }}>
         {pill("reply", `Reply to ${ticket.name.split(" ")[0] || "customer"}`)}
         {pill("note", "Internal note")}
       </div>
@@ -482,17 +637,26 @@ function Composer({ ticket, macros, storeName, team, configured, me, order }: { 
       </div>
     </div>
     {!note && groups.suggested.length > 0 && <div style={{ display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center" }}>
-      <span style={{ fontSize: 12.5, color: "#A9B7D9" }}>Suggested:</span>
+      <span style={{ fontSize: 12.5, color: "var(--hdc-hint)" }}>Suggested:</span>
       {groups.suggested.slice(0, 4).map((item) => <button key={item.id} type="button" onClick={() => insert(item.id)} style={{
         padding: "4px 11px", borderRadius: 999, font: "inherit", fontSize: 12.5, cursor: "pointer",
-        color: macro === item.id ? "#FFFFFF" : "#D3DCF2", background: macro === item.id ? "#334FB4" : "rgba(255,255,255,.06)", border: "1px solid rgba(255,255,255,.18)",
+        color: macro === item.id ? "#FFFFFF" : "var(--hdc-sugg-ink)", background: macro === item.id ? "var(--hdc-accent)" : "var(--hdc-sugg-bg)", border: `1px solid ${macro === item.id ? "var(--hdc-accent)" : "var(--hdc-sugg-border)"}`,
       }}>{item.title}</button>)}
     </div>}
-    <div role="presentation" onKeyDown={(event) => { if (event.key === "Enter" && (event.ctrlKey || event.metaKey) && body.trim() && !sending) { event.preventDefault(); send(); } }}>
-    <s-text-area label={note ? "Note" : "Message"} labelAccessibilityVisibility="exclusive" rows={3} value={body} maxLength={MAX_MESSAGE_LENGTH}
-      placeholder={note ? "Write a note only your team can see..." : `Write a message to ${ticket.name}...`}
-      error={fetcher.data?.errors.body} onInput={(event) => setBody(event.currentTarget.value ?? "")} />
+    {/* Like a messaging app: Enter sends, Shift + Enter starts a new line (not while an IME is composing). */}
+    <div className="hd-chat-input" data-note={note || undefined}>
+      <textarea ref={input} rows={1} value={body} maxLength={MAX_MESSAGE_LENGTH} aria-label={note ? "Note" : "Message"} aria-invalid={Boolean(fetcher.data?.errors.body) || undefined}
+        placeholder={note ? "Write a note only your team can see..." : `Write a message to ${ticket.name}...`}
+        onChange={(event) => { setBody(event.currentTarget.value); if (event.currentTarget.value.trim()) pingTyping(); }}
+        onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey && !event.altKey && !event.nativeEvent.isComposing) { event.preventDefault(); if (!empty) send(); } }} />
+      <button type="button" className="hd-chat-send" disabled={empty} onClick={() => send()}
+        aria-label={note ? "Add note" : channel === "email" ? "Send by email" : "Send"} title={note ? "Add note (Enter)" : "Send (Enter)"}>
+        {sending
+          ? <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden="true"><path d="M12 3a9 9 0 1 0 9 9"><animateTransform attributeName="transform" type="rotate" from="0 12 12" to="360 12 12" dur=".8s" repeatCount="indefinite" /></path></svg>
+          : <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M22 2 11 13M22 2l-7 20-4-9-9-4 20-7z" /></svg>}
+      </button>
     </div>
+    {fetcher.data?.errors.body && <span role="alert" style={{ fontSize: 12.5, color: "var(--hdc-error)" }}>{fetcher.data.errors.body}</span>}
     <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center", justifyContent: "space-between" }}>
       <div style={{ display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center" }}>
         {!note && <>
@@ -500,14 +664,12 @@ function Composer({ ticket, macros, storeName, team, configured, me, order }: { 
           <MediaSwitch ticket={ticket} kind="videos" />
         </>}
       </div>
-      <div style={{ display: "flex", gap: 8, marginLeft: "auto" }}>
-        {note ? sendButton(sending ? "Adding..." : "Add note", () => send()) : <>
-          {sendButton("Send and resolve", () => send("Resolved"), false)}
-          {sendButton(sending ? "Sending..." : channel === "email" ? "Send by email" : "Send", () => send())}
-        </>}
-      </div>
+      {!note && <button type="button" className="hd-chat-resolve" disabled={empty} onClick={() => send("Resolved")} title="Send this reply and mark the ticket Resolved">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5" /></svg>
+        Send and resolve
+      </button>}
     </div>
-    <span style={{ fontSize: 12, color: "#8C97BD" }}>{where} · Ctrl + Enter to send</span>
+    <span style={{ fontSize: 12, color: "var(--hdc-hint)" }}>{where} · Enter to send · Shift + Enter for a new line</span>
   </div>;
 }
 
@@ -529,9 +691,9 @@ function MediaSwitch({ ticket, kind }: { ticket: TicketData["ticket"]; kind: key
   const hint = on ? `${first} can add ${media.noun} to their reply on the request page.` : `Turn on to let ${first} ${media.example}.`;
   return <button type="button" role="switch" aria-checked={on} aria-label={`Allow ${first} to add ${media.noun}`} title={hint} onClick={toggle} disabled={fetcher.state !== "idle"} style={{
     display: "inline-flex", alignItems: "center", gap: 8, padding: "5px 10px 5px 6px", borderRadius: 999, font: "inherit", fontSize: 12.5, fontWeight: 600, cursor: "pointer",
-    color: on ? "#B9F0CF" : "#C9D1EA", background: on ? "rgba(52,168,107,.16)" : "rgba(255,255,255,.05)", border: `1px solid ${on ? "rgba(52,168,107,.5)" : "rgba(255,255,255,.14)"}`,
+    color: on ? "var(--hdc-switch-on-ink)" : "var(--hdc-switch-ink)", background: on ? "var(--hdc-switch-on-bg)" : "var(--hdc-switch-bg)", border: `1px solid ${on ? "var(--hdc-switch-on-border)" : "var(--hdc-switch-border)"}`,
   }}>
-    <span aria-hidden="true" style={{ position: "relative", flex: "none", width: 30, height: 18, borderRadius: 999, background: on ? "#34A86B" : "rgba(255,255,255,.22)", transition: "background .15s" }}>
+    <span aria-hidden="true" style={{ position: "relative", flex: "none", width: 30, height: 18, borderRadius: 999, background: on ? "#34A86B" : "var(--hdc-track)", transition: "background .15s" }}>
       <span style={{ position: "absolute", top: 2, left: on ? 14 : 2, width: 14, height: 14, borderRadius: "50%", background: "#fff", transition: "left .15s" }} />
     </span>
     {media.icon} {media.short} {on ? "on" : "off"}
@@ -820,7 +982,7 @@ function CancellationPanel({ screen }: { screen: TicketData }) {
           const here = index === current;
           const tone = step === "Rejected" ? "#B3261E" : done || (here && status === "Cancelled") ? "#0C7A43" : here ? "#334FB4" : "#8A8F98";
           return <div key={step} style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            {index > 0 && <span style={{ width: 28, height: 2, background: done || here ? tone : "#D4D6DB" }} />}
+            {index > 0 && <span style={{ width: 28, height: 2, background: done || here ? tone : "var(--hd-border, #D4D6DB)" }} />}
             <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13, fontWeight: here ? 650 : 500, color: tone }}>
               <span style={{ display: "grid", placeItems: "center", width: 20, height: 20, borderRadius: "50%", fontSize: 11, color: "#fff", background: done || here ? tone : "#D4D6DB" }}>
                 {step === "Rejected" ? "✕" : done ? "✓" : index + 1}
@@ -1473,11 +1635,14 @@ function TicketDetail({ screen }: { screen: TicketData }) {
   const readAt = ticket.readAt ? new Date(ticket.readAt).getTime() : 0;
   const replyEmails = new Map(ticket.emails.filter((email) => email.messageId).map((email) => [email.messageId!, email]));
   const otherEmails = ticket.emails.filter((email) => !(email.kind === "reply" && email.messageId));
-  useLiveRefresh({ ticketId: ticket.id });
+  const [customerTyping, setCustomerTyping] = useState(false);
+  useLiveRefresh({ ticketId: ticket.id, onPulse: (pulse) => setCustomerTyping(pulse.customerTyping === true) });
   useNewMessageToast(conversation);
   const navigate = useNavigate();
   const remover = useFetcher<typeof action>();
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [chatOpen, setChatOpen] = useState(false);
+  const [chatFullscreen, setChatFullscreen] = useState(false);
   const quick = useFetcher<typeof action>();
   useResultToast(quick, "Ticket updated");
   const resolved = ticket.status === "Resolved";
@@ -1488,6 +1653,16 @@ function TicketDetail({ screen }: { screen: TicketData }) {
     else { shopify.toast.show(`Ticket #${ticket.number} deleted`); navigate("/app/help-desk"); }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [remover.state, remover.data]);
+  useEffect(() => {
+    if (!chatOpen) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      if (chatFullscreen) setChatFullscreen(false);
+      else setChatOpen(false);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [chatOpen, chatFullscreen]);
   return <s-page heading={`#${ticket.number} · ${ticket.topic}`} inlineSize="large">
     <s-link slot="breadcrumb-actions" href="/app/help-desk">Help Desk</s-link>
     <s-button slot="primary-action" variant="primary" icon={resolved ? "refresh" : "check"} loading={quick.state !== "idle"}
@@ -1497,29 +1672,22 @@ function TicketDetail({ screen }: { screen: TicketData }) {
 
     <style>{LAYOUT_CSS}</style>
     {ticket.humanRequestedAt && !resolved && <s-banner tone="critical" heading={`${ticket.name} is waiting to talk to a person`}>
-      The assistant on their request page handed this chat to your team {ago(ticket.humanRequestedAt)}. It stays quiet until you reply.
+      The assistant on their request page handed this chat to your team {ago(ticket.humanRequestedAt)}. Their chat shows &quot;Connecting you to a person&quot; until someone joins.
+      <JoinChat ticket={ticket} author={screen.me || `${screen.storeName} Support`} storeName={screen.storeName} />
     </s-banner>}
     <div className="hd-ticket">
-    <div className="hd-ticket-main">
-    {/* One chat window, like a messaging app: who and where it stands, the conversation, then the reply box. */}
-    <div className="hd-chat" style={{ borderRadius: 12, overflow: "hidden", border: "1px solid #2A3965", boxShadow: "0 12px 30px rgba(12,20,43,.2)", background: "#172351" }}>
-      <ChatHeader ticket={ticket} count={conversation.filter((message) => message.kind !== "event").length + (ticket.channel === "chat" ? 0 : 1)} />
-      <ChatThread ticket={ticket} replyEmails={replyEmails} readAt={readAt} />
-      <Composer key={ticket.id} ticket={ticket} macros={screen.macros} storeName={screen.storeName} team={screen.team} configured={screen.configured} me={screen.me} order={macroOrder(screen.order)} />
-    </div>
-    </div>
-
     <div className="hd-ticket-side">
-
+    <div className="hd-ticket-main">
     <TicketProperties ticket={ticket} team={screen.team} suggestions={screen.tagSuggestions} />
-
     <CancellationPanel screen={screen} />
     <AddressPanel screen={screen} />
     <ReturnPanel screen={screen} />
     <EditPanel screen={screen} />
     <ReplacementPanel screen={screen} />
     <QuotePanel screen={screen} />
-
+    <OrderTracking screen={screen} />
+    </div>
+    <div className="hd-ticket-rail">
     <SideCard heading="Customer">
       <s-stack gap="small-200">
         <s-stack direction="inline" gap="small-200" alignItems="center">
@@ -1539,8 +1707,6 @@ function TicketDetail({ screen }: { screen: TicketData }) {
     </SideCard>
 
     <ClassificationSection ticket={ticket} />
-
-    <OrderTracking screen={screen} />
 
     <SideCard heading="Recent orders">
       {orders === null ? <s-paragraph color="subdued">Orders couldn&apos;t be loaded.</s-paragraph>
@@ -1600,6 +1766,19 @@ function TicketDetail({ screen }: { screen: TicketData }) {
       </s-stack>
     </SideCard>
     </div>
+    </div>
+    </div>
+    <button type="button" className="hd-chat-launcher" data-open={String(chatOpen)} aria-controls="hd-chat-dock" aria-expanded={chatOpen} onClick={() => { setChatFullscreen(false); setChatOpen(true); }}>
+      <span className="hd-chat-launch-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M20 11.5a7.5 7.5 0 0 1-7.5 7.5H5l-2 2V11.5A7.5 7.5 0 0 1 10.5 4h2A7.5 7.5 0 0 1 20 11.5Z"/><path d="M7.5 11.5h7"/></svg></span>
+      <span className="hd-chat-launch-copy"><strong>{ticket.humanRequestedAt && !resolved ? "Customer waiting" : "Open conversation"}</strong><small>#{ticket.number} · {ticket.name}</small></span>
+      {ticket.humanRequestedAt && !resolved && <span className="hd-chat-launch-badge">New</span>}
+    </button>
+    <div id="hd-chat-dock" className="hd-chat-dock" data-open={String(chatOpen)} data-expanded={String(chatFullscreen)} aria-hidden={!chatOpen}>
+      <div className="hd-chat" style={{ overflow: "hidden", background: "var(--hdc-frame)" }}>
+        <ChatHeader ticket={ticket} count={conversation.filter((message) => message.kind !== "event").length + (ticket.channel === "chat" ? 0 : 1)} onClose={() => { setChatOpen(false); setChatFullscreen(false); }} onExpand={() => setChatFullscreen((current) => !current)} expanded={chatFullscreen} />
+        <ChatThread ticket={ticket} replyEmails={replyEmails} readAt={readAt} typing={customerTyping} />
+        <Composer key={ticket.id} ticket={ticket} macros={screen.macros} storeName={screen.storeName} team={screen.team} configured={screen.configured} me={screen.me} order={macroOrder(screen.order)} />
+      </div>
     </div>
   </s-page>;
 }

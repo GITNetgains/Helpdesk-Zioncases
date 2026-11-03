@@ -1,6 +1,7 @@
 import type { LoaderFunctionArgs } from "react-router";
 import db from "../db.server";
 import { authenticate } from "../shopify.server";
+import { markTyping, typingState } from "../services/help-desk-typing.server";
 
 // A cheap fingerprint of what the open Help Desk screen shows. The admin polls
 // it every few seconds and reloads the full page (orders and all) only when it
@@ -22,6 +23,13 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   }
 
   if (ticketId) {
+    // Staff typing a reply: the customer sees "typing..." on their request page.
+    const typing = new URL(request.url).searchParams.get("typing");
+    if (typing !== null) {
+      const ticket = await db.helpDeskTicket.findFirst({ where: { id: ticketId, shop }, select: { id: true } });
+      if (ticket) markTyping(ticket.id, { staff: typing });
+      return Response.json({ ok: Boolean(ticket) }, { headers });
+    }
     // Not the ticket's updatedAt: opening the ticket marks it read (and syncs its
     // order), which would change the stamp and reload the page over and over.
     // Every change staff or the customer make adds a message or a timeline event.
@@ -32,7 +40,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     ]);
     if (!ticket) return Response.json({ stamp: "gone" }, { headers });
     const stamp = [ticket.status, ticket.allowPhotos ? 1 : 0, ticket.allowVideos ? 1 : 0, messages._count, messages._max.createdAt?.getTime() ?? 0, scans._count, scans._max.updatedAt?.getTime() ?? 0].join(".");
-    return Response.json({ stamp }, { headers });
+    // customerTyping: for the "typing..." bubble; not part of the stamp, so it never reloads the page.
+    return Response.json({ stamp, customerTyping: typingState(ticketId).customer }, { headers });
   }
 
   const tickets = await db.helpDeskTicket.aggregate({ where: { shop }, _count: true, _max: { updatedAt: true } });

@@ -152,7 +152,7 @@ export default function PhotoChecks() {
               <div style={{ display: "grid", gap: 4 }}>
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
                   <s-text color="subdued">AI detector status</s-text>
-                  <span style={{ fontSize: 12, fontWeight: 700, padding: "2px 10px", borderRadius: 20, background: "#fff", color: tone.ink, border: `1px solid ${tone.accent}66` }}>{look.badge}</span>
+                  <span style={{ fontSize: 12, fontWeight: 700, padding: "2px 10px", borderRadius: 20, background: "var(--hd-surface, #fff)", color: tone.ink, border: `1px solid ${tone.accent}66` }}>{look.badge}</span>
                 </div>
                 <div style={{ fontSize: 17, fontWeight: 700, color: tone.ink }}>{look.title}</div>
                 <s-text>{look.text}</s-text>
@@ -162,10 +162,10 @@ export default function PhotoChecks() {
               {state === "off" ? "Turn on" : state === "disconnected" ? "Connect AI detector" : state === "error" ? "Fix in settings" : "Detector settings"}
             </s-button>
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", borderTop: "1px solid #E3E3E3" }}>
-            {stats.map((stat, index) => <div key={stat.label} style={{ padding: "12px 18px", borderLeft: index ? "1px solid #E3E3E3" : "none" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", borderTop: "1px solid var(--hd-border, #E3E3E3)" }}>
+            {stats.map((stat, index) => <div key={stat.label} style={{ padding: "12px 18px", borderLeft: index ? "1px solid var(--hd-border, #E3E3E3)" : "none" }}>
               <s-text color="subdued">{stat.label}</s-text>
-              <div style={{ fontSize: 16, fontWeight: 700, color: "#1A1A1A" }}>{stat.value}</div>
+              <div style={{ fontSize: 16, fontWeight: 700, color: "var(--hd-ink, #1A1A1A)" }}>{stat.value}</div>
             </div>)}
           </div>
         </div>
@@ -178,12 +178,12 @@ export default function PhotoChecks() {
           const active = verdict === filter.key;
           const tone = TONES[filter.tone];
           return <s-clickable key={filter.key || "all"} onClick={() => go({ verdict: filter.key })} accessibilityLabel={`Show ${VERDICTS[filter.key].label.toLowerCase()}`} borderRadius="base">
-            <div style={{ padding: "14px 16px", borderRadius: 12, border: `1px solid ${active ? tone.accent : "#E3E3E3"}`, background: active ? tone.soft : "#fff", boxShadow: active ? `0 0 0 1px ${tone.accent}` : "none" }}>
+            <div style={{ padding: "14px 16px", borderRadius: 12, border: `1px solid ${active ? tone.accent : "var(--hd-border, #E3E3E3)"}`, background: active ? tone.soft : "var(--hd-surface, #fff)", boxShadow: active ? `0 0 0 1px ${tone.accent}` : "none" }}>
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 <span aria-hidden="true" style={{ width: 10, height: 10, borderRadius: "50%", background: tone.accent }} />
                 <s-text color="subdued">{VERDICTS[filter.key].label}</s-text>
               </div>
-              <div style={{ marginTop: 4, fontSize: 24, fontWeight: 700, color: active ? tone.ink : "#1A1A1A" }}>{filter.value}</div>
+              <div style={{ marginTop: 4, fontSize: 24, fontWeight: 700, color: active ? tone.ink : "var(--hd-ink, #1A1A1A)" }}>{filter.value}</div>
             </div>
           </s-clickable>;
         })}

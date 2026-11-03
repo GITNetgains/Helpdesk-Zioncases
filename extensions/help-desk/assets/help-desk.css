@@ -525,6 +525,48 @@
 .help-desk button.help-desk-tile:hover:not(:disabled) .help-desk-radio { border-color: var(--hd-accent); }
 .help-desk button.help-desk-tile[aria-pressed=true] .help-desk-radio { border-color: var(--hd-accent); background: var(--hd-accent); box-shadow: inset 0 0 0 4px #fff; }
 
+/* Step 1: "Hey! How can we help you?", about an order or not. */
+.help-desk .help-desk-start-choices { grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); }
+.help-desk .help-desk-start-pane { display: grid; gap: 18px; padding: clamp(16px, 2.6vw, 24px); border: 1px solid #e4e7ee; border-radius: 14px; background: #fafbfd; animation: help-desk-pane-in .18s ease-out; }
+.help-desk .help-desk-start-pane[hidden], .help-desk .help-desk-all-topics[hidden], .help-desk .help-desk-start-need[hidden], .help-desk .help-desk-order-details[hidden] { display: none; }
+@keyframes help-desk-pane-in { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+.help-desk .help-desk-order-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr)); gap: 10px; }
+.help-desk .help-desk-order-list legend { grid-column: 1 / -1; margin-bottom: 10px; padding: 0; font-size: 15px; font-weight: 650; }
+.help-desk label.help-desk-order-card {
+  display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: start; gap: 4px 12px; padding: 14px 16px; border: 1px solid var(--hd-border); border-radius: 12px; background: #fff;
+  cursor: pointer; transition: border-color .15s, box-shadow .15s, background .15s;
+}
+.help-desk label.help-desk-order-card:hover { border-color: var(--hd-accent); }
+.help-desk label.help-desk-order-card:has(input:checked) { border-color: var(--hd-accent); background: color-mix(in srgb, var(--hd-accent) 5%, #fff); box-shadow: 0 0 0 1px var(--hd-accent); }
+.help-desk label.help-desk-order-card:has(input:focus-visible) { box-shadow: 0 0 0 3px var(--hd-ring); }
+.help-desk label.help-desk-order-card input { margin-top: 3px; }
+.help-desk .help-desk-order-card-text { display: grid; gap: 2px; min-width: 0; }
+.help-desk .help-desk-order-card-top { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 10px; }
+.help-desk .help-desk-order-card-text strong { font-size: 15px; font-weight: 650; }
+.help-desk .help-desk-order-card-text small { color: var(--hd-muted); font-size: 13px; }
+.help-desk .help-desk-order-card-top em { padding: 2px 9px; border-radius: 999px; background: #eef1f6; color: #3d4a66; font-size: 12px; font-style: normal; font-weight: 600; white-space: nowrap; }
+.help-desk .help-desk-order-card-top em[data-state=fulfilled] { background: #e3f5ea; color: #0c5132; }
+.help-desk .help-desk-order-card-top em[data-state=partial] { background: #fff4d6; color: #7a5600; }
+.help-desk .help-desk-order-card-thumbs { grid-column: 2; display: flex; gap: 6px; margin-top: 8px; }
+.help-desk .help-desk-order-card-thumbs .help-desk-thumb { width: 36px; height: 36px; }
+.help-desk span.help-desk-thumb-more { display: grid; place-items: center; color: var(--hd-muted); font-size: 12px; font-weight: 600; }
+.help-desk .help-desk-order-details { display: grid; gap: 10px; }
+.help-desk .help-desk-order-details-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; }
+.help-desk .help-desk-order-details-head strong { font-size: 15px; }
+.help-desk .help-desk-order-details-head span { color: var(--hd-muted); font-size: 14px; }
+.help-desk .help-desk-start-need { gap: 12px; }
+.help-desk .help-desk-start-note { padding: 12px 14px; border-left: 3px solid var(--hd-accent); border-radius: 0 10px 10px 0; background: #fff; color: var(--hd-text); font-size: 14px; }
+.help-desk button.help-desk-start-go { justify-self: start; }
+.help-desk .help-desk-quick { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.help-desk .help-desk-quick-label { width: 100%; color: var(--hd-muted); font-size: 13px; font-weight: 600; }
+.help-desk button.help-desk-quick-button {
+  min-height: 0; margin: 0; padding: 8px 14px; border: 1px solid var(--hd-border); border-radius: 999px; background: #fff; box-shadow: none; color: var(--hd-text);
+  font: inherit; font-size: 14px; font-weight: 600; letter-spacing: 0; text-transform: none; cursor: pointer;
+}
+.help-desk button.help-desk-quick-button:hover:not(:disabled), .help-desk button.help-desk-quick-button[aria-expanded=true] { border-color: var(--hd-accent); background: color-mix(in srgb, var(--hd-accent) 6%, #fff); color: var(--hd-text); box-shadow: none; filter: none; transform: none; }
+.help-desk button.help-desk-all-topics-toggle { justify-self: start; }
+@media (prefers-reduced-motion: reduce) { .help-desk .help-desk-start-pane { animation: none; } }
+
 /* What was picked, with Change, on the last two steps. */
 .help-desk .help-desk-chosen {
   display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px;
@@ -1135,6 +1177,8 @@
 }
 .help-desk .help-desk-suggest-all:hover { background: #f8f9fb; }
 .help-desk .help-desk-suggest-empty { padding: 12px; color: var(--hd-muted); font-size: 14px; }
+/* A search that found no exact match: what was searched instead, or that these are related. */
+.help-desk .help-desk-suggest-note { padding: 8px 12px 6px; color: var(--hd-muted); font-size: 13px; font-style: italic; }
 @media (max-width: 639px) {
   .help-desk .help-desk-suggest-option { grid-template-columns: 24px minmax(0, 1fr); }
   .help-desk .help-desk-suggest-option small { display: none; }

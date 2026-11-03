@@ -103,11 +103,11 @@ function Gauge({ value }: { value: number }) {
     <path d={arc(40.5, 69.5)} stroke="#FFE3A3" strokeWidth="16" fill="none" />
     <path d={arc(70.5, 100)} stroke="#F8C1B8" strokeWidth="16" fill="none" />
     <path d={arc(0, Math.max(0.5, Math.min(100, value)))} stroke={tone.accent} strokeWidth="16" fill="none" />
-    <line x1="100" y1="100" x2={nx} y2={ny} stroke="#1A1A1A" strokeWidth="3" strokeLinecap="round" />
-    <circle cx="100" cy="100" r="6" fill="#1A1A1A" />
-    <text x="100" y="80" textAnchor="middle" fontSize="30" fontWeight="700" fill={tone.ink}>{value}%</text>
-    <text x="14" y="116" fontSize="10" fill="#616161">Real</text>
-    <text x="186" y="116" fontSize="10" fill="#616161" textAnchor="end">AI</text>
+    <line x1="100" y1="100" x2={nx} y2={ny} style={{ stroke: "var(--hd-ink, #1A1A1A)" }} strokeWidth="3" strokeLinecap="round" />
+    <circle cx="100" cy="100" r="6" style={{ fill: "var(--hd-ink, #1A1A1A)" }} />
+    <text x="100" y="80" textAnchor="middle" fontSize="30" fontWeight="700" style={{ fill: tone.ink }}>{value}%</text>
+    <text x="14" y="116" fontSize="10" style={{ fill: "var(--hd-muted, #616161)" }}>Real</text>
+    <text x="186" y="116" fontSize="10" style={{ fill: "var(--hd-muted, #616161)" }} textAnchor="end">AI</text>
   </svg>;
 }
 
@@ -248,7 +248,7 @@ function Glyph({ icon, tone, size = 32 }: { icon: IconType; tone: Tone; size?: n
 function FindingCard({ finding, source }: { finding: Finding; source?: string }) {
   const severity = SEVERITY[finding.severity];
   const tone = TONES[severity.tone];
-  return <div style={{ display: "flex", gap: 12, padding: "12px 14px", borderRadius: 12, background: "#fff", border: "1px solid #E3E3E3", borderLeft: `4px solid ${tone.accent}` }}>
+  return <div style={{ display: "flex", gap: 12, padding: "12px 14px", borderRadius: 12, background: "var(--hd-surface, #fff)", border: "1px solid var(--hd-border, #E3E3E3)", borderLeft: `4px solid ${tone.accent}` }}>
     <Glyph icon={severity.icon} tone={severity.tone} size={28} />
     <div style={{ flex: 1, minWidth: 0, display: "grid", gap: 4 }}>
       <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center", justifyContent: "space-between" }}>
@@ -267,7 +267,7 @@ function FindingCard({ finding, source }: { finding: Finding; source?: string })
 function CheckRow({ check, index }: { check: Check; index: number }) {
   const status = STATUS[check.status];
   const open = check.status === "issue" || check.status === "warning" || check.status === "setup" || check.status === "failed";
-  return <details open={open} style={{ borderRadius: 12, border: "1px solid #E3E3E3", background: "#fff", overflow: "hidden" }}>
+  return <details open={open} style={{ borderRadius: 12, border: "1px solid var(--hd-border, #E3E3E3)", background: "var(--hd-surface, #fff)", overflow: "hidden" }}>
     <summary style={{ listStyle: "none", cursor: "pointer", display: "flex", gap: 12, alignItems: "center", padding: "12px 14px", borderLeft: `4px solid ${TONES[status.tone].accent}` }}>
       <Glyph icon={check.icon} tone={status.tone} />
       <div style={{ flex: 1, minWidth: 0 }}>
@@ -277,7 +277,7 @@ function CheckRow({ check, index }: { check: Check; index: number }) {
       <s-badge tone={status.badge}>{status.label}</s-badge>
     </summary>
     <div style={{ display: "grid", gap: 10, padding: "4px 14px 14px 18px" }}>
-      <div style={{ padding: "8px 12px", borderRadius: 8, background: "#F7F7F8" }}>
+      <div style={{ padding: "8px 12px", borderRadius: 8, background: "var(--hd-surface-muted, #F7F7F8)" }}>
         <s-text color="subdued">What this check does: {check.what}</s-text>
       </div>
       {check.findings.map((finding, i) => <FindingCard key={i} finding={finding} />)}
@@ -289,7 +289,7 @@ function CheckRow({ check, index }: { check: Check; index: number }) {
 function SectionTitle({ children, count }: { children: ReactNode; count?: number }) {
   return <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 4 }}>
     <s-heading>{children}</s-heading>
-    {typeof count === "number" && <span style={{ fontSize: 12, fontWeight: 700, padding: "2px 8px", borderRadius: 20, background: "#EEF0F3", color: "#4A4F5C" }}>{count}</span>}
+    {typeof count === "number" && <span style={{ fontSize: 12, fontWeight: 700, padding: "2px 8px", borderRadius: 20, background: "var(--hd-surface-muted, #EEF0F3)", color: "var(--hd-muted, #4A4F5C)" }}>{count}</span>}
   </div>;
 }
 
@@ -298,7 +298,7 @@ export function PhotoThumb({ id, name, size = 64 }: { id: string; name: string; 
   useEffect(() => {
     if (fetcher.state === "idle" && !fetcher.data) void fetcher.load(`/app/help-desk-attachment?thumb=1&id=${encodeURIComponent(id)}`);
   }, [fetcher, id]);
-  return <div style={{ width: size, height: size, borderRadius: 10, overflow: "hidden", background: "#F1F2F4", display: "grid", placeItems: "center", flex: "none" }}>
+  return <div style={{ width: size, height: size, borderRadius: 10, overflow: "hidden", background: "var(--hd-surface-muted, #F1F2F4)", display: "grid", placeItems: "center", flex: "none" }}>
     {fetcher.data?.url ? <img src={fetcher.data.url} alt={name} style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : fetcher.data?.error ? <s-icon type="image" /> : <s-spinner size="base" />}
   </div>;
 }
@@ -317,7 +317,7 @@ function Scorecard({ checks }: { checks: Check[] }) {
           <span style={{ fontSize: 12, fontWeight: 600, opacity: 0.8 }}>Check {index + 1}</span>
           <s-icon type={STATUS_GLYPH[check.status]} />
         </div>
-        <div style={{ fontSize: 13, fontWeight: 700, color: "#1A1A1A", lineHeight: 1.25 }}>{SHORT_NAMES[check.key] || check.name}</div>
+        <div style={{ fontSize: 13, fontWeight: 700, color: "var(--hd-ink, #1A1A1A)", lineHeight: 1.25 }}>{SHORT_NAMES[check.key] || check.name}</div>
         <div style={{ fontSize: 12, fontWeight: 600, color: tone.ink }}>{status.label}</div>
       </div>;
     })}
@@ -359,7 +359,7 @@ function DetectorPanel({ scan, actions }: { scan: PhotoScan; actions?: RunDetect
           <s-text color="subdued">Most likely made with</s-text>
           {generators.map((generator) => <div key={generator.name} style={{ display: "grid", gridTemplateColumns: "minmax(90px, 140px) 1fr 40px", gap: 8, alignItems: "center" }}>
             <s-text>{generator.name}</s-text>
-            <div aria-hidden="true" style={{ height: 8, borderRadius: 8, background: "#EEF0F3", overflow: "hidden" }}><div style={{ width: `${generator.score}%`, height: "100%", background: TONES.red.accent }} /></div>
+            <div aria-hidden="true" style={{ height: 8, borderRadius: 8, background: "var(--hd-surface-muted, #EEF0F3)", overflow: "hidden" }}><div style={{ width: `${generator.score}%`, height: "100%", background: TONES.red.accent }} /></div>
             <s-text color="subdued">{generator.score}%</s-text>
           </div>)}
         </div>}
@@ -410,7 +410,7 @@ function DetectorPanel({ scan, actions }: { scan: PhotoScan; actions?: RunDetect
     </div>;
   }
   const colors = TONES[tone];
-  return <div style={{ borderRadius: 14, border: `1px solid ${colors.accent}66`, overflow: "hidden", background: "#fff" }}>
+  return <div style={{ borderRadius: 14, border: `1px solid ${colors.accent}66`, overflow: "hidden", background: "var(--hd-surface, #fff)" }}>
     <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center", justifyContent: "space-between", padding: "12px 16px", background: colors.soft }}>
       <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
         <Glyph icon="wand" tone={tone} size={32} />
@@ -419,7 +419,7 @@ function DetectorPanel({ scan, actions }: { scan: PhotoScan; actions?: RunDetect
           <div><s-text color="subdued">{provider && typeof classifier?.aiProbability === "number" ? `Checked by ${provider}, a specialist AI-image model` : provider ? `${provider}, a specialist AI-image model` : "A specialist model that studies the pixels"}</s-text></div>
         </div>
       </div>
-      <span style={{ fontSize: 12, fontWeight: 700, padding: "4px 10px", borderRadius: 20, background: "#fff", color: colors.ink, border: `1px solid ${colors.accent}66` }}>{badge}</span>
+      <span style={{ fontSize: 12, fontWeight: 700, padding: "4px 10px", borderRadius: 20, background: "var(--hd-surface, #fff)", color: colors.ink, border: `1px solid ${colors.accent}66` }}>{badge}</span>
     </div>
     <div style={{ padding: 16 }}>{body}</div>
   </div>;
@@ -476,7 +476,7 @@ export function PhotoReportBody({ file, scan, ticketLink, actions }: { file: { i
           { label: critical ? `${critical} strong AI sign${critical === 1 ? "" : "s"}` : "No AI evidence", color: critical ? TONES.red : TONES.green },
           { label: suspicious ? `${suspicious} suspicious sign${suspicious === 1 ? "" : "s"}` : "Nothing suspicious", color: suspicious ? TONES.amber : TONES.green },
           { label: `${passed} of ${checks.length} checks passed`, color: TONES.green },
-        ].map((stat) => <div key={stat.label} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 10px", borderRadius: 10, background: "#fff" }}>
+        ].map((stat) => <div key={stat.label} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 10px", borderRadius: 10, background: "var(--hd-surface, #fff)" }}>
           <span aria-hidden="true" style={{ width: 10, height: 10, borderRadius: "50%", background: stat.color.accent, flex: "none" }} />
           <s-text type="strong">{stat.label}</s-text>
         </div>)}
@@ -516,7 +516,7 @@ export function PhotoReportBody({ file, scan, ticketLink, actions }: { file: { i
     {details.length > 0 && <div style={{ display: "grid", gap: 10 }}>
       <SectionTitle>Photo details</SectionTitle>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 8 }}>
-        {details.map(([label, value]) => <div key={label} style={{ padding: "8px 12px", borderRadius: 8, background: "#F7F7F8", overflowWrap: "anywhere" }}>
+        {details.map(([label, value]) => <div key={label} style={{ padding: "8px 12px", borderRadius: 8, background: "var(--hd-surface-muted, #F7F7F8)", overflowWrap: "anywhere" }}>
           <s-text color="subdued">{label}</s-text>
           <div><s-text>{value}</s-text></div>
         </div>)}

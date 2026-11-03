@@ -5,7 +5,7 @@ import { formGroups, type FormOption } from "./help-desk-form";
 // and option; the steps follow that option's flow, so they always match what
 // the customer will see on the form.
 
-const PICK_ORDER = "Enter your email and order number (signed in? pick the order from your list), then press Continue.";
+const PICK_ORDER = "Check it's the right order (signed in, it's the one you picked; otherwise enter your email and order number), then press Continue.";
 const SUBMIT = "Press Submit Request. You'll get a request number and a private page like this one to follow it, and we'll email you each reply.";
 
 function flowSteps(option: FormOption & { kinds?: FormOption["kinds"] }): string[] {
@@ -49,20 +49,50 @@ function flowSteps(option: FormOption & { kinds?: FormOption["kinds"] }): string
   }
 }
 
+// The form starts with "Hey! How can we help you?": a question about an
+// order picks the order, then what they need; anything else has its own
+// buttons, and every topic is under "See all topics". Kept in step with
+// extensions/help-desk/assets/help-desk.js.
+const ORDER_FLOWS = ["delivery", "lost", "orderUpdate", "edit", "cancel", "address", "productIssue", "wrongItem", "return"];
+const ORDER_SECTIONS = ["Orders", "Shipping & Delivery", "Returns", "Warranty"];
+const aboutAnOrder = (option: FormOption & { section: string }) => ORDER_FLOWS.includes(option.flow) || (option.flow === "question" && ORDER_SECTIONS.includes(option.section));
+const PRODUCT_SECTIONS = ["Product Compatibility", "Product Education"];
+
+// How to reach an option from the start of the form.
+function startSteps(groupLabel: string, option: FormOption & { section: string }): string[] {
+  if (aboutAnOrder(option)) return [
+    "On our Help Desk page, choose \"I have a question about an order\".",
+    `Pick your order (or "My order isn't listed").`,
+    `Choose ${groupLabel === "Other Queries" ? "Other order questions" : groupLabel} as the category and ${option.label} under "What would you like to do?", then press Continue with this order.`,
+  ];
+  if (option.flow === "international" && option.region === "international") return ["On our Help Desk page, choose \"My question isn't about an order\".", "Press International Shipping."];
+  if (PRODUCT_SECTIONS.includes(option.section)) return [
+    "On our Help Desk page, choose \"My question isn't about an order\".",
+    `Press Product Query, choose ${option.label} and press Continue with this question.`,
+  ];
+  return [`On our Help Desk page, press "See all topics" and choose ${groupLabel}.`, `Choose ${option.label}.`];
+}
+
 // The steps for an answer's action, or none when the action isn't on the form.
 export function requestSteps(action: string): string[] {
   const [groupLabel, optionLabel] = action.split(" › ").map((part) => part.trim());
   const group = formGroups.find((entry) => entry.label === groupLabel);
   if (!group) return [];
-  const start = `On our Help Desk page, under "Send us a request", choose ${group.label}.`;
   const option = optionLabel ? group.options.find((entry) => entry.label === optionLabel) : undefined;
-  if (!option) return optionLabel ? [] : [start, "Choose the option that fits your question, and follow the steps it shows.", SUBMIT];
-  return [start, `Choose ${option.label}.`, ...flowSteps(option)];
+  if (!option) return optionLabel ? [] : [`On our Help Desk page, press "See all topics" and choose ${group.label}.`, "Choose the option that fits your question, and follow the steps it shows.", SUBMIT];
+  return [...startSteps(group.label, option), ...flowSteps(option)];
 }
 
 // "How do I...", "can I...", "what are the steps": the customer wants to know how to do it.
 const ASKS_HOW = /\b(how|steps?|process|procedure|way to|ways to|where (do|can|should) i|what (do|should) i (do|need)|can i|could i|is it possible|kaise|kese|kaise karu|kya karu)\b/i;
 export const asksHow = (text: string) => ASKS_HOW.test(text);
+
+// "I want to cancel my order", "change my address please", "return karna hai":
+// they want to do something the form can do, so the steps help as much as the answer.
+const DOING = "cancel|change|edit|modify|update|return|exchange|swap|refund|replace|report|claim|track|remove|add|send back|fix";
+const WANTS_TO = new RegExp(`\\b(i('d| would)? (want|like|need|wish)|i'm trying|i am trying|need to|want to|wanna|have to|help me|let me|please|pls|plz|mujhe|muje)\\b.{0,40}\\b(${DOING})|^\\s*(${DOING})\\b|\\b(${DOING})\\w*\\b.{0,30}\\b(karna|karni|karwana|karwani|krna|krni|chahta|chahti|chahiye|hai kya)\\b`, "i");
+export const wantsToDo = (text: string) => WANTS_TO.test(text);
+export const wantsSteps = (text: string) => asksHow(text) || wantsToDo(text);
 
 // The steps as the end of the assistant's answer.
 export function stepsText(action: string): string {

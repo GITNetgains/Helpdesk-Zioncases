@@ -85,17 +85,17 @@ function ViewTabs({ current, counts, onSelect }: { current: View; counts: Record
       const active = current === key;
       const alert = (key === "open" || key === "human" || key === "flagged") && counts[key] > 0;
       return <span key={key} style={{ display: "contents" }}>
-        {index === 5 && <span aria-hidden="true" style={{ width: 1, alignSelf: "stretch", margin: "4px 4px", background: "#E3E3E3" }} />}
-        <button type="button" role="tab" aria-selected={active} onClick={() => onSelect(key)} style={{
+        {index === 5 && <span className="hd-admin-divider" aria-hidden="true" style={{ width: 1, alignSelf: "stretch", margin: "4px 4px", background: "var(--hd-border, #E3E3E3)" }} />}
+        <button className="hd-admin-tab" type="button" role="tab" aria-selected={active} onClick={() => onSelect(key)} style={{
           display: "inline-flex", alignItems: "center", gap: 8, padding: "7px 12px", borderRadius: 10, cursor: "pointer", font: "inherit", fontSize: 13,
-          fontWeight: active ? 650 : 500, color: active ? "#fff" : "#303030", background: active ? "#172351" : "#fff",
-          border: `1px solid ${active ? "#172351" : "#E3E3E3"}`,
+          fontWeight: active ? 650 : 500, color: active ? "#fff" : "var(--hd-ink, #303030)", background: active ? "var(--hd-accent, #172351)" : "var(--hd-surface, #fff)",
+          border: `1px solid ${active ? "var(--hd-accent, #172351)" : "var(--hd-border, #E3E3E3)"}`,
         }}>
           {VIEWS[key].label}
           <span style={{
             minWidth: 20, padding: "1px 7px", borderRadius: 20, fontSize: 12, fontWeight: 700, textAlign: "center",
-            background: active ? "#ffffff2e" : alert ? TONES[key === "flagged" ? "amber" : "red"].soft : "#F1F2F4",
-            color: active ? "#fff" : alert ? TONES[key === "flagged" ? "amber" : "red"].ink : "#4A4F5C",
+            background: active ? "#ffffff2e" : alert ? TONES[key === "flagged" ? "amber" : "red"].soft : "var(--hd-surface-muted, #F1F2F4)",
+            color: active ? "#fff" : alert ? TONES[key === "flagged" ? "amber" : "red"].ink : "var(--hd-muted, #4A4F5C)",
           }}>{counts[key]}</span>
         </button>
       </span>;
@@ -135,40 +135,30 @@ function TicketList({ screen }: { screen: InboxData }) {
     { view: "flagged", tone: "amber", icon: "image", label: "Flagged photos", detail: "AI-made or reused photos" },
   ];
   return <s-page heading="Customer support" inlineSize="large">
-    <s-paragraph>Manage customer conversations, prioritize replies, and keep every request moving.</s-paragraph>
     <s-button slot="secondary-actions" icon="image" href="/app/photo-checks">Photo checks</s-button>
+    <div className="hd-admin-page hd-inbox-page">
 
     <HelpDeskNavigation current="tickets" />
 
-    {views.human > 0 && view !== "human" && <s-banner tone="warning" heading={`${views.human} customer${views.human === 1 ? " is" : "s are"} waiting to talk to a person`}>
-      <s-stack gap="small-200">
-        <s-text>The assistant on their request page couldn&apos;t answer, or they asked for someone from the team.</s-text>
-        <s-stack direction="inline"><s-button onClick={() => navigate(listLink({ view: "human" }))}>Show them</s-button></s-stack>
-      </s-stack>
-    </s-banner>}
+    {views.human > 0 && view !== "human" && <div className="hd-admin-callout hd-admin-callout-warning" role="status">
+      <span className="hd-callout-indicator" aria-hidden="true" /><div className="hd-admin-callout-copy"><strong>{views.human} customer{views.human === 1 ? " is" : "s are"} waiting for a person</strong><span>The assistant could not answer or the customer asked for the team.</span></div>
+      <s-button onClick={() => navigate(listLink({ view: "human" }))}>View queue</s-button>
+    </div>}
 
-    {remaining.length > 0 && <s-banner tone="info" heading={`Finish setting up: ${steps.length - remaining.length} of ${steps.length} done`}>
-      <s-stack gap="small-200">
-        <s-text>Still to do: {remaining.map((step) => step.title.toLowerCase()).join(" · ")}.</s-text>
-        <s-stack direction="inline"><s-button href="/app/help-desk/overview">Continue setup</s-button></s-stack>
-      </s-stack>
-    </s-banner>}
+    {remaining.length > 0 && <div className="hd-admin-callout hd-admin-callout-info">
+      <span className="hd-callout-indicator" aria-hidden="true" /><div className="hd-admin-callout-copy"><strong>Setup: {steps.length - remaining.length} of {steps.length} complete</strong><span>Next: {remaining.map((step) => step.title.toLowerCase()).join(", ")}.</span></div>
+      <s-button href="/app/help-desk/overview">Finish setup</s-button>
+    </div>}
+    <div className="hd-inbox-kpis" aria-label="Inbox overview">
+      {tiles.map((tile) => <button key={tile.view} type="button" className={`hd-inbox-kpi${view === tile.view ? " is-active" : ""}`} aria-label={`Show ${tile.label.toLowerCase()}`} onClick={() => navigate(listLink({ view: tile.view === "open" ? "" : tile.view }))}>
+        <StatTile tone={tile.tone} icon={tile.icon} label={tile.label} value={String(views[tile.view])} detail={tile.detail} />
+      </button>)}
+    </div>
 
-    <s-section padding="base">
-      <s-grid gridTemplateColumns="repeat(auto-fit, minmax(200px, 1fr))" gap="base">
-        {tiles.map((tile) => <s-clickable key={tile.view} borderRadius="base" accessibilityLabel={`Show ${tile.label.toLowerCase()}`} onClick={() => navigate(listLink({ view: tile.view === "open" ? "" : tile.view }))}>
-          <div style={{ borderRadius: 12, boxShadow: view === tile.view ? `0 0 0 2px ${TONES[tile.tone].accent}` : "none", transition: "box-shadow .15s ease" }}>
-            <StatTile tone={tile.tone} icon={tile.icon} label={tile.label} value={String(views[tile.view])} detail={tile.detail} />
-          </div>
-        </s-clickable>)}
-      </s-grid>
-    </s-section>
-
-    <s-section padding="none">
-      <s-box padding="base">
-        <s-stack gap="base">
-          <div style={{ paddingBottom: 12, borderBottom: "1px solid #EAECF0" }}><ViewTabs current={view} counts={views} onSelect={(key) => navigate(listLink({ view: key === "open" ? "" : key }))} /></div>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 12, alignItems: "end" }}>
+    <div className="hd-inbox-workspace">
+      <div className="hd-inbox-controls">
+        <div className="hd-inbox-toolbar"><ViewTabs current={view} counts={views} onSelect={(key) => navigate(listLink({ view: key === "open" ? "" : key }))} /></div>
+        <div className="hd-inbox-search-row">
             <form style={{ flex: "1 1 320px", minWidth: 0, margin: 0 }} onSubmit={(event) => { event.preventDefault(); navigate(listLink({ q: search.trim() })); }}>
               <s-search-field label="Search tickets" labelAccessibilityVisibility="exclusive" placeholder="Search by #number, name, email, order or tag"
                 value={search} onInput={(event) => setSearch(event.currentTarget.value ?? "")} />
@@ -181,8 +171,8 @@ function TicketList({ screen }: { screen: InboxData }) {
                 {Object.entries(SORTS).map(([value, label]) => <s-option key={value} value={value}>Sort: {label}</s-option>)}
               </s-select>
             </div>
-          </div>
-          {showFilters && <s-box padding="base" background="subdued" borderRadius="base">
+        </div>
+          {showFilters && <div className="hd-inbox-filter-panel">
             <s-grid gridTemplateColumns="repeat(auto-fit, minmax(170px, 1fr))" gap="base">
               <s-select label="Topic" value={filters.topic} onChange={(event) => navigate(listLink({ topic: event.currentTarget.value ?? "" }))}>
                 <s-option value="">All topics</s-option>
@@ -212,29 +202,26 @@ function TicketList({ screen }: { screen: InboxData }) {
                 {Object.entries(PERIODS).map(([value, label]) => <s-option key={value} value={value}>{label}</s-option>)}
               </s-select>
             </s-grid>
-          </s-box>}
+          </div>}
           {filtered && <s-stack direction="inline" gap="small-200" alignItems="center">
             <s-text color="subdued">{count} matching ticket{count === 1 ? "" : "s"}</s-text>
             {filters.q && <s-clickable-chip removable onRemove={() => { setSearch(""); navigate(listLink({ q: "" })); }}>&ldquo;{filters.q}&rdquo;</s-clickable-chip>}
             {activeFilters.map((filter) => <s-clickable-chip key={filter.key} removable onRemove={() => navigate(listLink({ [filter.key]: "", ...(filter.key === "category" ? { subcategory: "" } : {}) }))}>{filter.label}</s-clickable-chip>)}
             <s-button variant="tertiary" onClick={() => { setSearch(""); navigate(listLink({ q: "", topic: "", priority: "", category: "", subcategory: "", rootCause: "", assignee: "", period: "" })); }}>Clear all</s-button>
           </s-stack>}
-        </s-stack>
-      </s-box>
+      </div>
 
       {selected.length > 0 && <BulkBar ids={selected} team={team} onDone={clearSelection} />}
 
       {tickets.length === 0 ? (
-        <s-box padding="large-200">
-          <s-stack gap="small-200" alignItems="center">
-            <s-icon type={filtered ? "search" : "check-circle"} tone={filtered ? "neutral" : "success"} />
-            <s-heading>{filtered ? "No tickets match these filters" : view === "open" ? "You're all caught up" : "No tickets here"}</s-heading>
-            <s-paragraph color="subdued">{filtered ? "Try a different search or clear the filters."
-              : views.all ? "New requests and customer replies appear in Needs attention." : "Requests customers send from the storefront Help Desk form appear here."}</s-paragraph>
-          </s-stack>
-        </s-box>
+        <div className="hd-inbox-empty">
+          <s-icon type={filtered ? "search" : "check-circle"} tone={filtered ? "neutral" : "success"} />
+          <strong>{filtered ? "No tickets match these filters" : view === "open" ? "You're all caught up" : "No tickets here"}</strong>
+          <span>{filtered ? "Try a different search or clear the filters."
+            : views.all ? "New requests and customer replies appear in Needs attention." : "Requests customers send from the storefront Help Desk form appear here."}</span>
+        </div>
       ) : (
-        <div style={{ border: "1px solid #E5E7EB", borderRadius: 12, overflow: "hidden", background: "#FFFFFF" }}><s-table>
+        <div className="hd-inbox-results" style={{ border: "1px solid var(--hd-border, #E5E7EB)", borderRadius: 12, overflow: "hidden", background: "var(--hd-surface, #FFFFFF)", color: "var(--hd-ink, #20242c)" }}><s-table>
           <s-table-header-row>
             <s-table-header>
               <s-checkbox accessibilityLabel={allSelected ? "Deselect all on this page" : "Select all on this page"} checked={allSelected}
@@ -300,7 +287,7 @@ function TicketList({ screen }: { screen: InboxData }) {
         </s-table></div>
       )}
 
-      <s-box padding="base">
+      <div className="hd-inbox-footer">
         <s-stack direction="inline" gap="base" alignItems="center" justifyContent="space-between">
           <s-text color="subdued">{count} ticket{count === 1 ? "" : "s"}{count > PAGE_SIZE ? ` · page ${page} of ${Math.ceil(count / PAGE_SIZE)}` : ""} · select tickets to change or delete several at once</s-text>
           {count > PAGE_SIZE && <s-stack direction="inline" gap="small-200">
@@ -308,8 +295,9 @@ function TicketList({ screen }: { screen: InboxData }) {
             <s-button icon="chevron-right" accessibilityLabel="Next page" disabled={page * PAGE_SIZE >= count} onClick={() => navigate(listLink({ page: String(page + 1) }))} />
           </s-stack>}
         </s-stack>
-      </s-box>
-    </s-section>
+      </div>
+    </div>
+    </div>
   </s-page>;
 }
 

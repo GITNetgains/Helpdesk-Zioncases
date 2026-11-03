@@ -58,15 +58,39 @@ const STYLES = `<style>
 .hdt-steps li[data-done] b{border-color:var(--ink);background:var(--ink);color:#fff}
 .hdt-steps li[data-current]{font-weight:700}
 .hdt-steps li[data-current] b{border-color:var(--accent);background:var(--accent);color:#fff;box-shadow:0 0 0 5px rgba(239,58,36,.15)}
-.hdt-layout{display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:22px;margin-top:22px;align-items:start}
-.hdt-chat-head{display:flex;align-items:center;gap:12px;padding:14px clamp(16px,2.6vw,24px);background:#172351;color:#fff;border-bottom:1px solid rgba(255,255,255,.08)}
-.hdt-chat-avatar{flex:none;display:grid;place-items:center;width:42px;height:42px;border-radius:50%;background:var(--accent);color:#fff;box-shadow:0 0 0 3px rgba(239,58,36,.25)}
+.hdt-layout{display:block;margin-top:22px}
+.hdt-aside{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,320px),1fr));gap:16px;align-items:start}
+.hdt-chat-head{display:grid!important;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:16px;padding:16px 18px;background:#172351;color:#fff;border-bottom:1px solid rgba(255,255,255,.08)}
+.hdt-chat-brand{display:grid;grid-template-columns:46px minmax(0,1fr);align-items:center;gap:13px;min-width:0}
+.hdt-chat-brand>div{min-width:0}
+.hdt-chat-avatar{display:grid;place-items:center;width:46px;height:46px;border-radius:50%;background:var(--accent);color:#fff;box-shadow:0 0 0 3px rgba(239,58,36,.22)}
 .hdt-chat-avatar svg{width:22px;height:22px}
-.hdt .hdt-chat-head h2{color:#fff;font-size:16px;line-height:1.25}
-.hdt .hdt-chat-head p{display:flex;align-items:center;gap:7px;margin-top:2px;color:#c9d1ea;font-size:12.5px}
+.hdt .hdt-chat-head h2{display:grid;gap:1px;min-width:0;color:#fff;font-size:16px;line-height:1.25;letter-spacing:-.01em}
+.hdt .hdt-chat-head h2 small{color:#c9d1ea;font-size:11.5px;font-weight:500;letter-spacing:0}
+.hdt .hdt-chat-head h2 span,.hdt .hdt-chat-head h2{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hdt-chatbox{container-type:inline-size}
+@container (max-width:460px){.hdt-count{display:none}}
+.hdt .hdt-chat-head p{display:flex;align-items:center;gap:7px;margin-top:4px;color:#c9d1ea;font-size:12.5px;line-height:1.4}
+.hdt-chat-actions{display:flex;align-items:center;gap:10px;flex:none}
 .hdt-live{flex:none;width:8px;height:8px;border-radius:50%;background:#3ddc84;box-shadow:0 0 0 3px rgba(61,220,132,.22)}
 .hdt-chat-head[data-closed] .hdt-live{background:#8a93ad;box-shadow:none}
-.hdt-count{margin-left:auto;padding:4px 11px;border-radius:999px;background:rgba(255,255,255,.12);color:#e8ebf5;font-size:12px;font-weight:600;white-space:nowrap}
+.hdt-count{padding:7px 12px;border-radius:999px;background:rgba(255,255,255,.1);color:#e8ebf5;font-size:12px;font-weight:650;white-space:nowrap}
+.hdt .hdt-expand{flex:none;display:grid;place-items:center;width:36px!important;min-width:36px!important;height:36px;margin:0;padding:7px;border:1px solid rgba(255,255,255,.2);border-radius:9px;background:rgba(255,255,255,.08);color:#fff;box-shadow:none}
+.hdt .hdt-expand:hover{background:rgba(255,255,255,.18);transform:none;box-shadow:none}
+.hdt .hdt-expand svg{width:19px;height:19px}
+.hdt .hdt-expand-close,.hdt[data-chat-expanded] .hdt-expand-open{display:none}
+.hdt[data-chat-expanded] .hdt-expand-close{display:block}
+.hdt .hdt-connecting{display:flex;align-items:center;gap:12px;align-self:flex-start;max-width:min(560px,88%);margin:12px 0 4px;padding:12px 15px;border:1px solid #50639b;border-radius:4px 16px 16px 16px;background:#26365f;color:#fff;box-shadow:0 4px 18px rgba(0,0,0,.22)}
+.hdt .hdt-connecting strong,.hdt .hdt-connecting span{display:block}
+.hdt .hdt-connecting strong{font-size:13px;color:#fff!important}
+.hdt .hdt-connecting div>span{margin-top:2px;color:#e0e7ff!important;font-size:12px;line-height:1.45}
+.hdt .hdt-connecting .hdt-dots{display:flex;flex:none;align-items:center;gap:4px;padding:8px;border:1px solid rgba(255,255,255,.15);border-radius:999px;background:rgba(255,255,255,.09)}
+.hdt .hdt-dots i{display:block;width:7px;height:7px;border-radius:50%;background:#b9c8ff;box-shadow:0 0 8px rgba(185,200,255,.55);animation:hdt-dot 1.2s infinite ease-in-out}
+.hdt-dots i:nth-child(2){animation-delay:.15s}.hdt-dots i:nth-child(3){animation-delay:.3s}
+@keyframes hdt-dot{0%,60%,100%{opacity:.35;transform:translateY(0)}30%{opacity:1;transform:translateY(-4px)}}
+.hdt .hdt-typing{display:flex;align-items:center;gap:9px;align-self:flex-start;margin-top:8px;padding:10px 13px;border:1px solid rgba(255,255,255,.08);border-radius:4px 16px 16px 16px;background:#1f2a4d;color:rgba(242,244,250,.7);font-size:12px;box-shadow:0 2px 8px rgba(0,0,0,.25);animation:hdt-typing-in .18s ease-out}
+.hdt .hdt-typing .hdt-dots{display:inline-flex;align-items:center;gap:4px}
+@keyframes hdt-typing-in{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
 .hdt-thread{display:flex;flex-direction:column;gap:2px;max-height:min(64vh,640px);overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin;scrollbar-color:#3e4c7a transparent;padding:16px clamp(12px,2.4vw,22px) 20px;background:#0f1730 radial-gradient(rgba(255,255,255,.045) 1px,transparent 1px);background-size:16px 16px}
 .hdt-thread::-webkit-scrollbar{width:6px}.hdt-thread::-webkit-scrollbar-thumb{background:#3e4c7a;border-radius:6px}.hdt-thread::-webkit-scrollbar-track{background:transparent}
 .hdt-msg{display:flex;margin-top:8px}
@@ -118,6 +142,7 @@ const STYLES = `<style>
 .hdt-drop i{flex:none;display:grid;place-items:center;width:36px;height:36px;border-radius:10px;background:var(--soft);font-style:normal;font-size:18px}
 .hdt-drop strong{display:block;font-size:14px}.hdt-drop small{color:var(--muted);font-size:12px}
 .hdt-actions{display:flex;flex-wrap:wrap;align-items:center;justify-content:flex-end;gap:10px;margin-top:14px}
+.hdt-actions:empty{display:none}
 .hdt .hdt-person{background:#fff;color:var(--ink);border:1px solid #c9ccd5;box-shadow:none}
 .hdt .hdt-person:hover{border-color:var(--ink)}
 .hdt-waiting{margin-right:auto;color:var(--muted);font-size:13.5px}
@@ -125,12 +150,32 @@ const STYLES = `<style>
 .hdt button:hover{background:var(--accent-dark);transform:translateY(-1px);box-shadow:0 8px 16px rgba(239,58,36,.28)}
 .hdt button:focus-visible{outline:3px solid rgba(239,58,36,.45);outline-offset:2px}
 .hdt-aside{display:grid;gap:22px}
-/* The chat stays in view, pinned under the store's header, while the page and its details scroll; only the messages scroll inside it. */
-.hdt-chatbox{position:sticky;top:var(--hdt-top,16px);display:flex;flex-direction:column;height:calc(100vh - var(--hdt-top,16px) - 16px);height:calc(100dvh - var(--hdt-top,16px) - 16px);min-height:460px;max-height:900px}
+/* The conversation opens from a floating launcher so ticket details stay clear. */
+.hdt-chatbox{display:none;position:fixed;right:24px;bottom:24px;z-index:10001;width:min(420px,calc(100vw - 32px));height:min(620px,calc(100dvh - 48px));min-height:360px;max-height:none;margin:0;border:1px solid #2a3965;border-radius:18px;box-shadow:0 22px 70px rgba(7,13,31,.42);flex-direction:column;overflow:hidden}
+.hdt[data-chat-open] .hdt-chatbox{display:flex;animation:hdt-chat-in .18s ease-out}
+.hdt[data-chat-open] .hdt-chat-launcher{display:none}
+.hdt button.hdt-chat-launcher{position:fixed;right:24px;bottom:24px;z-index:10000;display:grid;place-items:center;width:64px;height:64px;min-width:64px;max-width:64px;padding:0;border:0;border-radius:50%;background:var(--accent);color:#fff;box-shadow:0 8px 24px rgba(23,35,81,.32),0 0 0 5px rgba(239,58,36,.12);cursor:pointer;font:inherit;transition:transform .18s ease,box-shadow .18s ease;animation:hdt-launcher-pulse 2.8s ease-in-out infinite}
+.hdt button.hdt-chat-launcher:hover{background:var(--accent-dark);transform:translateY(-3px) scale(1.03);box-shadow:0 12px 30px rgba(23,35,81,.38),0 0 0 7px rgba(239,58,36,.14);animation-play-state:paused}
+@keyframes hdt-launcher-pulse{0%,100%{box-shadow:0 8px 24px rgba(23,35,81,.32),0 0 0 5px rgba(239,58,36,.12)}50%{box-shadow:0 10px 28px rgba(23,35,81,.36),0 0 0 9px rgba(239,58,36,.06)}}
+.hdt-chat-launcher:focus-visible{outline:3px solid #7e9cff;outline-offset:3px}
+.hdt-chat-launcher-icon{display:grid;place-items:center;width:64px;height:64px;border-radius:50%}
+.hdt-chat-launcher-icon svg{width:29px;height:29px}
+.hdt-chat-launcher-copy{display:none}
+.hdt .hdt-chat-close{flex:none;display:grid;place-items:center;width:36px!important;min-width:36px!important;height:36px!important;max-width:36px;padding:0;border:1px solid rgba(255,255,255,.2);border-radius:9px;background:rgba(255,255,255,.08);color:white;cursor:pointer}
+.hdt-chat-close svg{width:17px;height:17px}
+@keyframes hdt-chat-in{from{opacity:0;transform:translateY(10px) scale(.985)}to{opacity:1;transform:none}}
 .hdt-chatbox .hdt-thread{flex:1;min-height:0;max-height:none}
 .hdt-chatbox .hdt-foot{flex:none}
+.hdt-chatbox .hdt-thread{width:100%;min-width:0}
+.hdt-chatbox .hdt-foot{width:100%;min-width:0}
+@media(max-width:600px){.hdt-chatbox{right:12px;bottom:12px;width:min(420px,calc(100vw - 24px));height:min(620px,calc(100dvh - 40px));min-height:300px}.hdt button.hdt-chat-launcher{right:18px;bottom:28px;width:60px;height:60px;min-width:60px;max-width:60px}.hdt-chat-launcher-icon{width:60px;height:60px}.hdt-chat-head{gap:10px;padding:13px 12px}.hdt-chat-brand{grid-template-columns:38px minmax(0,1fr);gap:10px}.hdt-chat-avatar{width:38px;height:38px}.hdt-chat-actions{gap:7px}.hdt-count{display:none}.hdt .hdt-chat-close{width:34px!important;min-width:34px!important;height:34px!important;max-width:34px}.hdt .hdt-expand{display:none}.hdt .hdt-chat-head h2{font-size:14px}.hdt .hdt-chat-head p{font-size:11px}}
+.hdt[data-chat-expanded] .hdt-chatbox{display:flex;position:fixed;inset:16px;z-index:10002;width:auto;height:auto;min-height:0;max-height:none;margin:0;border-radius:18px;box-shadow:0 20px 80px rgba(7,13,31,.6)}
+.hdt[data-chat-expanded] .hdt-thread{max-height:none}
+.hdt-chat-backdrop{display:none}
+.hdt[data-chat-expanded]::before{content:"";position:fixed;inset:0;z-index:9999;background:rgba(8,13,28,.68);backdrop-filter:blur(3px)}
 .hdt-compose{display:flex;align-items:flex-end;gap:10px;margin-top:6px}
-.hdt .hdt-compose textarea{flex:1;min-height:50px;max-height:160px;padding:13px 18px;border-radius:25px;resize:none;line-height:1.45;overflow-y:auto}
+.hdt .hdt-compose textarea{flex:1;height:50px;min-height:50px;max-height:160px;padding:13px 18px;border-radius:25px;resize:none;line-height:1.45;overflow-x:hidden;overflow-y:hidden;scrollbar-width:none}
+.hdt .hdt-compose textarea::-webkit-scrollbar{display:none}
 .hdt .hdt-send{flex:none;display:grid;place-items:center;width:50px;min-width:0;height:50px;padding:0;border-radius:50%}
 .hdt .hdt-send svg{width:21px;height:21px;margin-left:-2px}
 .hdt .hdt-person{min-width:0;padding:9px 16px;font-size:13.5px}
@@ -164,14 +209,14 @@ const STYLES = `<style>
 .hdt-cancel blockquote{margin:12px 0 0;padding:12px 14px;border-radius:12px;background:var(--soft);font-size:14px;overflow-wrap:anywhere}
 .hdt-lookup{max-width:500px;margin:0 auto}
 .hdt-lookup form{display:grid;gap:14px;margin-top:20px}
-@media (max-width:880px){.hdt-layout{grid-template-columns:minmax(0,1fr)}.hdt-chatbox{position:static;height:auto;min-height:0;max-height:none}.hdt-chatbox .hdt-thread{max-height:min(64vh,640px)}}
-@media (max-width:560px){.hdt-steps li{font-size:11px}.hdt button{width:100%}.hdt .hdt-send{width:50px}.hdt-actions{display:block}.hdt-hint{display:none}.hdt-body{max-width:90%}}
+@media (max-width:880px){.hdt-chatbox .hdt-thread{max-height:none}}
+@media (max-width:560px){.hdt-steps li{font-size:11px}.hdt button{width:100%}.hdt .hdt-send{width:50px}.hdt-actions{display:block}.hdt-hint{display:none}.hdt-body{max-width:90%}.hdt-chatbox{right:12px;bottom:12px;width:min(420px,calc(100vw - 24px));height:min(620px,calc(100dvh - 40px));min-height:300px}.hdt-chat-launcher{right:16px;bottom:16px}}
 .hdt-toast{position:fixed;left:50%;bottom:24px;z-index:9999;transform:translateX(-50%);padding:12px 20px;border-radius:999px;background:#172351;color:#fff;font-size:14px;font-weight:600;box-shadow:0 10px 30px rgba(23,35,81,.3);transition:opacity .4s ease,transform .4s ease}
 .hdt-toast[data-hide]{opacity:0;transform:translate(-50%,10px)}
 .hdt-msg[data-fresh] .hdt-body{animation:hdt-fresh 2.4s ease}
 .hdt-msg[data-pending] .hdt-body{opacity:.75}
 @keyframes hdt-fresh{0%{box-shadow:0 0 0 4px rgba(239,58,36,.35)}100%{box-shadow:0 0 0 0 rgba(239,58,36,0)}}
-@media (prefers-reduced-motion:reduce){.hdt button,.hdt-toast{transition:none}.hdt-msg[data-fresh] .hdt-body{animation:none}}
+@media (prefers-reduced-motion:reduce){.hdt button,.hdt-toast{transition:none}.hdt button.hdt-chat-launcher{animation:none}.hdt[data-chat-open] .hdt-chatbox{animation:none}.hdt-msg[data-fresh] .hdt-body,.hdt-dots i,.hdt .hdt-typing{animation:none}}
 </style>`;
 
 // Live like a chat: local times, photo counts, replies sent without a reload,
@@ -281,7 +326,7 @@ const SCRIPT = `<script>
         var stick = !fromTeam || atBottom();
         var thread = root.querySelector('.hdt-thread');
         var keep = thread ? thread.scrollTop : 0;
-        ['.hdt-hero', '.hdt-chat-head', '.hdt-thread', '.hdt-aside'].forEach(function (selector) {
+        ['.hdt-hero', '.hdt-chat-head', '.hdt-thread', '.hdt-aside', '.hdt-chat-launcher'].forEach(function (selector) {
           var current = root.querySelector(selector);
           var fresh = next.querySelector(selector);
           if (current && fresh) current.innerHTML = fresh.innerHTML;
@@ -292,6 +337,7 @@ const SCRIPT = `<script>
         stamp = next.getAttribute('data-hdt-stamp');
         root.setAttribute('data-hdt-stamp', stamp);
         enhance(root);
+        renderTyping();
         if (stick) toBottom(true);
         else if (root.querySelector('.hdt-thread')) root.querySelector('.hdt-thread').scrollTop = keep;
         if (fromTeam) {
@@ -304,11 +350,53 @@ const SCRIPT = `<script>
       .then(function () { busy = false; });
   }
 
+  // "Our team is typing" / "Assistant is typing": three dots at the end of the
+  // chat. sendingName covers the wait after the customer sends, while the
+  // assistant works on its reply.
+  var typingName = '';
+  var sendingName = '';
+  function renderTyping() {
+    var thread = root && root.querySelector('.hdt-thread');
+    if (!thread) return;
+    var name = sendingName || typingName;
+    var bubble = thread.querySelector('.hdt-typing');
+    if (!name) { if (bubble) bubble.remove(); return; }
+    if (!bubble) {
+      bubble = document.createElement('div');
+      bubble.className = 'hdt-typing';
+      bubble.setAttribute('role', 'status');
+      var dots = document.createElement('span');
+      dots.className = 'hdt-dots';
+      dots.setAttribute('aria-hidden', 'true');
+      dots.append(document.createElement('i'), document.createElement('i'), document.createElement('i'));
+      var label = document.createElement('span');
+      label.className = 'hdt-typing-name';
+      bubble.append(dots, label);
+    }
+    bubble.querySelector('.hdt-typing-name').textContent = name + ' is typing';
+    var stick = atBottom();
+    thread.append(bubble);
+    if (stick) toBottom(true);
+  }
+
+  // Tells the team the customer is typing, at most every couple of seconds.
+  var lastTypingPing = 0;
+  function pingTyping() {
+    if (!token || Date.now() - lastTypingPing < 2000) return;
+    lastTypingPing = Date.now();
+    fetch(base + '?ticket=' + encodeURIComponent(token) + '&typing=1', { headers: { Accept: 'application/json' }, credentials: 'same-origin', cache: 'no-store' }).catch(function () {});
+  }
+
   function check() {
     if (!root || busy || document.visibilityState !== 'visible') return;
     fetch(base + '?ticket=' + encodeURIComponent(token) + '&pulse=1', { headers: { Accept: 'application/json' }, credentials: 'same-origin', cache: 'no-store' })
       .then(function (response) { return response.ok ? response.json() : null; })
-      .then(function (data) { if (data && data.stamp && data.stamp !== stamp) refresh(true); })
+      .then(function (data) {
+        if (!data) return;
+        var next = typeof data.typing === 'string' ? data.typing : '';
+        if (next !== typingName) { typingName = next; renderTyping(); }
+        if (data.stamp && data.stamp !== stamp) refresh(true);
+      })
       .catch(function () {});
   }
 
@@ -354,6 +442,8 @@ const SCRIPT = `<script>
         pending.append(bubble);
         thread.append(pending);
         toBottom(true);
+        sendingName = 'Assistant';
+        renderTyping();
       }
       fetch(form.action, { method: 'POST', body: body, headers: { Accept: 'application/json' }, credentials: 'same-origin' })
         .then(function (response) {
@@ -372,11 +462,14 @@ const SCRIPT = `<script>
           }
           form.reset();
           return refresh(false).then(function () {
+            sendingName = '';
+            renderTyping();
             var box = root.querySelector('.hdt-foot textarea');
             if (box) box.focus({ preventScroll: true });
           });
         })
         .catch(function () { if (pending) pending.remove(); note(foot, 'error', 'Your message could not be sent. Check your connection and try again.'); })
+        .then(function () { if (sendingName) { sendingName = ''; renderTyping(); } })
         .then(function () { buttons.forEach(function (each) { each.disabled = false; }); form.removeAttribute('aria-busy'); });
     });
   }
@@ -384,9 +477,61 @@ const SCRIPT = `<script>
   // Enter sends, Shift + Enter starts a new line; the box grows with the message.
   function grow(box) {
     box.style.height = 'auto';
-    box.style.height = Math.min(box.scrollHeight + 2, 160) + 'px';
+    var height = Math.max(50, Math.min(box.scrollHeight + 2, 160));
+    box.style.height = height + 'px';
+    box.style.overflowY = box.scrollHeight > 160 ? 'auto' : 'hidden';
   }
   if (root) {
+    root.addEventListener('click', function (event) {
+      var closeChat = event.target.closest && event.target.closest('.hdt-chat-close');
+      if (closeChat) {
+        root.removeAttribute('data-chat-open');
+        root.removeAttribute('data-chat-expanded');
+        document.body.style.overflow = '';
+        var launcher = root.querySelector('.hdt-chat-launcher');
+        if (launcher) { launcher.setAttribute('aria-expanded', 'false'); launcher.focus(); }
+        return;
+      }
+      var openChat = event.target.closest && event.target.closest('.hdt-chat-launcher');
+      if (openChat) {
+        root.setAttribute('data-chat-open', '');
+        openChat.setAttribute('aria-expanded', 'true');
+        toBottom(false);
+        var input = root.querySelector('.hdt-chatbox .hdt-foot textarea');
+        if (input) window.setTimeout(function () { input.focus({ preventScroll: true }); }, 30);
+        return;
+      }
+      var button = event.target.closest && event.target.closest('.hdt-expand');
+      if (!button) return;
+      var expanded = root.hasAttribute('data-chat-expanded');
+      if (expanded) {
+        root.removeAttribute('data-chat-expanded');
+        document.body.style.overflow = '';
+      } else {
+        root.setAttribute('data-chat-expanded', '');
+        document.body.style.overflow = 'hidden';
+        toBottom(false);
+      }
+      button.setAttribute('aria-pressed', String(!expanded));
+      button.setAttribute('aria-label', expanded ? 'Full screen' : 'Exit full screen');
+      button.setAttribute('title', expanded ? 'Full screen' : 'Exit full screen');
+    });
+    document.addEventListener('keydown', function (event) {
+      if (event.key !== 'Escape' || (!root.hasAttribute('data-chat-expanded') && !root.hasAttribute('data-chat-open'))) return;
+      var wasExpanded = root.hasAttribute('data-chat-expanded');
+      root.removeAttribute('data-chat-expanded');
+      root.removeAttribute('data-chat-open');
+      document.body.style.overflow = '';
+      var launcher = root.querySelector('.hdt-chat-launcher');
+      if (launcher) { launcher.setAttribute('aria-expanded', 'false'); launcher.focus(); }
+      if (!wasExpanded) return;
+      var button = root.querySelector('.hdt-expand');
+      if (button) {
+        button.setAttribute('aria-pressed', 'false');
+        button.setAttribute('aria-label', 'Full screen');
+        button.setAttribute('title', 'Full screen');
+      }
+    });
     root.addEventListener('keydown', function (event) {
       var box = event.target;
       if (!box.matches || !box.matches('.hdt-foot textarea')) return;
@@ -397,7 +542,10 @@ const SCRIPT = `<script>
       if (send && !send.disabled) form.requestSubmit(send);
     });
     root.addEventListener('input', function (event) {
-      if (event.target.matches && event.target.matches('.hdt-foot textarea')) grow(event.target);
+      if (event.target.matches && event.target.matches('.hdt-foot textarea')) {
+        grow(event.target);
+        if (event.target.value.trim()) pingTyping();
+      }
     });
   }
 
@@ -690,24 +838,30 @@ export function renderRequestPage(ticket: RequestPageTicket, extras: RequestPage
   const requestBody = `${facts ? `<div class="hdt-facts">${facts}</div>` : ""}${written || (facts ? "" : `<p>${escape(ticket.topic)}</p>`)}
 ${productList("Received", extras.receivedProducts)}${productList(wrongItem ? "Wanted instead" : "Products", extras.products)}${files(extras.requestImages)}`;
 
+  // Handed to the team: "Connecting you to a person" until someone joins; then who's chatting.
+  const connecting = Boolean(ticket.humanRequestedAt) && !resolved;
+  const lastReply = [...ticket.messages].reverse().find((entry) => entry.kind === "reply");
+  const agent = !connecting && !resolved && lastReply && Date.now() - lastReply.createdAt.getTime() < 2 * 60 * 60_000 ? lastReply.author : "";
+  const advisorStatus = agent
+    ? `<p class="hdt-advisor-status" role="status"><i class="hdt-live" aria-hidden="true"></i>Online now</p>`
+    : connecting ? `<p class="hdt-connecting-status" role="status">Connecting you to a person...</p>` : "";
   const thread = [
     ...(chat ? [] : [message("customer", "", ticket.createdAt, requestBody)]),
     ...ticket.messages.map((entry) => message(entry.kind, entry.author, entry.createdAt, `<p>${multiline(entry.body)}</p>${files(extras.imageCounts.get(entry.id) ?? 0)}`)),
+    ...(connecting ? [`<div class="hdt-connecting" role="status"><span class="hdt-dots" aria-hidden="true"><i></i><i></i><i></i></span><div><strong>Connecting you to a person...</strong><span>Someone from our team will join this chat shortly. Keep writing here if you like: they'll see everything, and we'll email you when they reply.</span></div></div>`] : []),
     ...(resolved ? [`<p class="hdt-system">Request resolved</p>`] : []),
   ].join("");
 
   const foot = extras.canReply ? `<div class="hdt-foot" id="reply">${note(state)}
 <form method="post" action="?ticket=${escape(ticket.accessToken)}#reply" enctype="multipart/form-data">
 <input type="hidden" name="intent" value="reply"><input type="hidden" name="token" value="${escape(ticket.accessToken)}">
-<label for="hdt-body">${ticket.status === "Waiting on customer" ? "Reply to our team" : "Ask a question or add a message"}</label>
-<div class="hdt-compose"><textarea id="hdt-body" name="body" rows="1" maxlength="${extras.maxLength}" enterkeyhint="send" placeholder="${ticket.status === "Waiting on customer" ? "Write your reply..." : "For example: how long does a refund take?"}">${escape(state.draft ?? "")}</textarea>
+<div class="hdt-compose"><textarea id="hdt-body" aria-label="${ticket.status === "Waiting on customer" ? "Reply to our team" : "Ask a question or add a message"}" name="body" rows="1" maxlength="${extras.maxLength}" enterkeyhint="send" placeholder="${ticket.status === "Waiting on customer" ? "Write your reply..." : "Write a message..."}">${escape(state.draft ?? "")}</textarea>
 <button type="submit" class="hdt-send" aria-label="Send" title="Send"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4z"/></svg></button></div>
 ${ticket.allowPhotos ? `<label class="hdt-drop"><i aria-hidden="true">📷</i><span><strong>Add photos</strong><small>Optional · JPG, PNG or WebP · up to ${extras.maxImages}, 10 MB each</small></span>
 <input type="file" name="images" accept="image/jpeg,image/png,image/webp" multiple aria-label="Add photos"></label>` : ""}
 ${ticket.allowVideos ? `<label class="hdt-drop"><i aria-hidden="true">🎥</i><span><strong>Add a video</strong><small>Optional · any video format · 1 video, up to 50 MB</small></span>
 <input type="file" name="videos" accept="video/*,${VIDEO_EXTENSIONS.map((extension) => `.${extension}`).join(",")}" aria-label="Add a video"></label>` : ""}
-<div class="hdt-actions">${ticket.humanRequestedAt ? `<p class="hdt-waiting" role="status">Our team has been told you'd like to talk to a person. Someone will reply here soon.</p>`
-    : `<button type="submit" name="person" value="1" class="hdt-person" formnovalidate>Talk to a person</button>`}<span class="hdt-hint">Enter to send · Shift + Enter for a new line</span></div>
+<div class="hdt-actions">${ticket.humanRequestedAt ? `<p class="hdt-waiting" role="status">Our team has been told you'd like to talk to a person. Someone will reply here soon.</p>` : ""}</div>
 </form></div>`
     : `<div class="hdt-foot" id="reply">${note(state)}<div class="hdt-wait"><i aria-hidden="true">${resolved ? "✅" : "⏳"}</i><div>
 <strong>${resolved ? "This request is closed" : "Our team will reply soon"}</strong>
@@ -731,13 +885,16 @@ ${ticket.allowVideos ? `<label class="hdt-drop"><i aria-hidden="true">🎥</i><s
 <ol class="hdt-steps" aria-label="Request progress">${steps}</ol>
 </div>
 <div class="hdt-layout">
-<div class="hdt-card hdt-chatbox">
-<div class="hdt-chat-head"${resolved ? " data-closed" : ""}><span class="hdt-chat-avatar" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></span>
-<div><h2>Chat with our support team</h2><p><i class="hdt-live" aria-hidden="true"></i>${resolved ? "This chat is closed" : ticket.status === "Waiting on customer" ? "We've replied: it's your turn" : "Ask anything: our assistant answers straight away, and our team replies here"}</p></div>
-<span class="hdt-count">${count} message${count === 1 ? "" : "s"}</span></div>
+<div class="hdt-card hdt-chatbox" id="hdt-chatbox">
+<div class="hdt-chat-head"${resolved ? " data-closed" : ""}${connecting ? " data-connecting" : ""}><div class="hdt-chat-brand"><span class="hdt-chat-avatar" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></span>
+<div><h2>${agent ? `<small>You're chatting with</small><span title="${escape(agent)}">${escape(agent)}</span>` : "Chat with our support team"}</h2>${advisorStatus}</div>
+ </div><div class="hdt-chat-actions"><span class="hdt-count">${count} message${count === 1 ? "" : "s"}</span>
+<button type="button" class="hdt-chat-close" aria-label="Close chat" title="Close chat"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg></button>
+<button type="button" class="hdt-expand" aria-label="Full screen" title="Full screen" aria-pressed="false"><svg class="hdt-expand-open" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg><svg class="hdt-expand-close" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 14h6v6M20 10h-6V4M14 10l7-7M3 21l7-7"/></svg></button></div></div>
 <div class="hdt-thread">${thread}</div>
 ${foot}
 </div>
+<button type="button" class="hdt-chat-launcher" aria-label="Open chat with our support team" title="Chat with our support team" aria-controls="hdt-chatbox" aria-expanded="false"><span class="hdt-chat-launcher-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></span></button>
 <aside class="hdt-aside">
 ${cancellationCard(ticket, values.orderNumber ? `Order ${values.orderNumber}` : "", values.cancelScope === cancelScopes[1])}${addressCard(ticket, values)}${returnCard(ticket, values.orderNumber ? `Order ${values.orderNumber}` : "")}${editCard(ticket, values)}${replacementCard(ticket)}${quoteCard(ticket)}
 <div class="hdt-card hdt-pad"><h2>Request summary</h2><dl style="margin-top:8px">${summary}</dl></div>

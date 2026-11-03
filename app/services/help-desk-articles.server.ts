@@ -1,5 +1,6 @@
 import type { PrismaClient } from "@prisma/client";
-import { MAX_SECTION_LENGTH, rankArticles, sectionsFromHtml, starterArticles, storeFacts, validAction } from "./help-desk-articles";
+import { correctQuery, MAX_SECTION_LENGTH, rankArticles, sectionsFromHtml, starterArticles, storeFacts, validAction } from "./help-desk-articles";
+import { aiRelated } from "./help-desk-ai.server";
 import { loadShippingSetup, shippingSettings } from "./help-desk-shipping.server";
 import { forget, memo } from "./memo.server";
 
@@ -243,7 +244,7 @@ export async function answerQuestion(db: PrismaClient, admin: AdminClient | unde
 }
 
 // The same, with how sure each match is (see rankArticles), for the request page's assistant.
-export async function rankedAnswers(db: PrismaClient, admin: AdminClient | undefined, shop: string, question: string, limit = 6) {
+export async function rankedAnswers(db: PrismaClient, admin: AdminClient | undefined, shop: string, question: string, limit = 6, { loose = false } = {}) {
   const [rows, fetched, facts] = await Promise.all([
     listArticles(db, shop),
     admin ? shopifyAnswers(admin, shop).catch(() => null) : Promise.resolve(null),
@@ -253,9 +254,56 @@ export async function rankedAnswers(db: PrismaClient, admin: AdminClient | undef
   const store = fetched ? [...fetched.policies.answers, ...fetched.pages.answers].map((answer) => ({ ...answer, keywords: "", bodyWeight: 0.6 })) : [];
   // Products by name and description, separately: a policy shouldn't lose to a product page.
   const products = fetched ? fetched.products.answers.map((answer) => ({ ...answer, keywords: "", bodyWeight: 0.4 })) : [];
-  const found = [...rankArticles([...articles, ...facts, ...store], question, limit), ...rankArticles(products, question, 3)];
+  const found = [...rankArticles([...articles, ...facts, ...store], question, limit, { loose }), ...rankArticles(products, question, 3, { loose })];
   return found.slice(0, limit + 2).map(({ article: { id, question: title, answer, collection, action, source, url, image }, score, share, coverage }) =>
     ({ answer: { id, question: title, answer, collection, action, source, url, image } as Answer, score, share, coverage }));
+}
+
+// A help center search that always finds something. Best first:
+// - what matches the words as typed (exact);
+// - with misspellings fixed ("cancle" is "cancel"): correctedTo says what was searched;
+// - anything sharing a telling word (related);
+// - deep (they pressed Enter): what the AI finds by meaning, when it's on;
+// - else the most helpful articles, so the customer is never left with nothing.
+// Only an exact match counts as answered: the rest still goes on the team's
+// "searches nothing answered" list.
+export type SearchResult = { results: Answer[]; exact: boolean; correctedTo?: string; related?: boolean };
+export async function searchAnswers(db: PrismaClient, admin: AdminClient | undefined, shop: string, question: string, { deep = false } = {}): Promise<SearchResult> {
+  const exact = await answerQuestion(db, admin, shop, question);
+  if (exact.length) return { results: exact, exact: true };
+  const rows = await listArticles(db, shop);
+  const corrected = correctQuery(question, rows);
+  if (corrected) {
+    const fixed = await answerQuestion(db, admin, shop, corrected);
+    if (fixed.length) return { results: fixed, exact: false, correctedTo: corrected };
+  }
+  const loose = (await rankedAnswers(db, admin, shop, corrected ?? question, 6, { loose: true })).map((entry) => entry.answer);
+  if (loose.length) return { results: loose, exact: false, related: true };
+  if (deep) {
+    const { knowledge } = await assistantSources(db, admin, shop, question);
+    const ids = await memo(`help-related|${shop}|${question.toLowerCase()}`, 60 * MINUTE, () => aiRelated(question, knowledge));
+    const byId = new Map(knowledge.map((answer) => [answer.id, answer]));
+    const picked = ids.map((id) => byId.get(id)).filter((answer): answer is Answer => Boolean(answer));
+    if (picked.length) return { results: picked, exact: false, related: true };
+  }
+  const popular = [...rows].sort((a, b) => (b.helpful ?? 0) - (a.helpful ?? 0)).slice(0, 5).map(articleAnswer);
+  return { results: popular, exact: false, related: true };
+}
+
+// Everything the AI assistant may answer from: every article and live fact,
+// the store's policies and pages, and the products that best match this
+// question (the whole catalogue would be too much to read each time).
+// knowledge is the same from one question to the next, so it can be cached.
+export async function assistantSources(db: PrismaClient, admin: AdminClient | undefined, shop: string, question: string) {
+  const [rows, fetched, facts] = await Promise.all([
+    listArticles(db, shop),
+    admin ? shopifyAnswers(admin, shop).catch(() => null) : Promise.resolve(null),
+    liveFacts(db, admin, shop).catch(() => []),
+  ]);
+  const knowledge: Answer[] = [...rows.map(articleAnswer), ...facts, ...(fetched ? [...fetched.policies.answers, ...fetched.pages.answers.slice(0, 80)] : [])];
+  const products = fetched ? rankArticles(fetched.products.answers.map((answer) => ({ ...answer, keywords: "", bodyWeight: 0.4 })), question, 5)
+    .map(({ article: { id, question: title, answer, collection, action, source, url, image } }) => ({ id, question: title, answer, collection, action, source, url, image } as Answer)) : [];
+  return { knowledge, products };
 }
 
 // One answer for its own page, by id (an article's own id, or "store:",

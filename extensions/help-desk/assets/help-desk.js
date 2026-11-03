@@ -118,6 +118,10 @@
     let found = [];
     let active = -1;
     let settled = false;
+    // Not an exact match: what the app searched instead ("Showing results for
+    // refund"), or that these are related answers. exact: worth logging if not.
+    let note = '';
+    let exact = true;
     const escapeRegex = text => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     // The question with the typed words' beginnings in bold.
     function highlighted(text) {
@@ -149,6 +153,7 @@
       suggest.replaceChildren();
       active = -1;
       if (query.length < 2) { closeSuggest(); return; }
+      if (settled && note && found.length) suggest.append(node('li', note, { class: 'help-desk-suggest-note', role: 'presentation' }));
       found.forEach((answer, index) => {
         const option = node('li', '', { role: 'option', id: `${listId}-${index}`, 'aria-selected': 'false', class: 'help-desk-suggest-option', 'data-href': answerHref(answer) });
         option.append(node('span', '', { class: `help-desk-suggest-icon help-desk-suggest-${answer.source || 'article'}`, 'aria-hidden': 'true' }), highlighted(answer.question));
@@ -173,7 +178,7 @@
     // Every answer found, listed under the hero (Enter, or "See all results").
     function showAll() {
       closeSuggest();
-      if (found.length) list(found, `${found.length === 1 ? 'Answer' : 'Answers'} for “${query}”`);
+      if (found.length) list(found, note || `${found.length === 1 ? 'Answer' : 'Answers'} for “${query}”`);
       else {
         const text = query;
         const none = node('div', '', { class: 'help-desk-answer-none' });
@@ -181,23 +186,28 @@
         results.replaceChildren(none);
       }
     }
-    async function search(text) {
+    // deep: they pressed Enter, so the app may also look by meaning.
+    async function search(text, deep = false) {
       controller?.abort();
       controller = new AbortController();
       const url = new URL(endpoint);
       url.searchParams.set('answers', text);
+      if (deep) url.searchParams.set('deep', '1');
       bar.dataset.loading = 'true';
       try {
         const response = await fetch(url, { headers: { Accept: 'application/json' }, signal: controller.signal });
         const result = await response.json();
         if (text !== query) return;
         const answers = Array.isArray(result.results) ? result.results : [];
+        exact = result.exact !== false && answers.length > 0;
+        note = result.correctedTo ? `Showing results for “${result.correctedTo}”`
+          : result.related ? `No exact match for “${text}”. These might help:` : '';
         // The app's answers first, then any quick match it didn't include.
         const ids = new Set(answers.map(answer => answer.id));
-        found = [...answers, ...found.filter(answer => !ids.has(answer.id))].slice(0, 8);
+        found = [...answers, ...(exact ? found.filter(answer => !ids.has(answer.id)) : [])].slice(0, 8);
         settled = true;
         if (document.activeElement === input) renderSuggest();
-        if (!answers.length) {
+        if (!exact) {
           // A search that settled with nothing found, for the team to write an answer.
           clearTimeout(idle);
           idle = setTimeout(() => { if (text === query && text.length >= 4 && !logged.has(text.toLowerCase())) { logged.add(text.toLowerCase()); post({ intent: 'no-answer', question: text }); } }, 1500);
@@ -215,6 +225,8 @@
       if (query.length < 2) { controller?.abort(); delete bar.dataset.loading; found = []; closeSuggest(); return; }
       found = quickMatches(query);
       settled = false;
+      note = '';
+      exact = true;
       renderSuggest();
       timer = setTimeout(() => search(query), 200);
     });
@@ -226,7 +238,8 @@
         event.preventDefault();
         if (active >= 0 && options[active]) { options[active].click(); return; }
         clearTimeout(timer);
-        if (query.length >= 2) { if (settled) showAll(); else search(query).then(showAll); }
+        // An exact answer is shown as it is; otherwise look harder first.
+        if (query.length >= 2) { if (settled && exact) showAll(); else search(query, true).then(showAll); }
       } else if (event.key === 'Escape') {
         event.preventDefault();
         if (!suggest.hidden) closeSuggest(); else if (input.value) clear.onclick();
@@ -658,6 +671,9 @@
       street.addEventListener('blur', () => setTimeout(close, 150));
     }
 
+    // The order picked at the start ("I have a question about an order"):
+    // an order, 'other' (not listed: typed on the request step) or none.
+    let preferredOrder = null;
     // Step 1: the topic. The cards set the (hidden) topic dropdown.
     const topicSection = section('Send us a request', 'Choose a topic and we’ll guide you through it.', 'Topic');
     const group = field(topicSection, 'group', 'How can we help?', { choices: groups.map((entry, index) => [String(index), entry.label]), placeholder: 'Select a topic' });
@@ -683,7 +699,209 @@
       else if (index >= 0) go(detailsStep);
       form.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
-    topicSection.append(topicTiles);
+    // Step 1 starts with one question: is it about an order? An order query
+    // picks the order first (a signed-in customer sees theirs, with what's in
+    // it), then what they need, from the same categories as the topics; the
+    // request then follows the topic's own flow with that order. Anything else
+    // is asked in their own words, or is one of the common questions. Every
+    // topic is still one click away.
+    topicSection.querySelector('h3').textContent = 'Hey! How can we help you?';
+    topicSection.querySelector('.help-desk-section-heading p').textContent = 'Tell us whether it’s about an order, and we’ll guide you from there.';
+    const startChoices = node('div', '', { class: 'help-desk-tiles help-desk-start-choices' });
+    const aboutOrderTile = tile('I have a question about an order', 'Track it, change or cancel it, report a problem with an item, or return something.', 'orders');
+    const notOrderTile = tile('My question isn’t about an order', 'Shipping costs, our products, wholesale or anything else.', 'other');
+    startChoices.append(aboutOrderTile, notOrderTile);
+    const orderPane = node('div', '', { class: 'help-desk-start-pane', hidden: '' });
+    const otherPane = node('div', '', { class: 'help-desk-start-pane', hidden: '' });
+    const allTopics = node('div', '', { class: 'help-desk-all-topics', hidden: '' });
+    function showPane(which) {
+      aboutOrderTile.setAttribute('aria-pressed', String(which === 'order'));
+      notOrderTile.setAttribute('aria-pressed', String(which === 'other'));
+      orderPane.hidden = which !== 'order';
+      otherPane.hidden = which !== 'other';
+      allTopics.hidden = true;
+      allTopicsToggle.setAttribute('aria-expanded', 'false');
+      // Not about an order: the flows ask for one only if they need it.
+      if (which === 'other') preferredOrder = null;
+      message('', false, false);
+    }
+    aboutOrderTile.onclick = () => showPane('order');
+    notOrderTile.onclick = () => showPane('other');
+    // Opens an option's request, by what it is, the same way an answer's button does.
+    const findOption = test => {
+      for (const entry of groups) { const option = entry.options.find(test); if (option) return { group: entry, option }; }
+      return null;
+    };
+    const openOption = (found, then) => {
+      if (!found) return;
+      message('', false, false);
+      startRequest(`${found.group.label} › ${found.option.label}`);
+      if (then) setTimeout(then, 0);
+    };
+
+    // About an order: which one, what's in it, and what they need.
+    const ORDER_FLOWS = ['delivery', 'lost', 'orderUpdate', 'edit', 'cancel', 'address', 'productIssue', 'wrongItem', 'return'];
+    const ORDER_SECTIONS = ['Orders', 'Shipping & Delivery', 'Returns', 'Warranty'];
+    const aboutAnOrder = entry => ORDER_FLOWS.includes(entry.flow) || (entry.flow === 'question' && ORDER_SECTIONS.includes(entry.section));
+    const shipState = order => order.fulfillment === 'fulfilled' ? 'Shipped' : order.fulfillment === 'partial' ? 'Partly shipped' : 'Not shipped yet';
+    const itemCount = order => items(order).reduce((sum, item) => sum + (Number(item.quantity) || 1), 0);
+    let orderChosen = false;
+    const orderDetails = node('div', '', { class: 'help-desk-order-details', hidden: '' });
+    if (orders.length) {
+      const list = node('fieldset', '', { class: 'help-desk-order-list' });
+      list.append(node('legend', 'Which order is it about?'));
+      // Not part of the request form: the order goes into the request's own Order Number.
+      const entries = [...orders.slice(0, 10).map(order => [order.name, order]), ['other', null]];
+      for (const [value, order] of entries) {
+        const card = node('label', '', { class: 'help-desk-order-card' });
+        const radio = node('input', '', { type: 'radio', name: 'help-desk-start-order', value, form: 'help-desk-start-none' });
+        const text = node('span', '', { class: 'help-desk-order-card-text' });
+        if (order) {
+          const top = node('span', '', { class: 'help-desk-order-card-top' });
+          top.append(node('strong', `Order ${order.name}`), node('em', shipState(order), { 'data-state': order.fulfillment || 'unfulfilled' }));
+          text.append(top, node('small', `${order.date} · ${itemCount(order)} item${itemCount(order) === 1 ? '' : 's'}`));
+          const pictures = node('span', '', { class: 'help-desk-order-card-thumbs', 'aria-hidden': 'true' });
+          for (const item of items(order).slice(0, 4)) pictures.append(thumb(item.image));
+          if (items(order).length > 4) pictures.append(node('span', `+${items(order).length - 4}`, { class: 'help-desk-thumb help-desk-thumb-more' }));
+          card.append(radio, text, pictures);
+        } else {
+          text.append(node('strong', 'My order isn’t listed'), node('small', 'You’ll enter its order number on the next step.'));
+          card.append(radio, text);
+        }
+        radio.onchange = () => {
+          orderChosen = true;
+          preferredOrder = order || 'other';
+          orderDetails.replaceChildren();
+          orderDetails.hidden = !order;
+          if (order) {
+            const head = node('div', '', { class: 'help-desk-order-details-head' });
+            head.append(node('strong', `Order ${order.name}`), node('span', `Placed ${order.date} · ${shipState(order)}`));
+            const lines = node('div', '', { class: 'help-desk-order-items' });
+            for (const item of items(order)) {
+              const row = node('div');
+              const words = node('span', item.title);
+              words.append(node('small', [item.variant, `Qty ${item.quantity || 1}`].filter(Boolean).join(' · ')));
+              row.append(thumb(item.image), words);
+              lines.append(row);
+            }
+            orderDetails.append(head, lines);
+          }
+          needWrap.hidden = false;
+        };
+        list.append(card);
+      }
+      orderPane.append(list, orderDetails);
+    } else {
+      const hint = node('div', '', { class: 'help-desk-start-note' });
+      if (!signedIn) {
+        hint.append(node('span', 'Sign in to see your orders and pick one. Or choose what you need below, and enter your order number on the next step. '));
+        hint.append(node('a', 'Sign in', { href: signInLink(root) }));
+      } else hint.append(node('span', 'We couldn’t find recent orders on your account. Choose what you need below, and enter your order number on the next step.'));
+      orderPane.append(hint);
+    }
+    // What they need with it: a category (the order topics), then its
+    // sub-category, as the app files the ticket.
+    const needWrap = node('div', '', { 'data-fields': '', class: 'help-desk-start-need' });
+    if (orders.length) needWrap.hidden = true;
+    const orderTopics = groups.map((entry, groupIndex) => ({ entry, groupIndex, offered: entry.options.map((option, index) => ({ option, index })).filter(({ option }) => aboutAnOrder(option)) }))
+      .filter(topic => topic.offered.length);
+    const category = field(needWrap, 'startCategory', 'Category', {
+      choices: orderTopics.map(topic => [String(topic.groupIndex), topic.entry.label === 'Other Queries' ? 'Other order questions' : topic.entry.label]),
+      placeholder: 'Select a category', optional: true,
+    });
+    category.removeAttribute('name');
+    const need = field(needWrap, 'startNeed', 'What would you like to do?', { choices: [], placeholder: 'Select a category first', optional: true });
+    need.removeAttribute('name');
+    need.disabled = true;
+    const needHint = node('p', '', { class: 'help-desk-hint', hidden: '' });
+    needWrap.append(needHint);
+    category.onchange = () => {
+      const topic = orderTopics.find(entry => String(entry.groupIndex) === category.value);
+      need.replaceChildren(node('option', topic ? 'Select what you need' : 'Select a category first', { value: '' }));
+      need.disabled = !topic;
+      needHint.hidden = true;
+      if (!topic) return;
+      // Several ticket categories in one topic: a heading for each.
+      const sections = new Set(topic.offered.map(({ option }) => option.section));
+      const sets = new Map();
+      for (const { option, index } of topic.offered) {
+        let parent = need;
+        if (sections.size > 1 && !topic.entry.flat) {
+          if (!sets.has(option.section)) sets.set(option.section, need.appendChild(node('optgroup', '', { label: option.section })));
+          parent = sets.get(option.section);
+        }
+        parent.append(node('option', option.label, { value: `${topic.groupIndex}:${index}` }));
+      }
+    };
+    need.onchange = () => {
+      const [g, o] = need.value.split(':').map(Number);
+      const option = need.value ? groups[g]?.options[o] : null;
+      needHint.textContent = option?.description || '';
+      needHint.hidden = !option?.description;
+    };
+    const orderGo = node('button', 'Continue with this order', { type: 'button', class: 'help-desk-start-go' });
+    orderGo.onclick = () => {
+      if (orders.length && !orderChosen) { message('Choose the order your question is about.', true); return; }
+      if (!category.value) { message('Choose a category.', true); category.focus(); return; }
+      if (!need.value) { message('Choose what you need help with.', true); need.focus(); return; }
+      const [g, o] = need.value.split(':').map(Number);
+      openOption({ group: groups[g], option: groups[g].options[o] });
+    };
+    needWrap.append(orderGo);
+    orderPane.append(needWrap);
+
+    // Not about an order: in their own words, or a common question.
+    const ask = field(otherPane, 'startQuestion', 'Describe your question', { multiline: true, optional: true, placeholder: 'For example: do your cases fit PSA slabs, or do you take PayPal?' });
+    ask.removeAttribute('name');
+    const askGo = node('button', 'Continue with my question', { type: 'button', class: 'help-desk-start-go' });
+    askGo.onclick = () => {
+      const text = ask.value.trim();
+      if (!text) { message('Tell us what your question is about.', true); ask.focus(); return; }
+      openOption(findOption(entry => entry.category === 'Other' && entry.subcategory === 'General question'), () => {
+        const question = form.querySelector('[name=query]');
+        if (question && !question.value.trim()) question.value = text;
+      });
+    };
+    otherPane.append(askGo);
+    const quick = node('div', '', { class: 'help-desk-quick' });
+    quick.append(node('span', 'Or choose a common question:', { class: 'help-desk-quick-label' }));
+    const quickButton = (label, onclick) => { const button = node('button', label, { type: 'button', class: 'help-desk-quick-button' }); button.onclick = onclick; quick.append(button); return button; };
+    quickButton('International Shipping', () => openOption(findOption(entry => entry.flow === 'international' && entry.subcategory === 'International Shipping')));
+    // Product questions: fit, sizes, setting up and care.
+    const productWrap = node('div', '', { 'data-fields': '', class: 'help-desk-start-need', hidden: '' });
+    const productQuestion = field(productWrap, 'startProduct', 'What’s your product question?', { choices: [], placeholder: 'Select a question', optional: true });
+    productQuestion.removeAttribute('name');
+    const productOptions = [];
+    const productSets = new Map();
+    for (const entry of groups) for (const option of entry.options) {
+      if (option.section !== 'Product Compatibility' && option.section !== 'Product Education') continue;
+      let set = productSets.get(option.section);
+      if (!set) productSets.set(option.section, set = productQuestion.appendChild(node('optgroup', '', { label: option.section === 'Product Compatibility' ? 'Will it fit?' : 'Using your case' })));
+      set.append(node('option', option.label, { value: String(productOptions.length) }));
+      productOptions.push({ group: entry, option });
+    }
+    const productGo = node('button', 'Continue with this question', { type: 'button', class: 'help-desk-start-go' });
+    productGo.onclick = () => {
+      if (productQuestion.value === '') { message('Choose your product question.', true); productQuestion.focus(); return; }
+      openOption(productOptions[Number(productQuestion.value)]);
+    };
+    productWrap.append(productGo);
+    const productButton = quickButton('Product Query', () => {
+      productWrap.hidden = !productWrap.hidden;
+      productButton.setAttribute('aria-expanded', String(!productWrap.hidden));
+      if (!productWrap.hidden) productQuestion.focus();
+    });
+    productButton.setAttribute('aria-expanded', 'false');
+    otherPane.append(quick, productWrap);
+
+    // Every topic, as before.
+    const allTopicsToggle = node('button', 'See all topics', { type: 'button', class: 'help-desk-link help-desk-all-topics-toggle', 'aria-expanded': 'false' });
+    allTopicsToggle.onclick = () => {
+      allTopics.hidden = !allTopics.hidden;
+      allTopicsToggle.setAttribute('aria-expanded', String(!allTopics.hidden));
+    };
+    allTopics.append(topicTiles);
+    topicSection.append(startChoices, orderPane, otherPane, allTopicsToggle, allTopics);
 
     // Step 2: the issue, within the topic.
     const issueSection = section('What do you need help with?', '', 'Issue');
@@ -934,7 +1152,9 @@
       // Orders that suit this query come first; when none do, all orders are
       // offered rather than asking a signed-in customer to type a number.
       const matching = orders.filter(include);
-      const choices = matching.length ? matching : orders;
+      let choices = matching.length ? matching : orders;
+      // The order picked at the start comes first, even when it doesn't suit this query.
+      if (preferredOrder && preferredOrder !== 'other' && !choices.includes(preferredOrder)) choices = [preferredOrder, ...choices];
       if (!choices.length) {
         const input = field(parent, 'orderNumber', 'Order Number', { placeholder: 'e.g. #1001' });
         if (!signedIn) {
@@ -969,8 +1189,9 @@
         extra.append(list);
         onPick?.(order);
       };
-      // Preselect the most recent matching order so signed-in customers don't have to pick or type one.
-      pick.value = choices[0].name;
+      // The order picked at the start, else the most recent matching one, so
+      // signed-in customers don't have to pick or type it again.
+      pick.value = preferredOrder === 'other' ? 'other' : (preferredOrder && choices.includes(preferredOrder) ? preferredOrder : choices[0]).name;
       pick.onchange();
       return pick;
     }

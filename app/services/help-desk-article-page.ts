@@ -101,6 +101,8 @@ const STYLES = `<style>
 .hda-vote[data-done]{justify-content:flex-start;color:var(--muted)}
 /* Sidebar */
 .hda-aside{display:grid;gap:18px}
+.hda-main{display:grid;gap:24px;min-width:0}
+@media(min-width:700px){.hda-main .hda-contact{grid-template-columns:minmax(0,1fr) auto;align-items:center;column-gap:28px;padding:26px 30px}.hda-main .hda-contact>*{grid-column:1}.hda-main .hda-contact>div{grid-column:2;grid-row:1 / span 3}}
 .hda-box{padding:22px;border:1px solid var(--line);border-radius:18px;background:#fff}
 .hda-box h2{margin-bottom:8px;color:var(--muted);font-size:12px;font-weight:750;letter-spacing:.08em;text-transform:uppercase}
 .hda-box ul{display:grid;padding:0;list-style:none}
@@ -152,6 +154,7 @@ export function renderArticlePage(answer: ArticlePageAnswer, extras: ArticlePage
   return page(answer.question, `${hero(home, query)}
 <ol class="hda-crumbs" aria-label="Breadcrumb"><li><a href="${escape(home)}">${HOME_ICON}Help Center</a></li><li>${escape(where)}</li><li aria-current="page">${escape(answer.question)}</li></ol>
 <div class="hda-layout">
+<div class="hda-main">
 <article class="hda-card">
 <span class="hda-chip"><i aria-hidden="true">?</i>${escape(where)}</span>
 <h1>${escape(answer.question)}</h1>
@@ -163,12 +166,13 @@ ${next}
 ${answer.source === "article" ? `<div class="hda-vote" data-hda-vote="${escape(answer.id)}" data-hda-endpoint="${escape(endpoint)}"><span>Was this answer helpful?</span>
 <div><button type="button" data-helpful="yes">&#128077; Yes</button><button type="button" data-helpful="no">&#128078; No</button></div></div>` : ""}
 </article>
-<aside class="hda-aside">
-${linkList(answer.source === "article" ? `More in ${answer.collection || "this topic"}` : "Related answers", related, endpoint, home)}
-${linkList("Popular questions", popular, endpoint, home)}
 <div class="hda-contact"><h2>Still need help?</h2><p>Send us a request and our team will take it from there. You'll get a private page to follow it and chat with us.</p>
 <div><a class="hda-button hda-button-dark" href="${escape(request)}">${escape(option || "Send us a request")}</a></div>
 <a class="hda-back" href="${escape(home)}">&larr; Back to the Help Center</a></div>
+</div>
+<aside class="hda-aside">
+${linkList(answer.source === "article" ? `More in ${answer.collection || "this topic"}` : "Related answers", related, endpoint, home)}
+${linkList("Popular questions", popular, endpoint, home)}
 </aside>
 </div>
 <script>

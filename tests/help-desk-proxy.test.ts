@@ -167,7 +167,8 @@ describe("Live request page", () => {
   it("answers the live check with a stamp built only from messages the customer can see", async () => {
     mocks.db.helpDeskTicket.findFirst.mockResolvedValue({ status: "Waiting on customer", _count: { messages: 2 }, messages: [{ id: "m2" }] });
     const response = await get(`ticket=${token}&pulse=1`);
-    expect(await response.json()).toEqual({ stamp: "Waiting on customer:2:m2:0:" });
+    // typing: who is writing to the customer (no one here); never part of the stamp.
+    expect(await response.json()).toEqual({ stamp: "Waiting on customer:2:m2:0:", typing: null });
     const query = mocks.db.helpDeskTicket.findFirst.mock.calls[0][0];
     expect(query.where).toEqual({ shop: "verified.myshopify.com", accessToken: token });
     expect(query.select.messages.where).toEqual({ kind: { in: ["customer", "reply", "bot"] } });

@@ -46,11 +46,12 @@ function review() { submitButton().click(); }
 
 // The control whose visible label starts with `label`.
 function control(label: string) {
-  const wrap = [...document.querySelectorAll("label")].find((element) => element.querySelector("span")?.textContent?.startsWith(label));
+  const wrap = [...document.querySelectorAll("label")].find((element) => !element.closest(".help-desk-start-pane") && element.querySelector("span")?.textContent?.startsWith(label));
   if (!wrap) throw new Error(`No field labelled "${label}"`);
   return wrap.querySelector("select, input, textarea") as HTMLSelectElement | HTMLInputElement | HTMLTextAreaElement;
 }
-const labels = () => [...document.querySelectorAll("form label > span:first-child")].map((element) => element.textContent!.replace(/\s*\*$/, "").trim());
+// The steps' fields (the start question's own panels are tested on their own).
+const labels = () => [...document.querySelectorAll("form label > span:first-child")].filter((element) => !element.closest(".help-desk-start-pane")).map((element) => element.textContent!.replace(/\s*\*$/, "").trim());
 const choices = (label: string) => [...(control(label) as HTMLSelectElement).options].map((option) => option.textContent).slice(1);
 function choose(label: string, text: string) {
   const select = control(label) as HTMLSelectElement;
@@ -100,12 +101,12 @@ describe("Storefront Help Desk form", () => {
     const signIn = new URL((document.querySelector(".help-desk-gate a") as HTMLAnchorElement).href);
     expect(signIn.pathname).toBe("/customer_authentication/login");
     expect(signIn.searchParams.get("return_to")).toBe("/pages/support");
-    // Signed in: the form, from the first topic.
+    // Signed in: the form, from its first question.
     document.body.innerHTML = page(`<script type="application/json" data-help-desk-customer>${JSON.stringify({ name: "Sandy", email: "sandy@example.com", orders: [] })}</script>`);
     new Function(script)();
     await vi.waitFor(() => expect(document.querySelector("form")).toBeTruthy());
     expect(document.querySelector(".help-desk-gate")).toBeNull();
-    expect(document.querySelector(".help-desk-tile strong")?.textContent).toBe(formGroups[0].label);
+    expect(document.querySelector(".help-desk-tile strong")?.textContent).toBe("I have a question about an order");
   });
 
   it("shows only the selected topic's options for every topic", async () => {
@@ -141,7 +142,7 @@ describe("Storefront Help Desk form", () => {
     const shown = () => [...document.querySelectorAll(".help-desk-section")].filter((section) => !(section as HTMLElement).hidden).map((section) => section.querySelector("h3")!.textContent);
     const progress = () => [...document.querySelectorAll(".help-desk-progress li")].map((item) => (item as HTMLElement).dataset.state);
     const card = (text: string) => [...document.querySelectorAll(".help-desk-tile")].find((tile) => tile.querySelector("strong")!.textContent === text) as HTMLButtonElement;
-    expect(shown()).toEqual(["Send us a request"]);
+    expect(shown()).toEqual(["Hey! How can we help you?"]);
     expect(progress()).toEqual(["current", "", "", "", ""]);
     card("Shipping").click();
     expect(shown()).toEqual(["What do you need help with?"]);
@@ -165,7 +166,7 @@ describe("Storefront Help Desk form", () => {
     const sent = await submit(posts);
     expect(sent).toMatchObject({ subcategory: "Customs & Duties", name: "Jordan Lee" });
     // A new request starts again at step 1.
-    await vi.waitFor(() => expect(shown()).toEqual(["Send us a request"]));
+    await vi.waitFor(() => expect(shown()).toEqual(["Hey! How can we help you?"]));
   });
 
   it("skips Your details for a signed-in customer: their account fills it in", async () => {
@@ -182,6 +183,145 @@ describe("Storefront Help Desk form", () => {
     card("Taxes, Customs & Duties").click();
     type("Your Question", "Will I pay duties?");
     expect(await submit(posts)).toMatchObject({ name: "Sandy Netgains", email: "sandy@example.com", subcategory: "Customs & Duties" });
+  });
+
+  describe("Hey! How can we help you?", () => {
+    const sandy = {
+      name: "Sandy Netgains", email: "sandy@example.com", phone: "", orders: [
+        { name: "#1018", date: "Oct 20, 2026", fulfillment: null, cancelled: false, items: [{ id: "gid://shopify/Product/1", title: "Slab Case X", variant: "Black", quantity: 2, image: "" }] },
+        { name: "#1009", date: "Sep 2, 2026", fulfillment: "fulfilled", cancelled: false, items: [{ id: "gid://shopify/Product/2", title: "Vault", variant: "", quantity: 1, image: "" }] },
+      ],
+    };
+    const tileButton = (text: string) => [...document.querySelectorAll(".help-desk-tile")].find((tile) => tile.querySelector("strong")!.textContent === text) as HTMLButtonElement;
+    const shown = () => [...document.querySelectorAll(".help-desk-section")].filter((section) => !(section as HTMLElement).hidden).map((section) => section.querySelector("h3")!.textContent);
+    const status = () => document.querySelector("[data-help-desk-status]")?.textContent;
+    const startField = (label: string) => [...document.querySelectorAll(".help-desk-start-pane label")]
+      .find((element) => element.querySelector("span")?.textContent?.startsWith(label))!.querySelector("select, textarea") as HTMLSelectElement & HTMLTextAreaElement;
+    const pickStart = (label: string, text: string) => {
+      const select = startField(label);
+      select.value = [...select.options].find((option) => option.textContent === text)!.value;
+      select.dispatchEvent(new Event("change"));
+    };
+
+    it("starts with one question, and keeps every topic one click away", async () => {
+      await mount();
+      expect(shown()).toEqual(["Hey! How can we help you?"]);
+      expect([...document.querySelectorAll(".help-desk-start-choices .help-desk-tile strong")].map((element) => element.textContent))
+        .toEqual(["I have a question about an order", "My question isn’t about an order"]);
+      expect([...document.querySelectorAll(".help-desk-start-pane")].every((pane) => (pane as HTMLElement).hidden)).toBe(true);
+      const allTopics = document.querySelector(".help-desk-all-topics") as HTMLElement;
+      expect(allTopics.hidden).toBe(true);
+      button("See all topics").click();
+      expect(allTopics.hidden).toBe(false);
+      tileButton("Wholesale Queries").click();
+      expect(shown()).toEqual(["What do you need help with?"]);
+    });
+
+    it("about an order: the customer picks theirs, sees what's in it, then what they need, and that order is used", async () => {
+      const posts = await mount(undefined, { allowed: true, country: "US" }, undefined, sandy);
+      tileButton("I have a question about an order").click();
+      const cards = [...document.querySelectorAll(".help-desk-order-card")];
+      expect(cards.map((card) => card.querySelector("strong")!.textContent)).toEqual(["Order #1018", "Order #1009", "My order isn’t listed"]);
+      expect(cards[0].textContent).toContain("Not shipped yet");
+      expect(cards[0].textContent).toContain("Oct 20, 2026 · 2 items");
+      expect(cards[1].textContent).toContain("Shipped");
+      // What they need waits for the order.
+      expect((document.querySelector(".help-desk-start-need") as HTMLElement).hidden).toBe(true);
+      button("Continue with this order").click();
+      expect(status()).toBe("Choose the order your question is about.");
+      // The older order, not the newest one.
+      const older = cards[1].querySelector("input") as HTMLInputElement;
+      older.checked = true;
+      older.dispatchEvent(new Event("change"));
+      const details = document.querySelector(".help-desk-order-details") as HTMLElement;
+      expect(details.hidden).toBe(false);
+      expect(details.textContent).toContain("Order #1009");
+      expect(details.textContent).toContain("Vault");
+      // A category, then its sub-categories: only what's about an order (no shipping quotes, wholesale or product questions).
+      const need = startField("What would you like to do?");
+      expect(need.disabled).toBe(true);
+      expect([...startField("Category").options].slice(1).map((option) => option.textContent)).toEqual(["Orders", "Product Issues", "Returns, Exchanges & Refunds", "Other order questions"]);
+      button("Continue with this order").click();
+      expect(status()).toBe("Choose a category.");
+      const offered = () => [...need.options].slice(1).map((option) => option.textContent);
+      pickStart("Category", "Product Issues");
+      expect(need.disabled).toBe(false);
+      expect(offered()).toEqual(["Damaged or Defective", "Missing Item or Part", "Received the Wrong Item", "Warranty Claim"]);
+      pickStart("Category", "Other order questions");
+      // Several ticket categories: a heading for each.
+      expect([...need.querySelectorAll("optgroup")].map((group) => group.label)).toEqual(expect.arrayContaining(["Orders", "Shipping & Delivery"]));
+      expect(offered()).toEqual(expect.arrayContaining(["Payment Issue", "Delivered but Not Received"]));
+      expect(offered()).not.toContain("International Shipping");
+      expect(offered()).not.toContain("PSA slab fit");
+      expect(offered()).not.toContain("Dealer pricing");
+      pickStart("Category", "Orders");
+      expect(offered()).toEqual(["Track Order", "Cancel Order", "Modify Address", "Edit Existing Order", "Lost Package"]);
+      button("Continue with this order").click();
+      expect(status()).toBe("Choose what you need help with.");
+      pickStart("What would you like to do?", "Cancel Order");
+      expect(document.querySelector(".help-desk-start-need .help-desk-hint")?.textContent).toContain("cancellation");
+      button("Continue with this order").click();
+      // The topic's own flow, with the order they picked already chosen.
+      expect(shown()).toEqual(["Cancel Order"]);
+      expect((control("Order Number") as HTMLSelectElement).value).toBe("#1009");
+      expect(posts).toHaveLength(0);
+    });
+
+    it("about an order that isn't listed: its number is typed on the request", async () => {
+      await mount(undefined, undefined, undefined, sandy);
+      tileButton("I have a question about an order").click();
+      const other = document.querySelectorAll(".help-desk-order-card input")[2] as HTMLInputElement;
+      other.checked = true;
+      other.dispatchEvent(new Event("change"));
+      expect((document.querySelector(".help-desk-order-details") as HTMLElement).hidden).toBe(true);
+      pickStart("Category", "Orders");
+      pickStart("What would you like to do?", "Track Order");
+      button("Continue with this order").click();
+      expect((control("Order Number") as HTMLSelectElement).value).toBe("other");
+      expect(labels()).toContain("Enter Order Number");
+    });
+
+    it("about an order, without an account: asks to sign in, or to type the order on the next step", async () => {
+      await mount();
+      tileButton("I have a question about an order").click();
+      expect(document.querySelector(".help-desk-start-note")?.textContent).toContain("Sign in to see your orders");
+      expect((document.querySelector(".help-desk-start-need") as HTMLElement).hidden).toBe(false);
+      pickStart("Category", "Orders");
+      pickStart("What would you like to do?", "Track Order");
+      button("Continue with this order").click();
+      expect(shown()).toEqual(["Your details"]);
+    });
+
+    it("not about an order: their own words become the question, filed as a general question", async () => {
+      const posts = await mount(undefined, undefined, undefined, { ...sandy, orders: [] });
+      tileButton("My question isn’t about an order").click();
+      button("Continue with my question").click();
+      expect(status()).toBe("Tell us what your question is about.");
+      startField("Describe your question").value = "Do you take PayPal?";
+      button("Continue with my question").click();
+      await vi.waitFor(() => expect((control("Your Inquiry") as HTMLTextAreaElement).value).toBe("Do you take PayPal?"));
+      expect(await submit(posts)).toMatchObject({ category: "Other", subcategory: "General question", query: "Do you take PayPal?" });
+    });
+
+    it("not about an order: International Shipping and Product Query open their own requests", async () => {
+      await mount(undefined, undefined, undefined, { ...sandy, orders: [] });
+      tileButton("My question isn’t about an order").click();
+      button("International Shipping").click();
+      expect(shown()).toEqual(["International Shipping"]);
+      // Back to the start: a product question, from the fit and how-to questions.
+      (document.querySelector(".help-desk-crumbs button") as HTMLButtonElement).click();
+      expect(shown()).toEqual(["Hey! How can we help you?"]);
+      const product = button("Product Query");
+      product.click();
+      expect(product.getAttribute("aria-expanded")).toBe("true");
+      const questions = startField("What’s your product question?");
+      expect([...questions.querySelectorAll("optgroup")].map((group) => group.label)).toEqual(["Will it fit?", "Using your case"]);
+      button("Continue with this question").click();
+      expect(status()).toBe("Choose your product question.");
+      pickStart("What’s your product question?", "PSA slab fit");
+      button("Continue with this question").click();
+      expect(shown()).toEqual(["PSA slab fit"]);
+    });
   });
 
   it("asks guests to sign in, or continue as a guest", async () => {
@@ -252,6 +392,30 @@ describe("Storefront Help Desk form", () => {
       expect(input.getAttribute("aria-expanded")).toBe("false");
     });
 
+    it("never comes back empty: says what it searched instead, or that these are related, and looks harder on Enter", async () => {
+      const { panel, input, type, posts } = await mountSearch();
+      const asked: URL[] = [];
+      globalThis.fetch = vi.fn(async (url: unknown, init?: RequestInit) => {
+        const target = new URL(String(url), location.origin);
+        if (init?.method === "POST") { posts.push(Object.fromEntries((init.body as FormData).entries()) as Record<string, string>); return new Response("{}"); }
+        asked.push(target);
+        const text = target.searchParams.get("answers");
+        return new Response(JSON.stringify(text === "refnd" ? { results: [refund], exact: false, correctedTo: "refund" } : { results: [riser], exact: false, related: true }));
+      }) as typeof fetch;
+      type("refnd");
+      await vi.waitFor(() => expect(panel.querySelector(".help-desk-suggest-note")?.textContent).toBe("Showing results for “refund”"));
+      expect(options(panel)).toEqual([refund.question]);
+      type("qwzx");
+      await vi.waitFor(() => expect(panel.querySelector(".help-desk-suggest-note")?.textContent).toBe("No exact match for “qwzx”. These might help:"));
+      expect(options(panel)).toEqual([riser.question]);
+      // Enter asks again, harder, and lists them under the same note.
+      input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter" }));
+      await vi.waitFor(() => expect(panel.querySelector(".help-desk-answer-heading")?.textContent).toBe("No exact match for “qwzx”. These might help:"));
+      expect(asked.at(-1)?.searchParams.get("deep")).toBe("1");
+      // Still logged for the team: nothing answered it exactly.
+      await vi.waitFor(() => expect(posts).toContainEqual({ intent: "no-answer", question: "qwzx" }), { timeout: 3000 });
+    });
+
     it("lists every answer on Enter, and records a search nothing answers", async () => {
       const { panel, input, type, posts } = await mountSearch();
       type("restocking");
@@ -282,7 +446,7 @@ describe("Storefront Help Desk form", () => {
     expect(choices("What do you need help with?")).toEqual(["Damaged or Defective", "Missing Item or Part", "Received the Wrong Item", "Warranty Claim"]);
     expect((control("What do you need help with?") as HTMLSelectElement).querySelectorAll("optgroup")).toHaveLength(0);
     expect(document.querySelector(".help-desk-tiles-heading")).toBeNull();
-    expect(document.querySelector(".help-desk-hint")?.textContent).toBe("Something arrived damaged, defective, missing or wrong, or you need warranty help.");
+    expect(document.querySelector(".help-desk-category-hint")?.textContent).toBe("Something arrived damaged, defective, missing or wrong, or you need warranty help.");
   });
 
   describe("Orders", () => {

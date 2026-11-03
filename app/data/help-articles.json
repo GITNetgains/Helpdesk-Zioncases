@@ -15,6 +15,13 @@
   },
   {
     "collection": "Orders & Delivery",
+    "question": "I can't find my purchase confirmation",
+    "keywords": "missing confirmation, lost confirmation, no confirmation after checkout, confirmation not received, Shop app purchase, can't find a purchase in Shop, purchase missing from Shop app, charged without confirmation",
+    "action": "Other Queries › General question",
+    "answer": "Check the email address you used at checkout for the order confirmation, including spam and promotions. If you placed the order through the Shop app, check its Orders list too.\n\nStill can't find it? Contact us through the form below and include the purchaser's email address, approximate purchase date and order total so our team can look it up. Please don't send full card numbers or payment passwords."
+  },
+  {
+    "collection": "Orders & Delivery",
     "question": "Only part of my order arrived",
     "keywords": "partial delivery, some items, few items, split, separate packages, fragments, rest of my order, only one case, coming separately, 2 out of 4",
     "action": "Other Queries › Partial Delivery",
@@ -30,9 +37,9 @@
   {
     "collection": "Orders & Delivery",
     "question": "Can I change an item, colour or quantity on my order?",
-    "keywords": "edit order, change order, wrong colour ordered, change variant, change size, swap item, add item, remove item, fix before shipping, instead of",
+    "keywords": "edit order, change order, wrong colour ordered, change variant, change size, swap item, add item, add free gift, add free pouch, add an item after ordering, remove item, fix before shipping, instead of",
     "action": "Orders › Edit Existing Order",
-    "answer": "Yes, before it ships. Choose Edit Existing Order below and pick what to change: remove an item, change a quantity, or switch to another colour or size.\n\nWe check with our warehouse that it hasn't been packed yet. If the change costs more or less, you'll see the difference before you send the request."
+    "answer": "Yes, before it ships. Choose Edit Existing Order below and tell us what you'd like to add, remove or change, such as an item, quantity, colour or size. If you're asking to add a promotional gift, our team will check whether your order qualifies and whether it can still be added.\n\nWe check with our warehouse that it hasn't been packed yet. If the change costs more or less, you'll see the difference before you send the request."
   },
   {
     "collection": "Orders & Delivery",
@@ -46,7 +53,7 @@
     "question": "My package is lost or the tracking hasn't moved",
     "keywords": "lost package, tracking not moving, stuck, cancelled tracking, tracking says cancelled, never arrived, package lost, armorship, package protection, stolen, theft, investigation, not updating",
     "action": "Orders › Lost Package",
-    "answer": "Sorry about this. Tracking can take 24-48 hours to start updating after your shipping email, so give it a day if your order only just shipped.\n\nStill stuck? Choose Lost Package below with your order number. We check the latest tracking and open an investigation with the carrier for you, and you can tell us whether you'd like the products sent again or a refund. Our team keeps you updated on your request page.\n\nAdded ARMORSHIP® package protection at checkout? It covers eligible loss, theft and damage in transit: tell us and we'll help with the claim."
+    "answer": "Sorry about this. Tracking can take 24-48 hours to start updating after your shipping email, so give it a day if your order only just shipped.\n\nStill stuck? Choose Lost Package below with your order number. We check the latest tracking and open an investigation with the carrier for you, and you can tell us whether you'd prefer the products sent again or a refund. Once a package is with the carrier, delivery is the carrier's responsibility, so our team confirms what we can do once the investigation is done, and keeps you updated on your request page.\n\nAdded ARMORSHIP® package protection at checkout? It covers eligible loss, theft and damage in transit: tell us and we'll help with the claim."
   },
   {
     "collection": "Orders & Delivery",
@@ -79,9 +86,9 @@
   {
     "collection": "Shipping",
     "question": "Can I get faster or expedited shipping?",
-    "keywords": "expedited, expedite, faster, rush, overnight, express, 2 day, next day, need it by",
-    "action": "Shipping › Domestic Shipping",
-    "answer": "Faster shipping options, where we have them, are offered at checkout. To compare them for your address before you order, choose Domestic Shipping below: it lists every option with its price and arrival date.\n\nAlready ordered? Tell us the date you need it by and we'll see what we can do."
+    "keywords": "expedited, expedite, faster, quicker shipping, pay extra for faster shipping, rush, overnight, express, 2 day, next day, need it by, upgrade shipping after order, delivery before a specific date",
+    "action": "Other Queries › General question",
+    "answer": "Faster shipping options, where we have them, are offered at checkout, with an estimated arrival date and price.\n\nAlready ordered? Tell us the date you need it by and your order number. Our team will check whether the order can still be changed, then confirm the available service, cost and estimated arrival before you decide. Upgrades depend on the order's fulfillment status and aren't guaranteed until confirmed."
   },
   {
     "collection": "Shipping",
@@ -114,7 +121,7 @@
   {
     "collection": "Returns & Exchanges",
     "question": "I ordered the wrong model or colour. Can I exchange it?",
-    "keywords": "exchange, swap, wrong model, horizontal instead of vertical, vertical instead of horizontal, wrong colour ordered, wrong size, different colour, ordered wrong, upgrade",
+    "keywords": "exchange, exchange process after shipping, swap after arrival, swap, wrong model, horizontal instead of vertical, vertical instead of horizontal, wrong colour ordered, wrong size, different colour, ordered wrong, upgrade",
     "action": "Returns, Exchanges & Refunds › Exchange for another model",
     "answer": "Yes. If it's unused and in its original packaging, you can exchange it for the same item in another model or colour, or upgrade, within 6 months of purchase. Exchanges are subject to shipping charges.\n\nChoose Exchange for another model below and tell us which one you'd like instead. Not shipped yet? Change the order before it ships with Edit Existing Order."
   },
@@ -149,9 +156,9 @@
   {
     "collection": "Damaged, Missing or Wrong Items",
     "question": "My item arrived damaged or broken",
-    "keywords": "damaged, broken, cracked, crack, arrived cracked, came cracked, arrived broken, came broken, chipped, chip, dent, dented, snapped, gouge, bent, broken handle, broken lid, cracked lid, corner, arrived damaged, damaged in shipping, 7 days, seven days, photos, packaging damaged",
+    "keywords": "damaged, broken, cracked, crack, arrived cracked, came cracked, arrived broken, came broken, chipped, chip, dent, dented, snapped, gouge, bent, broken handle, broken lid, cracked lid, broken wheel, wheel snapped, foam peeling, foam shedding, foam shavings, rattling, noisy when opening, corner, arrived damaged, damaged in shipping, 7 days, seven days, photos, video, packaging damaged, packaging photos",
     "action": "Product Issues › Damaged or Defective",
-    "answer": "Sorry it arrived like that. Please tell us within 7 days of delivery: choose Damaged or Defective below, pick the item from your order and add a few clear photos of the damage and of the packaging it came in.\n\nOur team reviews it and sends a replacement, a replacement part or a refund."
+    "answer": "Sorry it arrived like that. Please tell us within 7 days of delivery: choose Damaged or Defective below, pick the item from your order and add clear photos of the damage and its packaging. If the problem is easier to show in motion, include a short video too.\n\nOur team reviews the details and confirms the available resolution."
   },
   {
     "collection": "Damaged, Missing or Wrong Items",
@@ -215,6 +222,13 @@
     "keywords": "replacement parts, spare parts, buy wheels, extra risers, foam dividers, inserts, buy a lid, replacement wheel, parts",
     "action": "Other Queries › General question",
     "answer": "Tell us below which part you need, how many, and which product it's for. Our team will let you know what's available and the price.\n\nIf a part arrived broken, report it within 7 days of delivery with Damaged or Defective. If it broke later with normal use, choose Warranty Claim."
+  },
+  {
+    "collection": "Warranty & Parts",
+    "question": "I bought my product at a convention or event",
+    "keywords": "bought at convention, bought at a card show, bought at an event, cash purchase, purchased in person, no receipt, proof of purchase, vendor booth purchase",
+    "action": "Other Queries › General question",
+    "answer": "Contact us through the form below and tell us which event and date you bought it, which product you have, and what help you need. Add any receipt or other proof of purchase you still have; our team will review the details and let you know what else is needed.\n\nIf the product is damaged or not working properly, include clear photos or a short video. Please don't send full payment card details."
   },
   {
     "collection": "Products & Care",
@@ -439,6 +453,13 @@
     "keywords": "lock code, combination, set code, reset code, change combination, forgot code, tsa lock, lock instructions, 000, default code, default combination, tsa, dial lock, change code",
     "action": "Other Queries › Setting the lock code",
     "answer": "Most of our TSA locks come set to 000.\n\n- Open the lock with the current code (000 if you haven't changed it).\n- Activate the reset mechanism.\n- Set your new code.\n- Return the reset mechanism to its original position.\n- Test the new code a few times before you lock your case.\n\nYou can change the code as often as you like. Our video guide shows each lock type, including the upgraded TSA locks and dial locks: https://zioncases.com/pages/setting-tsa-dial-combination-locks\n\nNot every case has a TSA lock; the product page says which do. Forgot the code, or the lock won't open or set? Tell us below which case you have, with a short video of what happens."
+  },
+  {
+    "collection": "Products & Care",
+    "question": "I forgot my vault code or can't open my vault",
+    "keywords": "forgot vault code, vault combination forgotten, locked out of vault, biometric vault code, can't open my vault, vault backup key, vault reset code",
+    "action": "Other Queries › General question",
+    "answer": "Vault entry and recovery steps depend on the exact model, so the TSA and dial-lock instructions may not apply. Contact us below with the vault model and a short description of what happens. Our team will confirm the right recovery steps for your model. Don't include your code or other passwords in the message."
   },
   {
     "collection": "Products & Care",

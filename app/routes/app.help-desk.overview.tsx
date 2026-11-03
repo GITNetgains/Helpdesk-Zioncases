@@ -32,8 +32,8 @@ function HelpDeskOverview({ screen }: { screen: OverviewData }) {
   // Everything on the overview opens the matching tickets in the inbox.
   const go = (changes: Record<string, string>) => navigate(changes.ticket ? ticketHref(changes.ticket) : inboxHref(changes));
   const flagged = photos.likelyAi + photos.reused;
-  return <>
-    <s-section padding="base">
+  return <div className="hd-admin-page">
+    <div className="hd-admin-section"><s-section padding="base">
       <div style={{ display: "flex", flexWrap: "wrap", gap: 12, alignItems: "center", justifyContent: "space-between" }}>
         <s-stack gap="none">
           <s-heading>How your Help Desk is doing</s-heading>
@@ -46,37 +46,37 @@ function HelpDeskOverview({ screen }: { screen: OverviewData }) {
           </s-select>
         </div>
       </div>
-    </s-section>
+    </s-section></div>
 
     {steps.some((step) => !step.done) && <SetupChecklist items={steps} />}
 
-    <s-section padding="base">
-      <s-grid gridTemplateColumns="repeat(auto-fit, minmax(200px, 1fr))" gap="base">
+    <div className="hd-admin-section"><s-section padding="base">
+      <div className="hd-dashboard-grid"><s-grid gridTemplateColumns="repeat(auto-fit, minmax(200px, 1fr))" gap="base">
         <KpiCard label="New tickets" value={String(created.total)} current={created.total} previous={created.previous} series={created.series} color="#334FB4" />
         <KpiCard label="Resolved" value={String(resolved.total)} current={resolved.total} previous={resolved.previous} series={resolved.series} color="#EB6834" />
         <KpiCard label="Avg. first reply" value={hoursLabel(response.hours)} current={response.hours} previous={response.previous} lowerIsBetter series={response.series} color="#334FB4"
           detail={response.hours === null ? "No replies in this period" : undefined} />
         <KpiCard label="Open right now" value={String(open.total)} current={null} previous={null}
           detail={`${open.unassigned} unassigned · ${open.waiting} waiting on customer`} onClick={() => go({ view: "" })} />
-      </s-grid>
-    </s-section>
+      </s-grid></div>
+    </s-section></div>
 
-    <s-section padding="base">
+    <div className="hd-admin-section"><s-section padding="base">
       <Card title="Tickets over time">
         <TrendChart dashboard={dashboard} />
       </Card>
-    </s-section>
+    </s-section></div>
 
-    <s-section padding="base">
-      <s-grid gridTemplateColumns="repeat(auto-fit, minmax(280px, 1fr))" gap="base">
+    <div className="hd-admin-section"><s-section padding="base">
+      <div className="hd-dashboard-grid"><s-grid gridTemplateColumns="repeat(auto-fit, minmax(280px, 1fr))" gap="base">
         <Card title="Waiting longest for a reply" action={open.noReply.length > 0 ? <s-link onClick={() => go({ view: "" })}>View all</s-link> : undefined}>
           {open.noReply.length === 0 ? <s-stack direction="inline" gap="small-200" alignItems="center"><s-icon type="check-circle" tone="success" /><s-text>Every open request has a reply. Nice work!</s-text></s-stack>
             : <div style={{ display: "grid" }}>
               {open.noReply.map((ticket, index) => <s-clickable key={ticket.id} onClick={() => go({ ticket: ticket.id })} accessibilityLabel={`Open ticket ${ticket.number}`}>
-                <div style={{ display: "flex", justifyContent: "space-between", gap: 8, padding: "9px 0", borderTop: index ? "1px solid #F1F1F1" : "none" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 8, padding: "9px 0", borderTop: index ? "1px solid var(--hd-border, #F1F1F1)" : "none" }}>
                   <div style={{ minWidth: 0 }}>
-                    <div style={{ fontSize: 13, fontWeight: 600, color: "#303030" }}>#{ticket.number} {ticket.topic}</div>
-                    <div style={{ fontSize: 12.5, color: "#616161" }}>{ticket.name}</div>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: "var(--hd-ink, #303030)" }}>#{ticket.number} {ticket.topic}</div>
+                    <div style={{ fontSize: 12.5, color: "var(--hd-muted, #616161)" }}>{ticket.name}</div>
                   </div>
                   <span style={{ flex: "none", fontSize: 12.5, fontWeight: 600, color: "#B3261E" }} suppressHydrationWarning>{duration(Date.now() - new Date(ticket.createdAt).getTime())}</span>
                 </div>
@@ -112,7 +112,7 @@ function HelpDeskOverview({ screen }: { screen: OverviewData }) {
         <Card title="AI photo check" action={<s-link href="/app/photo-checks">Review photos</s-link>}>
           <div style={{ display: "grid", gap: 8 }}>
             <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
-              <span style={{ fontSize: 24, fontWeight: 700, color: "#303030" }}>{photos.checked}</span>
+              <span style={{ fontSize: 24, fontWeight: 700, color: "var(--hd-ink, #303030)" }}>{photos.checked}</span>
               <s-text color="subdued">photos checked</s-text>
             </div>
             {[
@@ -126,9 +126,9 @@ function HelpDeskOverview({ screen }: { screen: OverviewData }) {
             {flagged > 0 && <s-link onClick={() => go({ view: "flagged" })}>See {flagged} flagged ticket{flagged === 1 ? "" : "s"}</s-link>}
           </div>
         </Card>
-      </s-grid>
-    </s-section>
-  </>;
+      </s-grid></div>
+    </s-section></div>
+  </div>;
 }
 
 

@@ -16,10 +16,11 @@ import { SHIPPING_TIMES_COUNTRIES } from "../services/help-desk-shipping";
 import { queueTicketScans } from "../services/image-scan/scan.server";
 import { blocked, clear, clientKey, hit } from "../services/rate-limit.server";
 import { addressDetails, suggestAddresses } from "../services/help-desk-places.server";
-import { answerPage, answerQuestion, ensureArticles, listArticles, recordSearch, voteArticle } from "../services/help-desk-articles.server";
+import { answerPage, ensureArticles, listArticles, searchAnswers, recordSearch, voteArticle } from "../services/help-desk-articles.server";
 import { renderArticlePage, renderMissingArticle } from "../services/help-desk-article-page";
 import { articleCollections, validAction } from "../services/help-desk-articles";
 import { answerNewRequest, assistantTurn } from "../services/help-desk-assistant.server";
+import { clearTyping, markTyping, typingState } from "../services/help-desk-typing.server";
 
 const headers = { "Cache-Control": "no-store" };
 const privateHeaders = { "Cache-Control": "private, no-store" };
@@ -58,7 +59,8 @@ export async function loader({ request }: LoaderFunctionArgs) {
   const customerId = params.get("logged_in_customer_id") || "";
 
   // The search at the top of the form: help articles, then the store's policies, pages and products.
-  if (params.get("answers") !== null) return answers(shop, admin, params.get("answers") || "", clientKey(request, shop));
+  // deep: they pressed Enter, so a search nothing matched may also ask the AI.
+  if (params.get("answers") !== null) return answers(shop, admin, params.get("answers") || "", clientKey(request, shop), params.get("deep") === "1");
   // One answer on a page of its own, opened from the search.
   if (params.get("article") !== null) return articlePage(shop, admin, params, clientKey(request, shop));
   // Self-service order tracking from the form: answered without a ticket.
@@ -77,6 +79,8 @@ export async function loader({ request }: LoaderFunctionArgs) {
 
   const token = params.get("ticket");
   if (token !== null && params.get("pulse")) return pulse(shop, token, clientKey(request, shop));
+  // The customer is typing a reply: staff see "typing..." in the chat.
+  if (token !== null && params.get("typing")) return customerTyping(shop, token, clientKey(request, shop));
   // The return label staff sent, downloaded from the request page.
   if (token !== null && params.get("label")) return returnLabel(shop, token, clientKey(request, shop));
   // live: the open page's own refresh, just the request's HTML without the theme around it.
@@ -122,12 +126,13 @@ async function articlePage(shop: string, admin: Parameters<typeof lookupTracking
 
 // Answers for what the customer typed. Asked as they type, so it's quick and
 // not logged here: the form reports what they opened, or that nothing helped.
-async function answers(shop: string, admin: Parameters<typeof lookupTracking>[0] | undefined, question: string, client: string) {
+async function answers(shop: string, admin: Parameters<typeof lookupTracking>[0] | undefined, question: string, client: string, deep = false) {
   if (!hit(`answers|${client}`, 90, MINUTE)) return json({ error: "Too many searches. Please wait a minute and try again.", results: [] }, 200, privateHeaders);
   const text = question.trim().slice(0, 500);
   if (text.length < 2) return json({ results: [] }, 200, privateHeaders);
   try {
-    return json({ results: await answerQuestion(db, admin, shop, text) }, 200, privateHeaders);
+    // Never empty: misspellings fixed, related answers, or the most helpful ones (see searchAnswers).
+    return json(await searchAnswers(db, admin, shop, text, { deep }), 200, privateHeaders);
   } catch (error) {
     console.error(`Help Desk search failed for ${shop}:`, error);
     return json({ error: "Search is unavailable right now. Please choose a topic below.", results: [] }, 200, privateHeaders);
@@ -158,6 +163,7 @@ export async function action({ request }: ActionFunctionArgs) {
         const body = text("body").trim() || (text("person") ? "I'd like to talk to a person." : "");
         const result = await addCustomerMessage(db, shop, token, body, files(form), files(form, "videos"));
         if (result.messageId && result.ticketId) {
+          clearTyping(result.ticketId, "customer");
           // The assistant answers first; the team is emailed when it hands over
           // (or already has the chat), not for every question it answered.
           const turn = await (text("person") ? assistantTurn(db, admin, shop, result.ticketId, "I'd like to talk to a person.") : assistantTurn(db, admin, shop, result.ticketId, body)).catch((error) => {
@@ -412,12 +418,21 @@ async function pulse(shop: string, token: string, client: string) {
   const ticket = TOKEN.test(token) ? await db.helpDeskTicket.findFirst({
     where: { shop, accessToken: token },
     select: {
-      status: true, allowPhotos: true, allowVideos: true, cancelStatus: true, addressStatus: true, returnStatus: true, editStatus: true, replacementStatus: true, quoteStatus: true, _count: { select: { messages: { where: { kind: { in: PUBLIC_KINDS } } } } },
+      id: true, status: true, allowPhotos: true, allowVideos: true, cancelStatus: true, addressStatus: true, returnStatus: true, editStatus: true, replacementStatus: true, quoteStatus: true, _count: { select: { messages: { where: { kind: { in: PUBLIC_KINDS } } } } },
       messages: { where: { kind: { in: PUBLIC_KINDS } }, orderBy: { createdAt: "desc" }, take: 1, select: { id: true } },
     },
   }) : null;
   if (!ticket) return json({ error: "Not found." }, 404);
-  return json({ stamp: liveStamp(ticket.status, ticket._count.messages, ticket.messages[0]?.id, ticket.allowPhotos, `${ticket.cancelStatus ?? ""}${ticket.addressStatus ? `|${ticket.addressStatus}` : ""}${ticket.returnStatus ? `|${ticket.returnStatus}` : ""}${ticket.editStatus ? `|e:${ticket.editStatus}` : ""}${ticket.replacementStatus ? `|r:${ticket.replacementStatus}` : ""}${ticket.quoteStatus ? `|q:${ticket.quoteStatus}` : ""}`, ticket.allowVideos) }, 200, privateHeaders);
+  return json({ stamp: liveStamp(ticket.status, ticket._count.messages, ticket.messages[0]?.id, ticket.allowPhotos, `${ticket.cancelStatus ?? ""}${ticket.addressStatus ? `|${ticket.addressStatus}` : ""}${ticket.returnStatus ? `|${ticket.returnStatus}` : ""}${ticket.editStatus ? `|e:${ticket.editStatus}` : ""}${ticket.replacementStatus ? `|r:${ticket.replacementStatus}` : ""}${ticket.quoteStatus ? `|q:${ticket.quoteStatus}` : ""}`, ticket.allowVideos), typing: typingState(ticket.id).toCustomer }, 200, privateHeaders);
+}
+
+async function customerTyping(shop: string, token: string, client: string) {
+  // The page pings every couple of seconds while they type.
+  if (!hit(`typing|${client}`, 60, MINUTE)) return json({ error: "Too many requests." }, 429);
+  const ticket = TOKEN.test(token) ? await db.helpDeskTicket.findFirst({ where: { shop, accessToken: token }, select: { id: true } }) : null;
+  if (!ticket) return json({ error: "Not found." }, 404);
+  markTyping(ticket.id, "customer");
+  return json({ ok: true }, 200, privateHeaders);
 }
 
 async function returnLabel(shop: string, token: string, client: string) {

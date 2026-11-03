@@ -7,9 +7,9 @@ import type { Dashboard } from "../services/help-desk-dashboard.server";
 
 // Validated categorical pair (CVD and contrast checked): Zion blue, then orange.
 const SERIES = { created: "#334FB4", resolved: "#EB6834" };
-const INK = "#303030";
-const MUTED = "#616161";
-const GRID = "#EBEBEB";
+const INK = "var(--hd-ink, #303030)";
+const MUTED = "var(--hd-muted, #616161)";
+const GRID = "var(--hd-grid, #EBEBEB)";
 
 const shortDate = (day: string) => new Intl.DateTimeFormat("en", { month: "short", day: "numeric", timeZone: "UTC" }).format(new Date(`${day}T00:00:00Z`));
 export const hoursLabel = (hours: number | null) => hours === null ? "—" : hours < 1 ? `${Math.max(1, Math.round(hours * 60))}m` : hours < 48 ? `${hours.toFixed(1).replace(/\.0$/, "")}h` : `${Math.round(hours / 24)}d`;
@@ -42,7 +42,7 @@ export function KpiCard({ label, value, current, previous, lowerIsBetter = false
   } else if (current !== null && previous === 0 && current > 0) {
     change = { text: "New", good: !lowerIsBetter };
   }
-  const body = <div style={{ display: "grid", gap: 6, alignContent: "start", padding: "14px 16px", background: "#fff", border: "1px solid #E3E3E3", borderRadius: 12, boxShadow: "0 1px 0 rgba(26,26,26,.05)" }}>
+  const body = <div className="hd-admin-card" style={{ display: "grid", gap: 6, alignContent: "start", padding: "14px 16px", background: "var(--hd-surface, #fff)", border: "1px solid var(--hd-border, #E3E3E3)", borderRadius: 12, boxShadow: "0 1px 0 rgba(26,26,26,.05)" }}>
     <span style={{ color: MUTED, fontSize: 13, fontWeight: 550, textDecoration: "underline dotted #B5B5B5", textUnderlineOffset: 4 }}>{label}</span>
     <div style={{ display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap" }}>
       <span style={{ fontSize: 24, fontWeight: 700, color: INK, lineHeight: 1.15 }}>{value}</span>
@@ -82,12 +82,12 @@ export function TrendChart({ dashboard }: { dashboard: Dashboard }) {
           <span aria-hidden="true" style={{ width: 14, height: 3, borderRadius: 2, background: item.color }} />{item.label} <b>{item.total}</b>
         </span>)}
       </div>
-      <button type="button" onClick={() => setTable(!table)} style={{ border: 0, background: "none", color: "#005BD3", font: "inherit", fontSize: 13, cursor: "pointer", padding: 0 }}>{table ? "Show chart" : "View as table"}</button>
+      <button type="button" onClick={() => setTable(!table)} style={{ border: 0, background: "none", color: "var(--hd-link, #005BD3)", font: "inherit", fontSize: 13, cursor: "pointer", padding: 0 }}>{table ? "Show chart" : "View as table"}</button>
     </div>
-    {table ? <div style={{ maxHeight: 260, overflowY: "auto", border: "1px solid #E3E3E3", borderRadius: 8 }}>
-      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-        <thead><tr style={{ background: "#F7F7F7", textAlign: "left" }}><th style={{ padding: "6px 10px" }}>Day</th><th style={{ padding: "6px 10px" }}>New tickets</th><th style={{ padding: "6px 10px" }}>Resolved</th></tr></thead>
-        <tbody>{days.map((day, index) => <tr key={day} style={{ borderTop: "1px solid #F1F1F1" }}><td style={{ padding: "5px 10px" }}>{shortDate(day)}</td><td style={{ padding: "5px 10px" }}>{created.series[index]}</td><td style={{ padding: "5px 10px" }}>{resolved.series[index]}</td></tr>)}</tbody>
+    {table ? <div style={{ maxHeight: 260, overflowY: "auto", border: "1px solid var(--hd-border, #E3E3E3)", borderRadius: 8 }}>
+      <table className="hd-dashboard-table" style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+        <thead><tr style={{ background: "var(--hd-table-head, #F7F7F7)", textAlign: "left" }}><th style={{ padding: "6px 10px" }}>Day</th><th style={{ padding: "6px 10px" }}>New tickets</th><th style={{ padding: "6px 10px" }}>Resolved</th></tr></thead>
+        <tbody>{days.map((day, index) => <tr key={day} style={{ borderTop: "1px solid var(--hd-border, #F1F1F1)" }}><td style={{ padding: "5px 10px" }}>{shortDate(day)}</td><td style={{ padding: "5px 10px" }}>{created.series[index]}</td><td style={{ padding: "5px 10px" }}>{resolved.series[index]}</td></tr>)}</tbody>
       </table>
     </div> : <div style={{ position: "relative" }}>
       <svg viewBox={`0 0 ${width} ${height}`} width="100%" role="img" aria-label={`New tickets and resolved tickets per day over the last ${days.length} days`} style={{ display: "block", overflow: "visible" }}
@@ -103,15 +103,15 @@ export function TrendChart({ dashboard }: { dashboard: Dashboard }) {
         <text x={x(lastIndex) + 8} y={resolvedY + 4} fontSize="12" fill={INK} fontWeight="600">Resolved {resolved.series[lastIndex]}</text>
         {hover !== null && <g>
           <line x1={x(hover)} x2={x(hover)} y1={pad.top} y2={height - pad.bottom} stroke="#8A8A8A" strokeWidth="1" strokeDasharray="3 3" />
-          {[{ v: resolved.series[hover], c: SERIES.resolved }, { v: created.series[hover], c: SERIES.created }].map((point, i) => <circle key={i} cx={x(hover)} cy={y(point.v)} r="5" fill={point.c} stroke="#fff" strokeWidth="2" />)}
+          {[{ v: resolved.series[hover], c: SERIES.resolved }, { v: created.series[hover], c: SERIES.created }].map((point, i) => <circle key={i} cx={x(hover)} cy={y(point.v)} r="5" fill={point.c} stroke="var(--hd-surface, #fff)" strokeWidth="2" />)}
         </g>}
         {days.map((day, index) => <rect key={day} x={x(index) - (width - pad.left - pad.right) / days.length / 2} y={pad.top} width={(width - pad.left - pad.right) / days.length} height={height - pad.top - pad.bottom}
           fill="transparent" onMouseEnter={() => setHover(index)} />)}
       </svg>
       {hover !== null && <div role="status" style={{
         position: "absolute", top: 0, left: `${(x(hover) / width) * 100}%`, transform: `translateX(${hover > days.length / 2 ? "calc(-100% - 12px)" : "12px"})`,
-        pointerEvents: "none", padding: "8px 10px", borderRadius: 8, background: "#fff", border: "1px solid #E3E3E3", boxShadow: "0 4px 14px rgba(0,0,0,.12)", fontSize: 12.5, color: INK, whiteSpace: "nowrap",
-      }}>
+        pointerEvents: "none", padding: "8px 10px", borderRadius: 8, background: "var(--hd-surface, #fff)", border: "1px solid var(--hd-border, #E3E3E3)", boxShadow: "0 4px 14px rgba(0,0,0,.12)", fontSize: 12.5, color: INK, whiteSpace: "nowrap",
+      }} className="hd-dashboard-tooltip">
         <div style={{ fontWeight: 650, marginBottom: 4 }}>{shortDate(days[hover])}</div>
         {legend.map((item) => <div key={item.key} style={{ display: "flex", alignItems: "center", gap: 6 }}>
           <span aria-hidden="true" style={{ width: 10, height: 3, borderRadius: 2, background: item.color }} />{item.label}: <b>{(item.key === "created" ? created : resolved).series[hover]}</b>
@@ -134,9 +134,9 @@ export function BarList({ items, empty, color = SERIES.created, onSelect, share 
       const row = <div style={{ display: "grid", gap: 4 }}>
         <div style={{ display: "flex", justifyContent: "space-between", gap: 8, fontSize: 13, color: INK }}>
           <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.label}</span>
-          <b style={{ flex: "none" }}>{item.value}{share && <span style={{ fontWeight: 500, color: "#616161" }}> · {Math.round((item.value / total) * 100)}%</span>}</b>
+          <b style={{ flex: "none" }}>{item.value}{share && <span style={{ fontWeight: 500, color: MUTED }}> · {Math.round((item.value / total) * 100)}%</span>}</b>
         </div>
-        <div aria-hidden="true" style={{ height: 8, borderRadius: 4, background: "#F1F2F4" }}>
+        <div aria-hidden="true" style={{ height: 8, borderRadius: 4, background: "var(--hd-surface-muted, #F1F2F4)" }}>
           <div style={{ width: `${Math.max(2, (item.value / max) * 100)}%`, height: "100%", borderRadius: 4, background: color }} />
         </div>
       </div>;

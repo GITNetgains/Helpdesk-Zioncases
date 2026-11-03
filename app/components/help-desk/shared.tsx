@@ -3,6 +3,7 @@ import { useLocation, useNavigate, useRevalidator, useSearchParams } from "react
 import { useAppBridge } from "@shopify/app-bridge-react";
 import SectionNavigation from "../SectionNavigation";
 import { since, type ChecklistItem } from "../HelpDeskUi";
+import { saveThemeMode, useThemeMode } from "./theme";
 import type { ActionResult } from "../../services/help-desk-admin.server";
 
 // Pieces every Help Desk admin screen uses.
@@ -12,17 +13,28 @@ export function HelpDeskNavigation({ current }: { current: "tickets" | "overview
   // In the full screen window, its own links stay full screen.
   const full = params.get("fullscreen") === "1";
   const href = (path: string) => full ? `${path}?fullscreen=1` : path;
-  return <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-    <div style={{ flex: 1, minWidth: 0 }}>
+  return <div className="hd-admin-nav">
+    <div className="hd-admin-nav-main">
       <SectionNavigation label="Help Desk sections" current={current} items={[
         { id: "tickets", label: "Inbox", href: href("/app/help-desk") },
-        { id: "overview", label: "Overview & setup", href: href("/app/help-desk/overview") },
+        { id: "overview", label: "Overview", href: href("/app/help-desk/overview") },
         { id: "settings", label: "Settings", href: href("/app/help-desk/settings") },
       ]} />
     </div>
     <WaitingBell />
+    <ThemeToggle />
     {!full && <FullScreenButton />}
   </div>;
+}
+
+// Light or dark in one click (Settings › Appearance also has Auto).
+function ThemeToggle() {
+  const { dark } = useThemeMode();
+  return <>
+    <s-button icon={dark ? "sun" : "moon"} variant="secondary" accessibilityLabel={dark ? "Switch to light mode" : "Switch to dark mode"}
+      interestFor="hd-theme-tip" onClick={() => saveThemeMode(dark ? "light" : "dark")}></s-button>
+    <s-tooltip id="hd-theme-tip">{dark ? "Light mode" : "Dark mode"}</s-tooltip>
+  </>;
 }
 
 // Opens this screen in a window over the whole Shopify admin, its menu
@@ -84,45 +96,45 @@ export function WaitingBell() {
       title={count ? `${count} waiting for a person` : "No one waiting for a person"}
       style={{
         position: "relative", display: "grid", placeItems: "center", width: 40, height: 40, padding: 0, borderRadius: 12, cursor: "pointer",
-        border: `1px solid ${count ? "#F3B4AA" : "#E3E3E3"}`, background: count ? "#FFF1EE" : "#fff", color: count ? "#C4320A" : "#4A4F5C",
+        border: `1px solid ${count ? "#F3B4AA" : "var(--hd-border, #E3E3E3)"}`, background: count ? "var(--hd-tone-red-soft, #FFF1EE)" : "var(--hd-surface, #fff)", color: count ? "var(--hd-tone-red-ink, #C4320A)" : "var(--hd-muted, #4A4F5C)",
       }}>
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
         <path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9" /><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" />
       </svg>
       {count > 0 && <span aria-hidden="true" style={{
         position: "absolute", top: -6, right: -6, minWidth: 20, height: 20, padding: "0 5px", borderRadius: 10, background: "#D92D20", color: "#fff",
-        fontSize: 11, fontWeight: 700, lineHeight: "20px", textAlign: "center", boxShadow: "0 0 0 2px #fff",
+        fontSize: 11, fontWeight: 700, lineHeight: "20px", textAlign: "center", boxShadow: "0 0 0 2px var(--hd-surface, #fff)",
       }}>{count > 99 ? "99+" : count}</span>}
     </button>
     {open && <div role="dialog" aria-label="Customers waiting for a person" style={{
-      position: "absolute", right: 0, top: 48, zIndex: 50, width: 340, maxWidth: "calc(100vw - 32px)", border: "1px solid #E3E3E3", borderRadius: 14,
-      background: "#fff", boxShadow: "0 18px 48px rgba(23,35,81,.18)", overflow: "hidden",
+      position: "absolute", right: 0, top: 48, zIndex: 50, width: 340, maxWidth: "calc(100vw - 32px)", border: "1px solid var(--hd-border, #E3E3E3)", borderRadius: 14,
+      background: "var(--hd-surface, #fff)", color: "var(--hd-ink, #20242c)", boxShadow: "0 18px 48px rgba(23,35,81,.18)", overflow: "hidden",
     }}>
-      <div style={{ padding: "14px 16px", borderBottom: "1px solid #EEF0F3" }}>
-        <div style={{ fontWeight: 650, fontSize: 14, color: "#172351" }}>Waiting for a person</div>
-        <div style={{ fontSize: 12.5, color: "#667085" }}>The chat assistant couldn&apos;t help, or they asked for your team.</div>
+      <div style={{ padding: "14px 16px", borderBottom: "1px solid var(--hd-border, #EEF0F3)" }}>
+        <div style={{ fontWeight: 650, fontSize: 14, color: "var(--hd-heading, #172351)" }}>Waiting for a person</div>
+        <div style={{ fontSize: 12.5, color: "var(--hd-muted, #667085)" }}>The chat assistant couldn&apos;t help, or they asked for your team.</div>
       </div>
       {waiting.length === 0
-        ? <div style={{ padding: "22px 16px", fontSize: 13, color: "#667085", textAlign: "center" }}>No one is waiting. You&apos;re all caught up.</div>
+        ? <div style={{ padding: "22px 16px", fontSize: 13, color: "var(--hd-muted, #667085)", textAlign: "center" }}>No one is waiting. You&apos;re all caught up.</div>
         : <ul style={{ listStyle: "none", margin: 0, padding: 6, maxHeight: 320, overflowY: "auto" }}>
           {waiting.map((entry) => <li key={entry.id}>
             <button type="button" onClick={() => { setOpen(false); navigate(ticketHref(entry.id)); }} style={{
               display: "flex", alignItems: "center", gap: 10, width: "100%", padding: "10px", border: 0, borderRadius: 10, background: "transparent",
               cursor: "pointer", textAlign: "left", font: "inherit",
-            }} onMouseEnter={(event) => { event.currentTarget.style.background = "#F6F7F9"; }} onMouseLeave={(event) => { event.currentTarget.style.background = "transparent"; }}>
-              <span aria-hidden="true" style={{ display: "grid", placeItems: "center", width: 32, height: 32, borderRadius: "50%", background: "#FFF1EE", color: "#C4320A", fontSize: 12, fontWeight: 700, flex: "none" }}>
+            }} onMouseEnter={(event) => { event.currentTarget.style.background = "var(--hd-hover, #F6F7F9)"; }} onMouseLeave={(event) => { event.currentTarget.style.background = "transparent"; }}>
+              <span aria-hidden="true" style={{ display: "grid", placeItems: "center", width: 32, height: 32, borderRadius: "50%", background: "var(--hd-tone-red-soft, #FFF1EE)", color: "var(--hd-tone-red-ink, #C4320A)", fontSize: 12, fontWeight: 700, flex: "none" }}>
                 {entry.name.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]?.toUpperCase()).join("") || "?"}
               </span>
               <span style={{ minWidth: 0, flex: 1 }}>
-                <span style={{ display: "block", fontSize: 13.5, fontWeight: 600, color: "#172351", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{entry.name} · #{entry.number}</span>
-                <span style={{ display: "block", fontSize: 12.5, color: "#667085", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{entry.topic}</span>
+                <span style={{ display: "block", fontSize: 13.5, fontWeight: 600, color: "var(--hd-heading, #172351)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{entry.name} · #{entry.number}</span>
+                <span style={{ display: "block", fontSize: 12.5, color: "var(--hd-muted, #667085)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{entry.topic}</span>
               </span>
-              <span style={{ fontSize: 12, color: "#98A2B3", flex: "none" }}>{ago(entry.humanRequestedAt)}</span>
+              <span style={{ fontSize: 12, color: "var(--hd-faint, #98A2B3)", flex: "none" }}>{ago(entry.humanRequestedAt)}</span>
             </button>
           </li>)}
         </ul>}
       <button type="button" onClick={() => { setOpen(false); navigate(inboxHref({ view: "human" })); }} style={{
-        display: "block", width: "100%", padding: "12px 16px", border: 0, borderTop: "1px solid #EEF0F3", background: "#F9FAFB", color: "#2B449E",
+        display: "block", width: "100%", padding: "12px 16px", border: 0, borderTop: "1px solid var(--hd-border, #EEF0F3)", background: "var(--hd-footer, #F9FAFB)", color: "var(--hd-link-strong, #2B449E)",
         fontWeight: 600, fontSize: 13.5, cursor: "pointer", font: "inherit", textAlign: "center",
       }}>{count > waiting.length ? `Show all ${count}` : "Show them in the inbox"}</button>
     </div>}
@@ -232,10 +244,11 @@ export function useInboxLink() {
 // seen while a reload is still running is retried on the next tick, never
 // dropped, and a failed check (a deploy, a dropped connection) is ignored.
 // Typed text is kept. `paused` holds off while the user is mid-action.
-export function useLiveRefresh({ ticketId = "", paused = false, intervalMs = ticketId ? 1_000 : 4_000 }: { ticketId?: string; paused?: boolean; intervalMs?: number } = {}) {
+// onPulse: each answer, for what changes without a reload (the customer typing).
+export function useLiveRefresh({ ticketId = "", paused = false, intervalMs = ticketId ? 1_000 : 4_000, onPulse }: { ticketId?: string; paused?: boolean; intervalMs?: number; onPulse?: (data: Record<string, unknown>) => void } = {}) {
   const revalidator = useRevalidator();
-  const live = useRef({ revalidator, paused });
-  live.current = { revalidator, paused };
+  const live = useRef({ revalidator, paused, onPulse });
+  live.current = { revalidator, paused, onPulse };
 
   useEffect(() => {
     // App Bridge adds the session token to fetches to the app's own server.
@@ -249,8 +262,10 @@ export function useLiveRefresh({ ticketId = "", paused = false, intervalMs = tic
       try {
         const response = await fetch(url, { headers: { Accept: "application/json" }, cache: "no-store" });
         if (!response.ok) return;
-        const { stamp } = await response.json() as { stamp?: string };
+        const pulse = await response.json() as Record<string, unknown> & { stamp?: string };
+        const { stamp } = pulse;
         if (!stamp || stopped) return;
+        live.current.onPulse?.(pulse);
         if (last !== null && stamp !== last) {
           // Still loading the previous change: leave `last` alone so the next tick picks this one up.
           if (live.current.revalidator.state !== "idle") return;
@@ -290,7 +305,7 @@ export function DeleteConfirm({ count, busy, onCancel, onConfirm }: { count: num
 
 
 export function Card({ title, action, children }: { title: string; action?: React.ReactNode; children: React.ReactNode }) {
-  return <div style={{ display: "grid", gap: 12, alignContent: "start", height: "100%", padding: 16, background: "#fff", border: "1px solid #E3E3E3", borderRadius: 12, boxShadow: "0 1px 0 rgba(26,26,26,.05)" }}>
+  return <div className="hd-admin-card" style={{ display: "grid", gap: 12, alignContent: "start", height: "100%", padding: 16, background: "var(--hd-surface, #fff)", border: "1px solid var(--hd-border, #E3E3E3)", borderRadius: 12, boxShadow: "0 1px 0 rgba(26,26,26,.05)" }}>
     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
       <s-heading>{title}</s-heading>
       {action}

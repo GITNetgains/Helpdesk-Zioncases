@@ -75,6 +75,8 @@ const SAME: [RegExp, string][] = [
   [/^(warranty|guarantee)$/, "warranty"],
   [/^(lost|stuck|moving|moved)$/, "lost"],
   [/^(bowing|bow|warp|warped|uneven|flat)$/, "bowing"],
+  // Reaching a person: "agent", "talk to someone", "phone number".
+  [/^(agent|agents|human|representative|rep|operator|support|contact|contacting|reach|talk|speak|call|calling|phone|helpline|hotline|whatsapp|chat)$/, "contact"],
 ];
 
 const stem = (typed: string) => {
@@ -101,6 +103,53 @@ export function searchWords(text: string) {
     .map(stem);
 }
 
+// How many letters to add, drop, change or swap to turn one word into the other.
+function editDistance(a: string, b: string, most: number) {
+  if (Math.abs(a.length - b.length) > most) return most + 1;
+  let previous = Array.from({ length: b.length + 1 }, (_, index) => index);
+  let before: number[] = [];
+  for (let i = 1; i <= a.length; i++) {
+    const row = [i];
+    for (let j = 1; j <= b.length; j++) {
+      row[j] = Math.min(previous[j] + 1, row[j - 1] + 1, previous[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+      // A swapped pair ("teh") counts as one.
+      if (i > 1 && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1]) row[j] = Math.min(row[j], before[j - 2] + 1);
+    }
+    before = previous;
+    previous = row;
+    if (Math.min(...row) > most) return most + 1;
+  }
+  return previous[b.length];
+}
+
+// What the customer meant, when a word isn't one any article uses: "cancle"
+// is "cancel", "refnd" is "refund", "trackin" is "tracking". Words the
+// articles already know, and short or stop words, are left alone. corrected
+// is null when nothing changed.
+export function correctQuery(query: string, articles: { question: string; keywords: string }[]) {
+  const vocabulary = new Set<string>();
+  for (const article of articles) for (const word of `${article.question} ${article.keywords}`.toLowerCase().match(/[a-z]+/g) ?? []) if (word.length >= 3) vocabulary.add(word);
+  const known = new Set([...vocabulary].map(stem));
+  const words = [...vocabulary];
+  let changed = false;
+  const corrected = query.toLowerCase().replace(/[a-z]+/g, (word) => {
+    if (word.length < 4 || STOP.has(word) || vocabulary.has(word) || known.has(stem(word)) || TYPOS[word]) return word;
+    const most = word.length <= 5 ? 1 : 2;
+    let best = "";
+    let bestDistance = most + 1;
+    for (const candidate of words) {
+      // A word typed partly ("trackin"): the article's word it starts.
+      const distance = candidate.startsWith(word) && candidate.length - word.length <= 3 ? 0.5 : editDistance(word, candidate, most);
+      // Ties go to the word that starts the same way.
+      if (distance < bestDistance || (distance === bestDistance && best[0] !== word[0] && candidate[0] === word[0])) { best = candidate; bestDistance = distance; }
+    }
+    if (!best) return word;
+    changed = true;
+    return best;
+  });
+  return changed ? corrected : null;
+}
+
 // bodyWeight: how much the answer's words count (0.2 by default). A store
 // policy or page has no keywords, so its text counts for more.
 type Searchable = { id: string; question: string; keywords: string; answer: string; bodyWeight?: number };
@@ -122,7 +171,9 @@ export function searchArticles<T extends Searchable>(articles: T[], query: strin
 // asked that the article answers, by the weight of the words any article knows
 // (0-1). coverage: the part of all the customer's words it matches, unknown
 // ones included, so "my dog chewed the handle" isn't taken for a handle question.
-export function rankArticles<T extends Searchable>(articles: T[], query: string, limit = 6): { article: T; score: number; share: number; coverage: number }[] {
+// loose: for a search nothing matched closely, anything that shares a telling
+// word, so the customer still sees what's related.
+export function rankArticles<T extends Searchable>(articles: T[], query: string, limit = 6, { loose = false } = {}): { article: T; score: number; share: number; coverage: number }[] {
   const asked = [...new Set(searchWords(query))];
   if (!asked.length || !articles.length) return [];
   const indexed = articles.map((article) => {
@@ -153,10 +204,11 @@ export function rankArticles<T extends Searchable>(articles: T[], query: string,
   });
   const best = Math.max(...scored.map((entry) => entry.score));
   // A short question must be mostly answered; a long email only in its key words.
-  const needed = known.length <= 3 ? 0.4 : known.length <= 8 ? 0.22 : 0.12;
+  const needed = loose ? 0.12 : known.length <= 3 ? 0.4 : known.length <= 8 ? 0.22 : 0.12;
+  const floor = loose ? Math.min(0.5, total * 0.25) : Math.min(1.2, total * 0.5);
   return scored
     // (With only a few articles every word is "common", so the floor scales down.)
-    .filter((entry) => entry.score >= Math.min(1.2, total * 0.5) && entry.share >= needed && entry.score >= best * 0.55)
+    .filter((entry) => entry.score > 0 && entry.score >= floor && entry.share >= needed && entry.score >= best * (loose ? 0.4 : 0.55))
     .sort((x, y) => y.score - x.score)
     .slice(0, limit);
 }

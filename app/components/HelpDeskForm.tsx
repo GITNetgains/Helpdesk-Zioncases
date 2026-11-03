@@ -117,7 +117,7 @@ export default function HelpDeskForm() {
         {topic === topics[0] && <s-section heading="Shipping">
           <s-stack gap="base">
             <details onToggle={event => { if (event.currentTarget.open && !productFetcher.data && productFetcher.state === "idle") loadProducts(); }}>
-              <summary style={{ cursor: "pointer", padding: "12px", border: "1px solid #bbb", borderRadius: "8px" }}>Select products * ({Object.keys(products).length} selected)</summary>
+              <summary style={{ cursor: "pointer", padding: "12px", border: "1px solid var(--hd-border, #bbb)", borderRadius: "8px" }}>Select products * ({Object.keys(products).length} selected)</summary>
               <div style={{ padding: "12px", display: "grid", gap: "12px" }}>
                 <s-search-field label="Search products" value={search} onInput={event => setSearch(event.currentTarget.value)} />
                 <s-button type="button" onClick={() => loadProducts()} disabled={productFetcher.state !== "idle"}>Search products</s-button>

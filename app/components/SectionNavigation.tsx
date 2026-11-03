@@ -3,10 +3,10 @@ import { Link } from "react-router";
 export type SectionLink = { id: string; label: string; href: string };
 
 export default function SectionNavigation({ label, current, items }: { label: string; current: string; items: SectionLink[] }) {
-  return <nav aria-label={label} style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 6, margin: "0 0 24px", padding: "6px", border: "1px solid #e5e7eb", borderRadius: 12, background: "#f7f8fa", width: "fit-content", maxWidth: "100%" }}>
+  return <nav aria-label={label} style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 18, margin: 0, padding: 0, borderBottom: "1px solid var(--hd-border, #e5e7eb)", background: "transparent", width: "100%", maxWidth: "100%" }}>
     {items.map((item) => <Link key={item.id} to={item.href} aria-current={current === item.id ? "page" : undefined}
-      style={{ display: "inline-flex", alignItems: "center", minHeight: 36, padding: "8px 14px", border: current === item.id ? "1px solid #d8dce4" : "1px solid transparent", borderRadius: 8, textDecoration: "none", fontSize: 13, fontWeight: current === item.id ? 650 : 500,
-        color: current === item.id ? "#172351" : "#596273", background: current === item.id ? "#fff" : "transparent", boxShadow: current === item.id ? "0 1px 2px rgba(16,24,40,.08)" : "none", whiteSpace: "nowrap" }}>
+      style={{ display: "inline-flex", alignItems: "center", minHeight: 40, padding: "8px 2px", border: 0, borderBottom: current === item.id ? "2px solid var(--hd-accent-line, #334fb4)" : "2px solid transparent", borderRadius: 0, textDecoration: "none", fontSize: 13, fontWeight: current === item.id ? 650 : 500,
+        color: current === item.id ? "var(--hd-ink, #172351)" : "var(--hd-muted, #596273)", background: "transparent", boxShadow: "none", whiteSpace: "nowrap" }}>
       {item.label}
     </Link>)}
   </nav>;

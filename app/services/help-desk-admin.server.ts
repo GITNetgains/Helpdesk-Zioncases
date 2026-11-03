@@ -6,7 +6,7 @@ import db from "../db.server";
 import { countryName, defaultMacros, suggestTags, MAX_MESSAGE_LENGTH, priorities, ticketStatuses } from "./help-desk";
 import { addStaffMessage, classifyUnsorted, deleteTickets, readHelpDeskForm, submitTicket, updateTickets } from "./help-desk.server";
 import { categoryNames, rootCauses, subcategoriesOf } from "./help-desk-taxonomy";
-import { cachedProducts, emailConfigured, loadProducts, loadShop, sendTestEmail, trackingUrl } from "./help-desk-email.server";
+import { cachedProducts, emailConfigured, loadShop, sendTestEmail, trackingUrl } from "./help-desk-email.server";
 import { ordersByEmail, syncTicketOrder } from "./help-desk-orders.server";
 import { cancelOrderInShopify, confirmItemsCancelled, decideCancellation, refundMethods, type RefundMethod } from "./help-desk-cancel.server";
 import { rejectAddressChange, updateAddressInShopify } from "./help-desk-address.server";
@@ -30,6 +30,8 @@ import type { ShipStationStatus } from "./help-desk";
 import { deleteArticle, ensureArticles, forgetShopifyAnswers, listArticles, restoreStarterArticles, shopifySourcesStatus, unansweredSearches } from "./help-desk-articles.server";
 import { articleCollections, validAction } from "./help-desk-articles";
 import { ASSISTANT_COPY, MAX_ASSISTANT_COPY, readAssistantCopy, type AssistantCopyKey } from "./help-desk-assistant";
+import { aiAssistantEnabled } from "./help-desk-ai.server";
+import { clearTyping } from "./help-desk-typing.server";
 
 // Server side of the Help Desk admin: one loader per screen (inbox, overview,
 // ticket, settings) and the action every screen posts to.
@@ -94,7 +96,8 @@ export async function loadSettings({ admin, shop, settings, staff, base }: Conte
   return data({
     articles: articles.map(({ id, question, answer, keywords, collection, action, helpful, notHelpful, updatedAt }) => ({ id, question, answer, keywords, collection, action, helpful, notHelpful, updatedAt })),
     unanswered, answerSources,
-    assistant: { enabled: settings.assistantEnabled, copy: readAssistantCopy(settings.assistantCopy) },
+    // ai: Claude reads the messages (ANTHROPIC_API_KEY on the server); otherwise keyword matching.
+    assistant: { enabled: settings.assistantEnabled, copy: readAssistantCopy(settings.assistantCopy), ai: aiAssistantEnabled() },
     ...base, macros: macros.map(({ id, title, body, category, subcategory }) => ({ id, title, body, category, subcategory })), storeEmail: store.email, staff,
     storefront: { apiKey: process.env.SHOPIFY_API_KEY || "", formLastSeenAt: settings.formLastSeenAt, hasPlacesKey: Boolean(settings.googlePlacesKey) },
     settings: { notify: settings.notify, notifyEmail: settings.notifyEmail, autoReply: settings.autoReply, statusEmails: settings.statusEmails, signature: settings.signature, team: settings.team },
@@ -416,6 +419,7 @@ export const helpDeskAction = async ({ request }: ActionFunctionArgs) => {
       case "message": {
         const result = await addStaffMessage(db, shop, text("id"), { kind: text("kind"), body: text("body"), author: text("author"), status: text("status") || undefined });
         if (!result.messageId) return data<ActionResult>({ errors: result.errors }, { status: 400 });
+        clearTyping(result.ticketId!, "staff");
         // Every reply shows on the customer's request page; "email" also emails it.
         const byEmail = text("kind") === "reply" && text("channel") !== "page" && emailConfigured();
         if (byEmail) queueEmail(db, { shop, ticketId: result.ticketId!, kind: "reply", messageId: result.messageId }, admin);

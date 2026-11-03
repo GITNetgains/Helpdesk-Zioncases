@@ -3,11 +3,11 @@ import { PrismaClient } from "@prisma/client";
 import { mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { articleActions, articleCollections, htmlText, rankArticles, searchArticles, sectionsFromHtml, starterArticles, storeFacts, validAction } from "../app/services/help-desk-articles";
-import { answerQuestion, deleteArticle, ensureArticles, productAnswer, recordSearch, restoreStarterArticles, unansweredSearches, voteArticle } from "../app/services/help-desk-articles.server";
+import { articleActions, articleCollections, correctQuery, htmlText, rankArticles, searchArticles, sectionsFromHtml, starterArticles, storeFacts, validAction } from "../app/services/help-desk-articles";
+import { answerQuestion, deleteArticle, searchAnswers, ensureArticles, productAnswer, recordSearch, restoreStarterArticles, unansweredSearches, voteArticle } from "../app/services/help-desk-articles.server";
 import { assistantMessage, assistantTurn, decide, HUMAN_TAG } from "../app/services/help-desk-assistant.server";
 import { ASSISTANT_COPY, readAssistantCopy } from "../app/services/help-desk-assistant";
-import { requestSteps } from "../app/services/help-desk-steps";
+import { requestSteps, wantsSteps } from "../app/services/help-desk-steps";
 import { addStaffMessage, submitTicket } from "../app/services/help-desk.server";
 import { topics } from "../app/services/help-desk";
 
@@ -105,19 +105,33 @@ describe("Help articles", () => {
   });
 });
 
+describe("Search typos", () => {
+  it("fixes misspelled and half-typed words to ones the articles use, and leaves real words alone", () => {
+    const fix = (text: string) => correctQuery(text, starterArticles);
+    expect(fix("cancle my order")).toBe("cancel my order");
+    expect(fix("where is my refnd")).toBe("where is my refund");
+    expect(fix("trackin")).toBe("tracking");
+    expect(fix("warrenty claim")).toBeNull();
+    expect(fix("where is my order")).toBeNull();
+    expect(fix("hi")).toBeNull();
+  });
+});
+
 describe("The request page's assistant", () => {
   const sure = (question: string, share = 0.8, score = 6, coverage = 1) => ({ answer: { id: question, question, answer: `About ${question}.`, collection: "", action: "", source: "article" as const, url: "", image: "" }, score, share, coverage });
-  it("answers when it's sure, and hands over to a person otherwise", () => {
+  it("answers when it's sure, asks back otherwise, and hands over only when asked", () => {
     expect(decide("where is my refund", [sure("Where is my refund?")])).toMatchObject({ kind: "answer", answer: { question: "Where is my refund?" } });
-    expect(decide("blorp", [])).toEqual({ kind: "handoff", reason: "unsure" });
-    expect(decide("refund", [sure("Where is my refund?", 0.3)])).toEqual({ kind: "handoff", reason: "unsure" });
+    expect(decide("blorp", [])).toMatchObject({ kind: "clarify", reason: "unsure" });
+    expect(decide("refund", [sure("Where is my refund?", 0.3)])).toMatchObject({ kind: "clarify", reason: "unsure" });
     // Most of what the customer wrote isn't about the article: not sure.
-    expect(decide("my dog chewed the handle", [sure("Can a wheel be replaced?", 1, 3, 0.33)])).toEqual({ kind: "handoff", reason: "unsure" });
+    expect(decide("my dog chewed the handle", [sure("Can a wheel be replaced?", 1, 3, 0.33)])).toMatchObject({ kind: "clarify", reason: "unsure" });
     // Two different answers about as good: not sure which.
-    expect(decide("return", [sure("A", 0.5, 5), sure("B", 0.48, 4.9)])).toEqual({ kind: "handoff", reason: "unsure" });
+    expect(decide("return", [sure("A", 0.5, 5), sure("B", 0.48, 4.9)])).toMatchObject({ kind: "clarify", reason: "unsure" });
     expect(decide("Can I talk to a real person please", [sure("Where is my refund?")])).toEqual({ kind: "handoff", reason: "asked" });
-    expect(decide("that didn't help", [sure("Where is my refund?")])).toEqual({ kind: "handoff", reason: "unhelpful" });
-    expect(decide("where is my refund", [sure("Where is my refund?")], ["Where is my refund?"])).toEqual({ kind: "handoff", reason: "repeat" });
+    expect(decide("I don't want to cancel my order", [sure("Can I cancel my order?")])).toMatchObject({ kind: "clarify", reason: "unsure" });
+    expect(decide("I do not need a refund, I need to change the delivery address", [sure("Where is my refund?")])).toMatchObject({ kind: "clarify", reason: "unsure" });
+    expect(decide("that didn't help", [sure("Where is my refund?")])).toMatchObject({ kind: "clarify", reason: "unhelpful" });
+    expect(decide("where is my refund", [sure("Where is my refund?")], ["Where is my refund?"])).toMatchObject({ kind: "clarify", reason: "repeat" });
     expect(decide("Hi there!", [])).toEqual({ kind: "greet" });
     expect(decide("thanks so much", [])).toEqual({ kind: "thanks" });
     expect(assistantMessage({ kind: "greet" }, "Sandy")).toMatch(/^Hi Sandy!/);
@@ -134,10 +148,26 @@ describe("The request page's assistant", () => {
   it("explains how to do it on the form, step by step, when the customer asks how", () => {
     const cancel = { ...sure("Can I cancel my order?").answer, action: "Orders › Cancel Order" };
     const how = assistantMessage({ kind: "answer", answer: cancel }, "", ASSISTANT_COPY, "how do I cancel my order?");
-    expect(how).toContain("How to do it:\n\n1. On our Help Desk page, under \"Send us a request\", choose Orders.\n2. Choose Cancel Order.\n3. Enter your email and order number");
+    expect(how).toContain("How to do it:\n\n1. On our Help Desk page, choose \"I have a question about an order\".\n2. Pick your order (or \"My order isn't listed\").\n3. Choose Orders as the category and Cancel Order under \"What would you like to do?\", then press Continue with this order.\n4. Check it's the right order");
+    expect(requestSteps("Other Queries › Payment Issue")[2]).toBe("Choose Other order questions as the category and Payment Issue under \"What would you like to do?\", then press Continue with this order.");
+    // Not about an order: its own button, or every topic.
+    expect(requestSteps("Shipping › International Shipping").slice(0, 2)).toEqual(["On our Help Desk page, choose \"My question isn't about an order\".", "Press International Shipping."]);
+    expect(requestSteps("Other Queries › PSA slab fit")[1]).toBe("Press Product Query, choose PSA slab fit and press Continue with this question.");
+    expect(requestSteps("Wholesale Queries")[0]).toBe("On our Help Desk page, press \"See all topics\" and choose Wholesale Queries.");
     expect(how).toMatch(/\n\d\. Press Submit Request\./);
     // Not asked how: the answer alone.
     expect(assistantMessage({ kind: "answer", answer: cancel }, "", ASSISTANT_COPY, "my order was cancelled?")).not.toContain("How to do it");
+    // Saying they want to do it gets the steps too, in English or Hinglish.
+    for (const wants of ["I want to cancel my order", "cancel my order please", "please cancel it", "order cancel karna hai", "mujhe order cancel karwana hai", "I'd like to change my address"]) {
+      expect(wantsSteps(wants), wants).toBe(true);
+    }
+    for (const asking of ["my order was cancelled?", "where is my refund", "the lid arrived broken", "do you ship to canada"]) {
+      expect(wantsSteps(asking), asking).toBe(false);
+    }
+    expect(assistantMessage({ kind: "answer", answer: cancel }, "", ASSISTANT_COPY, "I want to cancel my order")).toContain("How to do it:\n\n1.");
+    // The AI's own walk-through isn't repeated underneath.
+    const walked = assistantMessage({ kind: "answer", answer: cancel, reply: "Sure:\n1. Choose Orders.\n2. Choose Cancel Order." }, "", ASSISTANT_COPY, "I want to cancel my order");
+    expect(walked).not.toContain("How to do it");
     expect(requestSteps("Product Issues › Damaged or Defective")).toContain("Choose what happened: Damaged in shipping, Broken on arrival, Doesn't work properly.");
     expect(requestSteps("Wholesale Queries")[1]).toBe("Choose the option that fits your question, and follow the steps it shows.");
     expect(requestSteps("Nowhere › Nothing")).toEqual([]);
@@ -243,7 +273,7 @@ describe("Help articles in the database", () => {
     expect((await db.helpDeskFaq.findUniqueOrThrow({ where: { id: old.id } })).helpful).toBe(1);
   });
 
-  it("answers in the request page chat, and hands over to the team when it can't", async () => {
+  it("answers in the request page chat, asks back when unsure, and hands over when asked", async () => {
     const { ticketId } = await submitTicket(db, shop, (() => {
       const body = new FormData();
       for (const [key, value] of Object.entries({ requestKey: crypto.randomUUID(), name: "Sandy Lee", email: "sandy@example.com", topic: topics[5], query: "General question" })) body.set(key, value);
@@ -255,8 +285,14 @@ describe("Help articles in the database", () => {
     const refund = await assistantTurn(db, undefined, shop, ticketId!, "how long does a refund take to show up");
     expect(refund).toMatchObject({ decision: { kind: "answer", answer: { question: "Where is my refund?" } }, notifyTeam: false });
     expect((await bots()).at(-1)?.body).toMatch(/^Where is my refund\?\n\n/);
-    // Photos alone are for the team.
+    // Not sure: it asks back and offers a person, but keeps the chat.
+    const unsure = await assistantTurn(db, undefined, shop, ticketId!, "my dog chewed the handle");
+    expect(unsure).toMatchObject({ decision: { kind: "clarify" }, notifyTeam: false, handoff: false });
+    expect((await bots()).at(-1)?.body).toContain("talk to a person");
+    expect((await db.helpDeskTicket.findUniqueOrThrow({ where: { id: ticketId } })).humanRequestedAt).toBeNull();
+    // Photos alone are for the team, and the customer hears they arrived.
     expect(await assistantTurn(db, undefined, shop, ticketId!, "Sent 2 images")).toMatchObject({ decision: { kind: "silent" }, notifyTeam: true });
+    expect((await bots()).at(-1)?.body).toMatch(/^Thanks Sandy, we've got them/);
     const person = await assistantTurn(db, undefined, shop, ticketId!, "can I speak to a human please");
     expect(person).toMatchObject({ decision: { kind: "handoff", reason: "asked" }, notifyTeam: true, handoff: true });
     let ticket = await db.helpDeskTicket.findUniqueOrThrow({ where: { id: ticketId } });
@@ -264,15 +300,37 @@ describe("Help articles in the database", () => {
     expect(ticket.priority).toBe("High");
     expect(ticket.tags.split(",")).toContain(HUMAN_TAG);
     expect((await db.helpDeskMessage.findFirstOrThrow({ where: { ticketId, kind: "event" }, orderBy: { createdAt: "desc" } })).body).toBe("Customer asked to talk to a person. Waiting for a person from the team.");
-    // The team has the chat now: the assistant stays quiet.
-    expect(await assistantTurn(db, undefined, shop, ticketId!, "where is my order")).toMatchObject({ decision: { kind: "silent" }, notifyTeam: true });
+    // The team has the chat now: the assistant still answers what it's sure of, and the team hears about it.
+    expect(await assistantTurn(db, undefined, shop, ticketId!, "where is my order")).toMatchObject({ decision: { kind: "answer" }, notifyTeam: true, handoff: false });
+    // ...and anything else gets a word that the team has it, never silence.
+    expect(await assistantTurn(db, undefined, shop, ticketId!, "my dog chewed the handle")).toMatchObject({ decision: { kind: "silent" }, notifyTeam: true, handoff: false });
+    expect((await bots()).at(-1)?.body).toMatch(/^Thanks Sandy! Our team has your message/);
     // A person replies: the flag comes off.
     await addStaffMessage(db, shop, ticketId!, { kind: "reply", body: "Hi Sandy, Priya here.", author: "Priya" });
     ticket = await db.helpDeskTicket.findUniqueOrThrow({ where: { id: ticketId } });
     expect(ticket.humanRequestedAt).toBeNull();
     expect(ticket.tags.split(",")).not.toContain(HUMAN_TAG);
-    // ...and the assistant still leaves the chat to them for a while.
-    expect(await assistantTurn(db, undefined, shop, ticketId!, "where is my order")).toMatchObject({ decision: { kind: "silent" } });
+    // ...and while they chat, the assistant only answers what it's sure of, and otherwise says the team has it.
+    expect(await assistantTurn(db, undefined, shop, ticketId!, "can you call me tomorrow at 5")).toMatchObject({ decision: { kind: "handoff" } });
+    expect(await assistantTurn(db, undefined, shop, ticketId!, "asdf")).toMatchObject({ decision: { kind: "silent" }, notifyTeam: true });
+    expect((await bots()).at(-1)?.body).toMatch(/Our team has your message/);
+  });
+
+  it("always finds something: misspellings fixed, other words for the same thing, else related or popular answers", async () => {
+    // "agent" is how to reach the team.
+    const agent = await searchAnswers(db, undefined, shop, "agent");
+    expect(agent.exact).toBe(true);
+    expect(agent.results.map((answer) => answer.question)).toContain("How do I contact customer support?");
+    // Misspelled: searched as meant, and says so.
+    const typo = await searchAnswers(db, undefined, shop, "cancle my ordr");
+    expect(typo).toMatchObject({ exact: false, correctedTo: "cancel my order" });
+    expect(typo.results[0].question).toBe("Can I cancel my order?");
+    // Nothing like it: still something to read, and it isn't counted as answered.
+    const nothing = await searchAnswers(db, undefined, shop, "zxqv blorp");
+    expect(nothing).toMatchObject({ exact: false, related: true });
+    expect(nothing.results.length).toBeGreaterThan(0);
+    // Without the AI, Enter still gets the related or popular answers.
+    expect((await searchAnswers(db, undefined, shop, "zxqv blorp", { deep: true })).results.length).toBeGreaterThan(0);
   });
 
   it("answers from the store's own articles without Shopify, and counts votes", async () => {
