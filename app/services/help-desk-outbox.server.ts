@@ -8,7 +8,7 @@ import {
 // before it's marked failed. Agents see each email's state on the ticket and
 // can retry a failed one.
 
-export type EmailKind = "new-ticket" | "ack" | "reply" | "customer-reply" | "status" | "cancellation" | "address" | "return" | "edit" | "replacement" | "quote";
+export type EmailKind = "new-ticket" | "ack" | "reply" | "customer-reply" | "handoff" | "status" | "cancellation" | "address" | "return" | "edit" | "replacement" | "quote";
 type AdminClient = Parameters<typeof notifyTicket>[2];
 
 const MAX_ATTEMPTS = 3;
@@ -30,6 +30,8 @@ async function deliver(db: PrismaClient, admin: AdminClient, row: { shop: string
     case "quote": return sendQuoteEmail(db, row.shop, admin, row.ticketId);
     case "reply": return row.messageId ? sendReplyEmail(db, row.shop, admin, row.messageId) : "skipped";
     case "customer-reply": return row.messageId ? notifyCustomerReply(db, row.shop, admin, row.messageId) : "skipped";
+    // The request page's assistant passed the customer to the team.
+    case "handoff": return row.messageId ? notifyCustomerReply(db, row.shop, admin, row.messageId, true) : "skipped";
     default: return "skipped";
   }
 }

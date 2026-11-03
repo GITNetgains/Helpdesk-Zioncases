@@ -369,7 +369,10 @@ export async function addStaffMessage(db: PrismaClient, shop: string, id: string
   const now = new Date();
   const message = await db.helpDeskMessage.create({ data: { ticketId: ticket.id, kind: input.kind, author, body } });
   if (input.kind === "reply") {
-    await db.helpDeskTicket.update({ where: { id: ticket.id }, data: { lastActivityAt: now, unread: false, ...(ticket.firstResponseAt ? {} : { firstResponseAt: now }) } });
+    // A person has answered: the request no longer waits for one, so its
+    // needs-human flag comes off (the assistant stays quiet for a while after a reply).
+    const tags = ticket.tags.split(",").map((tag) => tag.trim()).filter((tag) => tag && tag !== "needs-human").join(",");
+    await db.helpDeskTicket.update({ where: { id: ticket.id }, data: { lastActivityAt: now, unread: false, humanRequestedAt: null, tags, ...(ticket.firstResponseAt ? {} : { firstResponseAt: now }) } });
   }
   const status = input.status || (input.kind === "reply" && ticket.status !== "Resolved" ? "Waiting on customer" : "");
   if (status) await updateTickets(db, shop, [ticket.id], { status }, author);
@@ -379,9 +382,10 @@ export async function addStaffMessage(db: PrismaClient, shop: string, id: string
 // A customer's reply from their tracking page. Reopens waiting or resolved tickets.
 export const MAX_REPLY_IMAGES = 3;
 
-// Form tickets take customer messages only after the team has replied
-// (status "Waiting on customer"); live chats stay open so the chat keeps flowing.
-export const customerCanReply = (ticket: { channel: string; status: string }) => ticket.channel === "chat" || ticket.status === "Waiting on customer";
+// Customers can message any request that isn't resolved: the request page's
+// assistant answers what it can, and passes the rest to the team. Live chats
+// stay open so the chat keeps flowing.
+export const customerCanReply = (ticket: { channel: string; status: string }) => ticket.channel === "chat" || ticket.status !== "Resolved";
 
 export async function addCustomerMessage(db: PrismaClient, shop: string, token: string, text: string, files: File[] = [], videos: File[] = []): Promise<MessageResult> {
   const body = text.trim();
@@ -402,7 +406,7 @@ export async function addCustomerMessage(db: PrismaClient, shop: string, token: 
   if ("error" in clips) return { errors: { videos: clips.error } };
   const ticket = await db.helpDeskTicket.findFirst({ where: { shop, accessToken: token } });
   if (!ticket) return { errors: { form: "This request could not be found." } };
-  if (!customerCanReply(ticket)) return { errors: { form: "You can add a message once our team replies. We'll let you know when they do." } };
+  if (!customerCanReply(ticket)) return { errors: { form: "This request is closed. If you still need help, please send us a new request." } };
   // Photos only when staff asked for them (the page hides the field otherwise).
   if (files.length && !ticket.allowPhotos) return { errors: { images: "Photos can't be added to this request. Please send your message as text." } };
   if (videos.length && !ticket.allowVideos) return { errors: { videos: "Videos can't be added to this request. Please send your message as text." } };

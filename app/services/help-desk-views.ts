@@ -6,6 +6,8 @@ const UNRESOLVED = { not: "Resolved" };
 // Inbox views, like the saved views of dedicated help desks.
 export const VIEWS = {
   open: { label: "Needs attention", where: { status: { in: ["Open", "In progress"] } } },
+  // Customers the request page's assistant passed to the team, until someone replies.
+  human: { label: "Waiting for a person", where: { status: UNRESOLVED, humanRequestedAt: { not: null } } },
   unassigned: { label: "Unassigned", where: { status: UNRESOLVED, assignee: "" } },
   urgent: { label: "High priority", where: { status: UNRESOLVED, priority: { in: ["High", "Urgent"] } } },
   waiting: { label: "Waiting on customer", where: { status: "Waiting on customer" } },

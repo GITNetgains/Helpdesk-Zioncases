@@ -577,7 +577,7 @@ describe("Help desk conversations", () => {
     expect((await addCustomerMessage(db, "other.myshopify.com", token!, "Still broken")).errors.form).toBeTruthy();
     expect((await addCustomerMessage(db, shop, "f".repeat(48), "Still broken")).errors.form).toBeTruthy();
     // A resolved form ticket takes no more customer messages; the customer opens a new request.
-    expect((await addCustomerMessage(db, shop, token!, "Still broken")).errors.form).toMatch(/once our team replies/);
+    expect((await addCustomerMessage(db, shop, token!, "Still broken")).errors.form).toMatch(/This request is closed/);
     await addStaffMessage(db, shop, ticketId!, { kind: "reply", body: "Can you send a photo?", author: "Priya", status: "Waiting on customer" });
     expect((await addCustomerMessage(db, shop, token!, "Still broken")).messageId).toBeTruthy();
     ticket = await db.helpDeskTicket.findUniqueOrThrow({ where: { id: ticketId } });
@@ -586,8 +586,7 @@ describe("Help desk conversations", () => {
   it("stores photos sent with a customer reply against that message", async () => {
     const { token, ticketId } = await submitTicket(db, shop, form());
     const png = new File([Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a6S8AAAAASUVORK5CYII=", "base64")], "proof.png", { type: "image/png" });
-    // Before the team replies, the customer can't add messages yet.
-    expect((await addCustomerMessage(db, shop, token!, "", [png])).errors.form).toBeTruthy();
+    // An open request takes customer messages any time (the assistant answers what it can).
     await updateTicketStatus(db, shop, ticketId!, "Waiting on customer");
     // Photos only once staff turn uploads on for the ticket.
     expect((await addCustomerMessage(db, shop, token!, "", [png])).errors.images).toMatch(/can't be added/);

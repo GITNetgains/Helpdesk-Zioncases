@@ -78,7 +78,7 @@ function fillContact() { type("Full name", "Jordan Lee"); type("Email address", 
 afterEach(() => { document.body.innerHTML = ""; });
 
 describe("Storefront Help Desk form", () => {
-  it("asks a guest to sign in first, without the topics, when the block requires it", async () => {
+  it("asks a guest to sign in first, without the topics, when the block requires it, but lets them search the help articles", async () => {
     const page = (customer: string) => `<div data-help-desk data-endpoint="/apps/help-desk" data-require-login="true" data-login-url="/account/login" data-register-url="/account/register">
       <div data-help-desk-status></div><div data-help-desk-form></div>${customer}</div>`;
     globalThis.fetch = vi.fn(async () => new Response(JSON.stringify(config))) as typeof fetch;
@@ -86,11 +86,13 @@ describe("Storefront Help Desk form", () => {
     new Function(script)();
     await vi.waitFor(() => expect(document.querySelector(".help-desk-gate")).toBeTruthy());
     expect(document.querySelector("form")).toBeNull();
-    expect(document.querySelector(".help-desk-gate strong")?.textContent).toBe("Sign in to get help");
+    expect(document.querySelector(".help-desk-gate strong")?.textContent).toBe("Need to send us a request?");
+    expect(document.querySelector(".help-desk-search-input")).toBeTruthy();
     const links = [...document.querySelectorAll<HTMLAnchorElement>(".help-desk-gate a")];
     expect(links.map((link) => link.textContent)).toEqual(["Sign in", "Create an account"]);
     expect(new URL(links[0].href).searchParams.get("return_url")).toBe("/pages/support");
-    expect(globalThis.fetch).not.toHaveBeenCalled();
+    // Only the help articles are loaded: no orders or requests for a guest.
+    expect(globalThis.fetch).toHaveBeenCalledTimes(1);
     // New customer accounts: their own sign-in, back here with return_to.
     document.body.innerHTML = page("").replace('data-login-url="/account/login"', 'data-login-url="/customer_authentication/redirect?locale=en&amp;region_country=US"');
     new Function(script)();
@@ -139,7 +141,7 @@ describe("Storefront Help Desk form", () => {
     const shown = () => [...document.querySelectorAll(".help-desk-section")].filter((section) => !(section as HTMLElement).hidden).map((section) => section.querySelector("h3")!.textContent);
     const progress = () => [...document.querySelectorAll(".help-desk-progress li")].map((item) => (item as HTMLElement).dataset.state);
     const card = (text: string) => [...document.querySelectorAll(".help-desk-tile")].find((tile) => tile.querySelector("strong")!.textContent === text) as HTMLButtonElement;
-    expect(shown()).toEqual(["How can we help?"]);
+    expect(shown()).toEqual(["Send us a request"]);
     expect(progress()).toEqual(["current", "", "", "", ""]);
     card("Shipping").click();
     expect(shown()).toEqual(["What do you need help with?"]);
@@ -163,7 +165,7 @@ describe("Storefront Help Desk form", () => {
     const sent = await submit(posts);
     expect(sent).toMatchObject({ subcategory: "Customs & Duties", name: "Jordan Lee" });
     // A new request starts again at step 1.
-    await vi.waitFor(() => expect(shown()).toEqual(["How can we help?"]));
+    await vi.waitFor(() => expect(shown()).toEqual(["Send us a request"]));
   });
 
   it("skips Your details for a signed-in customer: their account fills it in", async () => {
@@ -189,6 +191,86 @@ describe("Storefront Help Desk form", () => {
     expect(new URL(link.href).pathname).toBe("/account/login");
     expect(new URL(link.href).searchParams.get("return_url")).toBe("/pages/support");
     expect(labels()).toEqual(expect.arrayContaining(["Full name", "Email address"]));
+  });
+
+  describe("Help search above the form", () => {
+    const riser = { id: "a1", question: "A riser arrived broken or the pins snapped", answer: "Sorry about that.", keywords: "riser broken, pins broke", collection: "Damaged, Missing or Wrong Items", action: "Product Issues › Damaged or Defective", helpful: 3, source: "article", url: "", image: "" };
+    const refund = { id: "a2", question: "Where is my refund?", answer: "5-10 business days.", keywords: "refund status, money back", collection: "Returns & Exchanges", action: "", helpful: 1, source: "article", url: "", image: "" };
+    const policy = { id: "policy:REFUND_POLICY:0", question: "Refund policy: Restocking fee", answer: "Opened items carry a fee.", collection: "Store Policies", action: "", source: "policy", url: "https://zion.test/policies/refund-policy", image: "" };
+    async function mountSearch(path = "/pages/support", server: unknown[] = [policy]) {
+      history.replaceState(null, "", path);
+      document.body.innerHTML = `<div data-help-desk data-endpoint="/apps/help-desk"><div data-help-desk-status></div><div data-help-desk-form></div>
+        <script type="application/json" data-help-desk-customer>${JSON.stringify({ name: "Sandy Lee", email: "sandy@example.com", orders: [] })}</script></div>`;
+      const posts: Record<string, string>[] = [];
+      const searches: string[] = [];
+      globalThis.fetch = vi.fn(async (url: unknown, init?: RequestInit) => {
+        const target = new URL(String(url), location.origin);
+        if (init?.method === "POST") { posts.push(Object.fromEntries((init.body as FormData).entries()) as Record<string, string>); return new Response("{}"); }
+        if (target.searchParams.has("answers")) { searches.push(target.searchParams.get("answers")!); return new Response(JSON.stringify({ results: target.searchParams.get("answers") === "zzzz" ? [] : server })); }
+        return new Response(JSON.stringify({ ...config, articles: [riser, refund], collections: ["Orders & Delivery", "Damaged, Missing or Wrong Items", "Returns & Exchanges"] }));
+      }) as typeof fetch;
+      new Function(script)();
+      await vi.waitFor(() => expect(document.querySelector("form")).toBeTruthy());
+      const panel = document.querySelector(".help-desk-answers") as HTMLElement;
+      const input = panel.querySelector(".help-desk-search-input") as HTMLInputElement;
+      const type = (text: string) => { input.focus(); input.value = text; input.dispatchEvent(new Event("input")); };
+      return { panel, input, type, posts, searches };
+    }
+    const options = (panel: HTMLElement) => [...panel.querySelectorAll(".help-desk-suggest-option")].map((option) => option.querySelector(".help-desk-suggest-title")!.textContent);
+    afterEach(() => history.replaceState(null, "", "/pages/support"));
+
+    it("greets the customer above the form, with popular questions and no topic list", async () => {
+      const { panel } = await mountSearch();
+      expect(panel.compareDocumentPosition(document.querySelector("form")!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      expect(panel.querySelector(".help-desk-hero h3")?.textContent).toBe("Hi Sandy, how can we help?");
+      expect(panel.querySelector(".help-desk-hero p")).toBeNull();
+      expect(panel.querySelector(".help-desk-answer-list")?.childElementCount).toBe(0);
+      expect([...panel.querySelectorAll(".help-desk-popular button")].map((item) => item.textContent)).toEqual([riser.question, refund.question]);
+    });
+
+    it("suggests answers as the customer types, then adds the app's", async () => {
+      const { panel, input, type, searches } = await mountSearch();
+      // Straight away, from the articles already loaded: any word that starts one ("refun").
+      type("my refun");
+      expect(options(panel)).toEqual([refund.question]);
+      expect(input.getAttribute("aria-expanded")).toBe("true");
+      expect(panel.querySelector(".help-desk-suggest mark")?.textContent).toBe("refun");
+      // Then the app's answers, which also search the store's policies.
+      await vi.waitFor(() => expect(options(panel)).toEqual([policy.question, refund.question]));
+      expect(searches).toEqual(["my refun"]);
+      expect(panel.querySelectorAll(".help-desk-suggest-option small")[0]?.textContent).toBe("Store policy");
+      // Half the words are enough: "broken riser on arrival" still finds the riser article.
+      type("broken riser on arrival");
+      expect(options(panel)).toEqual([riser.question]);
+      // Arrow keys move through them; each opens on a page of its own.
+      input.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown" }));
+      const first = panel.querySelector(".help-desk-suggest-option") as HTMLElement;
+      expect(first.getAttribute("aria-selected")).toBe("true");
+      const href = new URL(first.dataset.href!, location.origin);
+      expect([href.pathname, href.searchParams.get("article"), href.searchParams.get("from"), href.searchParams.get("q")]).toEqual(["/apps/help-desk", "a1", "/pages/support", "broken riser on arrival"]);
+      input.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+      expect(input.getAttribute("aria-expanded")).toBe("false");
+    });
+
+    it("lists every answer on Enter, and records a search nothing answers", async () => {
+      const { panel, input, type, posts } = await mountSearch();
+      type("restocking");
+      await vi.waitFor(() => expect(options(panel)).toEqual([policy.question]));
+      input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter" }));
+      expect([...panel.querySelectorAll(".help-desk-answer-row strong")].map((item) => item.textContent)).toEqual([policy.question]);
+      type("zzzz");
+      await vi.waitFor(() => expect(panel.querySelector(".help-desk-suggest-empty")?.textContent).toMatch(/No answers for “zzzz” yet/));
+      await vi.waitFor(() => expect(posts).toContainEqual({ intent: "no-answer", question: "zzzz" }), { timeout: 3000 });
+    });
+
+    it("comes back from an answer's page to its request, or to a new search", async () => {
+      await mountSearch(`/pages/support?start=${encodeURIComponent("Product Issues › Damaged or Defective")}`);
+      expect((document.querySelector(".help-desk-answers") as HTMLElement).hidden).toBe(true);
+      expect(document.querySelector(".help-desk-chosen span")?.textContent).toBe("Product Issues › Damaged or Defective");
+      const { panel, searches } = await mountSearch("/pages/support?q=refund");
+      expect((panel.querySelector(".help-desk-search-input") as HTMLInputElement).value).toBe("refund");
+      await vi.waitFor(() => expect(searches).toEqual(["refund"]));
+    });
   });
 
   it("asks How can we help? with only the main topics, Orders first", async () => {

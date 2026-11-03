@@ -1031,3 +1031,111 @@
 .help-desk .help-desk-crumbs [aria-current] { color: var(--hd-text); font-weight: 650; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 260px; }
 .help-desk .help-desk-crumbs li:first-child button::before { content: "⌂"; margin-right: 6px; font-size: 14px; }
 @media (max-width: 600px) { .help-desk .help-desk-crumbs ol { border-radius: 12px; } }
+
+/* ---------- Help center: search answers before sending a request ---------- */
+.help-desk-answers { display: grid; gap: 22px; min-width: 0; margin-bottom: 40px; }
+.help-desk-answers[hidden] { display: none; }
+/* The hero: a navy band with the greeting, the search and popular questions. */
+.help-desk-hero {
+  position: relative; z-index: 2; display: grid; gap: 14px; padding: clamp(24px, 4vw, 44px);
+  border-radius: 20px; background: var(--hd-text); color: #fff;
+  background-image: radial-gradient(120% 140% at 100% 0%, color-mix(in srgb, var(--hd-accent) 38%, transparent) 0%, transparent 55%);
+}
+.help-desk .help-desk-hero h3 { margin: 0; color: #fff; font: inherit; font-size: clamp(24px, 2.6vw, 32px); font-weight: 700; letter-spacing: -.02em; line-height: 1.2; }
+.help-desk .help-desk-search {
+  position: relative; display: flex; align-items: center; gap: 12px; width: 100%; padding: 4px 6px 4px 18px;
+  border-radius: 14px; background: #fff; box-shadow: 0 14px 40px rgba(0, 0, 0, .25);
+}
+.help-desk .help-desk-search:focus-within { box-shadow: 0 0 0 4px color-mix(in srgb, var(--hd-accent) 45%, transparent), 0 14px 40px rgba(0, 0, 0, .25); }
+.help-desk-search-icon {
+  flex: none; width: 22px; height: 22px;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='22' height='22' fill='none' stroke='%2319213d' stroke-width='2.2' stroke-linecap='round'%3E%3Ccircle cx='9.5' cy='9.5' r='6.5'/%3E%3Cpath d='m14.5 14.5 5 5'/%3E%3C/svg%3E") center no-repeat;
+}
+/* Specific enough to win over the theme's own input styles. */
+.help-desk .help-desk-search input.help-desk-search-input {
+  flex: 1; width: auto; min-width: 0; height: auto; min-height: 56px; margin: 0; padding: 0 !important;
+  /* !important: themes style search inputs with their own border and box. */
+  border: 0 !important; border-radius: 0 !important; outline: none !important; background: transparent !important; box-shadow: none !important;
+  color: var(--hd-text); font: inherit; font-size: 17px; font-weight: 500; -webkit-appearance: none; appearance: none;
+}
+.help-desk .help-desk-search input.help-desk-search-input::placeholder { color: #8a90a0; opacity: 1; }
+.help-desk .help-desk-search input.help-desk-search-input:focus { outline: none; border: 0; box-shadow: none; }
+.help-desk .help-desk-search input.help-desk-search-input::-webkit-search-cancel-button { display: none; }
+.help-desk .help-desk-search button.help-desk-search-clear {
+  flex: none; display: grid; place-items: center; width: 40px; min-height: 40px; height: 40px; padding: 0; border-radius: 50%;
+  background: #f1f2f5; box-shadow: none; color: var(--hd-text); font-size: 20px; line-height: 1;
+}
+.help-desk .help-desk-search button.help-desk-search-clear[hidden] { display: none; }
+.help-desk .help-desk-search button.help-desk-search-clear::before { content: "\00d7"; }
+.help-desk .help-desk-search button.help-desk-search-clear:hover:not(:disabled) { background: #e5e7ec; box-shadow: none; transform: none; filter: none; }
+/* Popular questions, under the search. */
+.help-desk-popular { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.help-desk-popular > span { margin-right: 2px; color: rgba(255, 255, 255, .7); font-size: 13px; font-weight: 600; }
+.help-desk .help-desk-popular button {
+  min-height: 34px; padding: 6px 14px; border: 1px solid rgba(255, 255, 255, .28); border-radius: 999px;
+  background: rgba(255, 255, 255, .08); box-shadow: none; color: #fff; font-size: 13px; font-weight: 600; letter-spacing: 0; text-align: left;
+}
+.help-desk .help-desk-popular button:hover:not(:disabled) { border-color: #fff; background: rgba(255, 255, 255, .16); box-shadow: none; transform: none; filter: none; }
+
+/* Under the hero: help topics, results or the open answer. */
+.help-desk-answer-list { display: grid; gap: 10px; min-width: 0; transition: opacity .15s; }
+.help-desk-answer-list[data-loading] { opacity: .5; }
+.help-desk-answer-list:empty { display: none; }
+.help-desk-answer-list > div { display: grid; gap: 10px; min-width: 0; }
+.help-desk .help-desk-answer-heading { margin: 0; color: var(--hd-muted); font: inherit; font-size: 12px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
+.help-desk-answer-card { padding: 18px; border: 1px solid #e3e5ea; border-radius: 16px; background: #fff; }
+.help-desk button.help-desk-answer-row {
+  display: flex; align-items: center; gap: 14px; width: 100%; min-height: 0; padding: 14px 16px; border: 1px solid #e3e5ea; border-radius: 12px;
+  background: #fff; box-shadow: none; color: var(--hd-text); text-align: left; font-weight: 400; letter-spacing: 0; text-transform: none;
+}
+.help-desk button.help-desk-answer-row::after { content: "\203a"; margin-left: auto; padding-left: 8px; color: var(--hd-muted); font-size: 22px; line-height: 1; }
+.help-desk button.help-desk-answer-row:hover:not(:disabled) { border-color: var(--hd-accent); box-shadow: 0 4px 16px rgba(25, 33, 61, .08); transform: none; filter: none; }
+.help-desk-answer-row img { flex: none; width: 44px; height: 44px; border-radius: 8px; object-fit: cover; background: #f3f4f6; }
+.help-desk-answer-row-text { display: grid; gap: 3px; min-width: 0; }
+.help-desk-answer-row-text strong { font-size: 15px; font-weight: 650; }
+.help-desk-answer-row-text span { color: var(--hd-muted); font-size: 13px; line-height: 1.45; }
+.help-desk-answer-row-text small { color: var(--hd-accent); font-size: 12px; font-weight: 650; }
+.help-desk-answer-none { display: grid; gap: 4px; padding: 18px; border: 1px dashed #d4d7de; border-radius: 14px; background: #fff; color: var(--hd-muted); font-size: 14px; }
+.help-desk-answer-none strong { color: var(--hd-text); }
+@media (max-width: 639px) {
+  .help-desk-answers { margin-bottom: 28px; }
+  .help-desk-hero { border-radius: 16px; }
+  .help-desk .help-desk-search input.help-desk-search-input { font-size: 16px; min-height: 50px; }
+  .help-desk .help-desk-popular button { font-size: 12px; }
+}
+
+/* Suggestions under the search box, as the customer types. */
+.help-desk-search[data-loading] .help-desk-search-icon { animation: help-desk-pulse 1s ease-in-out infinite; }
+@keyframes help-desk-pulse { 50% { opacity: .35; } }
+.help-desk .help-desk-suggest {
+  position: absolute; top: calc(100% + 8px); left: 0; right: 0; z-index: 30; max-height: min(440px, 60vh); overflow-y: auto;
+  margin: 0; padding: 6px; list-style: none; border: 1px solid #e3e5ea; border-radius: 14px; background: #fff;
+  box-shadow: 0 18px 48px rgba(25, 33, 61, .22); color: var(--hd-text); text-align: left;
+}
+.help-desk .help-desk-suggest[hidden] { display: none; }
+.help-desk .help-desk-suggest li { margin: 0; }
+.help-desk .help-desk-suggest-option {
+  display: grid; grid-template-columns: 28px minmax(0, 1fr) auto; align-items: center; gap: 10px;
+  padding: 10px 12px; border-radius: 10px; cursor: pointer; font-size: 15px; line-height: 1.35;
+}
+.help-desk .help-desk-suggest-option:hover, .help-desk .help-desk-suggest [aria-selected=true] { background: color-mix(in srgb, var(--hd-accent) 7%, #fff); }
+.help-desk .help-desk-suggest-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.help-desk .help-desk-suggest mark { padding: 0; background: none; color: inherit; font-weight: 700; }
+.help-desk .help-desk-suggest-option small { color: var(--hd-muted); font-size: 12px; font-weight: 600; white-space: nowrap; }
+.help-desk-suggest-icon {
+  width: 28px; height: 28px; border-radius: 8px; background: #f1f2f5 center / 16px no-repeat;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='none' stroke='%2319213d' stroke-width='2' stroke-linecap='round'%3E%3Ccircle cx='7' cy='7' r='5'/%3E%3Cpath d='m11 11 3.5 3.5'/%3E%3C/svg%3E");
+}
+.help-desk-suggest-icon.help-desk-suggest-article { background-color: color-mix(in srgb, var(--hd-accent) 10%, #fff); }
+.help-desk-suggest-icon.help-desk-suggest-store { background-color: #e8f5ee; }
+.help-desk-suggest-icon.help-desk-suggest-product { background-color: #eef1fb; }
+.help-desk .help-desk-suggest-all {
+  margin-top: 4px; padding: 10px 12px; border-top: 1px solid #eceef2; border-radius: 0 0 10px 10px;
+  color: var(--hd-accent); font-size: 14px; font-weight: 650; cursor: pointer;
+}
+.help-desk .help-desk-suggest-all:hover { background: #f8f9fb; }
+.help-desk .help-desk-suggest-empty { padding: 12px; color: var(--hd-muted); font-size: 14px; }
+@media (max-width: 639px) {
+  .help-desk .help-desk-suggest-option { grid-template-columns: 24px minmax(0, 1fr); }
+  .help-desk .help-desk-suggest-option small { display: none; }
+}

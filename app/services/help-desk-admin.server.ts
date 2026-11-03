@@ -27,6 +27,9 @@ import { parseDays, readShippingSettings } from "./help-desk-shipping";
 import { listShipStationStores, shipStationAccount, shipStationStatus } from "./help-desk-shipstation.server";
 import { checkPlacesKey } from "./help-desk-places.server";
 import type { ShipStationStatus } from "./help-desk";
+import { deleteArticle, ensureArticles, forgetShopifyAnswers, listArticles, restoreStarterArticles, shopifySourcesStatus, unansweredSearches } from "./help-desk-articles.server";
+import { articleCollections, validAction } from "./help-desk-articles";
+import { ASSISTANT_COPY, MAX_ASSISTANT_COPY, readAssistantCopy, type AssistantCopyKey } from "./help-desk-assistant";
 
 // Server side of the Help Desk admin: one loader per screen (inbox, overview,
 // ticket, settings) and the action every screen posts to.
@@ -74,7 +77,7 @@ function setupStatus(settings: Context["settings"]) {
 }
 
 export async function loadSettings({ admin, shop, settings, staff, base }: Context) {
-  const [macros, store, shippingSetup, shipStationStores] = await Promise.all([
+  const [macros, store, shippingSetup, shipStationStores, articles, unanswered, answerSources] = await Promise.all([
     db.helpDeskMacro.findMany({ where: { shop }, orderBy: { createdAt: "asc" } }),
     loadShop(admin).catch(() => ({ name: "", email: "", url: "" })),
     loadShippingSetup(admin, shop),
@@ -82,8 +85,16 @@ export async function loadSettings({ admin, shop, settings, staff, base }: Conte
     settings.shipstationKey && settings.shipstationSecret
       ? memo(shipStationStoresKey(shop), 10 * MINUTE, () => listShipStationStores(settings.shipstationKey, settings.shipstationSecret).catch(() => undefined))
       : Promise.resolve(undefined),
+    // Help articles customers search on the storefront form, what they searched
+    // that nothing answered, and what's read from the store's policies, pages and products.
+    ensureArticles(db, shop).then(() => listArticles(db, shop)),
+    unansweredSearches(db, shop),
+    shopifySourcesStatus(db, admin, shop),
   ]);
   return data({
+    articles: articles.map(({ id, question, answer, keywords, collection, action, helpful, notHelpful, updatedAt }) => ({ id, question, answer, keywords, collection, action, helpful, notHelpful, updatedAt })),
+    unanswered, answerSources,
+    assistant: { enabled: settings.assistantEnabled, copy: readAssistantCopy(settings.assistantCopy) },
     ...base, macros: macros.map(({ id, title, body, category, subcategory }) => ({ id, title, body, category, subcategory })), storeEmail: store.email, staff,
     storefront: { apiKey: process.env.SHOPIFY_API_KEY || "", formLastSeenAt: settings.formLastSeenAt, hasPlacesKey: Boolean(settings.googlePlacesKey) },
     settings: { notify: settings.notify, notifyEmail: settings.notifyEmail, autoReply: settings.autoReply, statusEmails: settings.statusEmails, signature: settings.signature, team: settings.team },
@@ -149,7 +160,7 @@ export async function loadTicket({ admin, shop, settings, base, redirect }: Cont
   const { accessToken, details, id, number, name, email, topic, status, priority, assignee, tags, category, subcategory, rootCause, resolutionType, customerId, channel, createdAt, firstResponseAt, resolvedAt, allowPhotos, allowVideos, cancelStatus, cancelNote, cancelDecidedBy, cancelDecidedAt,
     addressStatus, addressNote, addressApplied, addressDecidedBy, addressDecidedAt, returnStatus, returnNote, returnLabelId, returnDecidedBy, returnDecidedAt, editStatus, editNote, editDecidedBy, editDecidedAt,
     replacementStatus, replacementNote, replacementCarrier, replacementTracking, replacementTrackingUrl, replacementDecidedBy, replacementDecidedAt, replacementKind, replacementSolution,
-    quoteStatus, quoteCarrier, quoteDelivery, quoteShipping, quoteTaxes, quoteNote, quoteDecidedBy, quoteDecidedAt, attachments, messages, emails } = ticket;
+    quoteStatus, quoteCarrier, quoteDelivery, quoteShipping, quoteTaxes, quoteNote, quoteDecidedBy, quoteDecidedAt, humanRequestedAt, attachments, messages, emails } = ticket;
   const files = attachments.map(({ scan, ...file }) => ({ ...file, scan: serializeScan(scan) }));
   // An open address change: has ShipStation bought a label for the old address? null: not asked.
   const account = shipStationAccount(settings);
@@ -164,7 +175,7 @@ export async function loadTicket({ admin, shop, settings, base, redirect }: Cont
     returnStatus, returnNote, returnLabelId, returnDecidedBy, returnDecidedAt,
     editStatus, editNote, editDecidedBy, editDecidedAt,
     replacementStatus, replacementNote, replacementCarrier, replacementTracking, replacementTrackingUrl, replacementDecidedBy, replacementDecidedAt, replacementKind, replacementSolution,
-    quoteStatus, quoteCarrier, quoteDelivery, quoteShipping, quoteTaxes, quoteNote, quoteDecidedBy, quoteDecidedAt,
+    quoteStatus, quoteCarrier, quoteDelivery, quoteShipping, quoteTaxes, quoteNote, quoteDecidedBy, quoteDecidedAt, humanRequestedAt,
   };
   return data({
     ...base, macros, others, orders, storeName: store.name || shop,
@@ -214,7 +225,7 @@ export async function loadInbox({ shop, settings, base }: Context, url: URL) {
     db.helpDeskTicket.findMany({
       where, orderBy, skip: (page - 1) * PAGE_SIZE, take: PAGE_SIZE,
       select: {
-        id: true, number: true, name: true, email: true, topic: true, status: true, priority: true, assignee: true, tags: true, unread: true, channel: true, cancelStatus: true, addressStatus: true, returnStatus: true, editStatus: true, replacementStatus: true, replacementKind: true, quoteStatus: true,
+        id: true, number: true, name: true, email: true, topic: true, status: true, priority: true, assignee: true, tags: true, unread: true, channel: true, humanRequestedAt: true, cancelStatus: true, addressStatus: true, returnStatus: true, editStatus: true, replacementStatus: true, replacementKind: true, quoteStatus: true,
         category: true, subcategory: true, orderName: true, carrier: true, shipmentStatus: true, createdAt: true, lastActivityAt: true, firstResponseAt: true, details: true, _count: { select: { attachments: true, messages: { where: { kind: "customer" } } } },
       },
     }),
@@ -520,6 +531,53 @@ export const helpDeskAction = async ({ request }: ActionFunctionArgs) => {
         if (!count) return fail("This staff member is no longer listed.");
         return data<ActionResult>({ errors: {} });
       }
+      case "article-save": {
+        const question = text("question").trim();
+        const answer = text("answer").trim();
+        const errors: Record<string, string> = {};
+        if (!question || question.length > 200) errors.question = "Enter the question, up to 200 characters.";
+        if (!answer || answer.length > 5000) errors.answer = "Enter the answer, up to 5,000 characters.";
+        if (text("keywords").length > 1000) errors.keywords = "Use no more than 1,000 characters.";
+        if (Object.keys(errors).length) return data<ActionResult>({ errors }, { status: 400 });
+        const values = {
+          question, answer, keywords: text("keywords").split(",").map((word) => word.trim()).filter(Boolean).join(", "),
+          collection: (articleCollections as readonly string[]).includes(text("collection")) ? text("collection") : "",
+          action: validAction(text("action")) ? text("action") : "",
+        };
+        if (text("id")) {
+          const { count } = await db.helpDeskFaq.updateMany({ where: { id: text("id"), shop }, data: { ...values, edited: true } });
+          if (!count) return fail("This article no longer exists.");
+        } else if (await db.helpDeskFaq.count({ where: { shop } }) >= 300) {
+          return fail("You can have up to 300 help articles.");
+        } else await db.helpDeskFaq.create({ data: { shop, ...values } });
+        return data<ActionResult>({ errors: {} });
+      }
+      // A deleted starter article is remembered, so it isn't added back.
+      // The request page's chat assistant: on or off, and its wording (blank: the default).
+      case "assistant-settings": {
+        const copy: Partial<Record<AssistantCopyKey, string>> = {};
+        for (const key of Object.keys(ASSISTANT_COPY) as AssistantCopyKey[]) {
+          const value = text(key).trim();
+          if (value.length > MAX_ASSISTANT_COPY) return fail(`Use no more than ${MAX_ASSISTANT_COPY} characters.`, 400, key);
+          if (value && value !== ASSISTANT_COPY[key]) copy[key] = value;
+        }
+        await db.helpDeskSettings.upsert({
+          where: { shop }, update: { assistantEnabled: text("enabled") === "true", assistantCopy: JSON.stringify(copy) },
+          create: { shop, assistantEnabled: text("enabled") === "true", assistantCopy: JSON.stringify(copy) },
+        });
+        return data<ActionResult>({ errors: {} });
+      }
+      case "article-delete":
+        await deleteArticle(db, shop, text("id"));
+        return data<ActionResult>({ errors: {} });
+      case "article-restore": {
+        const added = await restoreStarterArticles(db, shop);
+        return data<ActionResult>({ errors: {}, updated: added, notice: added ? `${added} starter article${added === 1 ? "" : "s"} added back` : "Every starter article is already in your list" });
+      }
+      // Read the store's policies, pages and products again now, rather than within 30 minutes.
+      case "answers-refresh":
+        forgetShopifyAnswers(shop);
+        return data<ActionResult>({ errors: {} });
       case "macro-delete":
         await db.helpDeskMacro.deleteMany({ where: { id: text("id"), shop } });
         return data<ActionResult>({ errors: {} });

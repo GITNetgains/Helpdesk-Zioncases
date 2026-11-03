@@ -1,5 +1,5 @@
-import { useEffect, useRef } from "react";
-import { useRevalidator, useSearchParams } from "react-router";
+import { useEffect, useRef, useState } from "react";
+import { useLocation, useNavigate, useRevalidator, useSearchParams } from "react-router";
 import { useAppBridge } from "@shopify/app-bridge-react";
 import SectionNavigation from "../SectionNavigation";
 import { since, type ChecklistItem } from "../HelpDeskUi";
@@ -8,11 +8,125 @@ import type { ActionResult } from "../../services/help-desk-admin.server";
 // Pieces every Help Desk admin screen uses.
 
 export function HelpDeskNavigation({ current }: { current: "tickets" | "overview" | "settings" }) {
-  return <SectionNavigation label="Help Desk sections" current={current} items={[
-    { id: "tickets", label: "Inbox", href: "/app/help-desk" },
-    { id: "overview", label: "Overview & setup", href: "/app/help-desk/overview" },
-    { id: "settings", label: "Settings", href: "/app/help-desk/settings" },
-  ]} />;
+  const [params] = useSearchParams();
+  // In the full screen window, its own links stay full screen.
+  const full = params.get("fullscreen") === "1";
+  const href = (path: string) => full ? `${path}?fullscreen=1` : path;
+  return <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+    <div style={{ flex: 1, minWidth: 0 }}>
+      <SectionNavigation label="Help Desk sections" current={current} items={[
+        { id: "tickets", label: "Inbox", href: href("/app/help-desk") },
+        { id: "overview", label: "Overview & setup", href: href("/app/help-desk/overview") },
+        { id: "settings", label: "Settings", href: href("/app/help-desk/settings") },
+      ]} />
+    </div>
+    <WaitingBell />
+    {!full && <FullScreenButton />}
+  </div>;
+}
+
+// Opens this screen in a window over the whole Shopify admin, its menu
+// included (App Bridge's app window, with Shopify's own bar to close it).
+function FullScreenButton() {
+  const location = useLocation();
+  const params = new URLSearchParams(location.search);
+  params.set("fullscreen", "1");
+  return <>
+    <s-app-window id="help-desk-full-screen" src={`${location.pathname}?${params}`}></s-app-window>
+    <s-button icon="maximize" variant="secondary" command="--show" commandFor="help-desk-full-screen" accessibilityLabel="Open the Help Desk in full screen">Full screen</s-button>
+  </>;
+}
+
+type Waiting = { id: string; number: number; name: string; topic: string; humanRequestedAt: string };
+
+// The bell: customers waiting to talk to a person, after the chat assistant on
+// their request page passed them to the team. Checked every 10 seconds; a new
+// one also shows a toast. Opens a list of them, with a link to all of them.
+export function WaitingBell() {
+  const shopify = useAppBridge();
+  const navigate = useNavigate();
+  const [state, setState] = useState<{ count: number; waiting: Waiting[] }>({ count: 0, waiting: [] });
+  const [open, setOpen] = useState(false);
+  const seen = useRef<Set<string> | null>(null);
+  const box = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    let stopped = false;
+    const check = async () => {
+      if (document.visibilityState !== "visible") return;
+      try {
+        const response = await fetch("/app/help-desk-pulse?waiting=1", { headers: { Accept: "application/json" }, cache: "no-store" });
+        if (!response.ok || stopped) return;
+        const next = await response.json() as { count: number; waiting: Waiting[] };
+        // A customer who wasn't waiting at the last check: let the team know.
+        if (seen.current) for (const entry of next.waiting) if (!seen.current.has(entry.id)) shopify.toast.show(`${entry.name} wants to talk to a person (#${entry.number})`);
+        seen.current = new Set(next.waiting.map((entry) => entry.id));
+        setState(next);
+      } catch {
+        // Offline or restarting: the next check tries again.
+      }
+    };
+    void check();
+    const timer = setInterval(check, 10_000);
+    return () => { stopped = true; clearInterval(timer); };
+  }, [shopify]);
+  useEffect(() => {
+    if (!open) return;
+    const close = (event: MouseEvent) => { if (!box.current?.contains(event.target as Node)) setOpen(false); };
+    const escape = (event: KeyboardEvent) => { if (event.key === "Escape") setOpen(false); };
+    document.addEventListener("mousedown", close);
+    document.addEventListener("keydown", escape);
+    return () => { document.removeEventListener("mousedown", close); document.removeEventListener("keydown", escape); };
+  }, [open]);
+  const { count, waiting } = state;
+  return <div ref={box} style={{ position: "relative", flex: "none" }}>
+    <button type="button" aria-haspopup="true" aria-expanded={open} onClick={() => setOpen(!open)}
+      aria-label={count ? `${count} customer${count === 1 ? "" : "s"} waiting to talk to a person` : "No customers waiting for a person"}
+      title={count ? `${count} waiting for a person` : "No one waiting for a person"}
+      style={{
+        position: "relative", display: "grid", placeItems: "center", width: 40, height: 40, padding: 0, borderRadius: 12, cursor: "pointer",
+        border: `1px solid ${count ? "#F3B4AA" : "#E3E3E3"}`, background: count ? "#FFF1EE" : "#fff", color: count ? "#C4320A" : "#4A4F5C",
+      }}>
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9" /><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" />
+      </svg>
+      {count > 0 && <span aria-hidden="true" style={{
+        position: "absolute", top: -6, right: -6, minWidth: 20, height: 20, padding: "0 5px", borderRadius: 10, background: "#D92D20", color: "#fff",
+        fontSize: 11, fontWeight: 700, lineHeight: "20px", textAlign: "center", boxShadow: "0 0 0 2px #fff",
+      }}>{count > 99 ? "99+" : count}</span>}
+    </button>
+    {open && <div role="dialog" aria-label="Customers waiting for a person" style={{
+      position: "absolute", right: 0, top: 48, zIndex: 50, width: 340, maxWidth: "calc(100vw - 32px)", border: "1px solid #E3E3E3", borderRadius: 14,
+      background: "#fff", boxShadow: "0 18px 48px rgba(23,35,81,.18)", overflow: "hidden",
+    }}>
+      <div style={{ padding: "14px 16px", borderBottom: "1px solid #EEF0F3" }}>
+        <div style={{ fontWeight: 650, fontSize: 14, color: "#172351" }}>Waiting for a person</div>
+        <div style={{ fontSize: 12.5, color: "#667085" }}>The chat assistant couldn&apos;t help, or they asked for your team.</div>
+      </div>
+      {waiting.length === 0
+        ? <div style={{ padding: "22px 16px", fontSize: 13, color: "#667085", textAlign: "center" }}>No one is waiting. You&apos;re all caught up.</div>
+        : <ul style={{ listStyle: "none", margin: 0, padding: 6, maxHeight: 320, overflowY: "auto" }}>
+          {waiting.map((entry) => <li key={entry.id}>
+            <button type="button" onClick={() => { setOpen(false); navigate(ticketHref(entry.id)); }} style={{
+              display: "flex", alignItems: "center", gap: 10, width: "100%", padding: "10px", border: 0, borderRadius: 10, background: "transparent",
+              cursor: "pointer", textAlign: "left", font: "inherit",
+            }} onMouseEnter={(event) => { event.currentTarget.style.background = "#F6F7F9"; }} onMouseLeave={(event) => { event.currentTarget.style.background = "transparent"; }}>
+              <span aria-hidden="true" style={{ display: "grid", placeItems: "center", width: 32, height: 32, borderRadius: "50%", background: "#FFF1EE", color: "#C4320A", fontSize: 12, fontWeight: 700, flex: "none" }}>
+                {entry.name.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]?.toUpperCase()).join("") || "?"}
+              </span>
+              <span style={{ minWidth: 0, flex: 1 }}>
+                <span style={{ display: "block", fontSize: 13.5, fontWeight: 600, color: "#172351", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{entry.name} · #{entry.number}</span>
+                <span style={{ display: "block", fontSize: 12.5, color: "#667085", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{entry.topic}</span>
+              </span>
+              <span style={{ fontSize: 12, color: "#98A2B3", flex: "none" }}>{ago(entry.humanRequestedAt)}</span>
+            </button>
+          </li>)}
+        </ul>}
+      <button type="button" onClick={() => { setOpen(false); navigate(inboxHref({ view: "human" })); }} style={{
+        display: "block", width: "100%", padding: "12px 16px", border: 0, borderTop: "1px solid #EEF0F3", background: "#F9FAFB", color: "#2B449E",
+        fontWeight: 600, fontSize: 13.5, cursor: "pointer", font: "inherit", textAlign: "center",
+      }}>{count > waiting.length ? `Show all ${count}` : "Show them in the inbox"}</button>
+    </div>}
+  </div>;
 }
 
 const STATUS_TONE = { Open: "warning", "In progress": "info", "Waiting on customer": "caution", Resolved: "success" } as const;

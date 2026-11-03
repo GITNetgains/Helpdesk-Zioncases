@@ -31,6 +31,9 @@ model HelpDeskTicket {
   assignee    String @default("")
   // Comma-separated.
   tags        String @default("")
+  // When the customer asked the request page's assistant for a person (or it
+  // couldn't answer them). From then on the assistant leaves the chat to the team.
+  humanRequestedAt DateTime?
   // Internal classification (app/services/help-desk-taxonomy.ts), set
   // automatically on arrival and corrected by agents. Empty means not set.
   category       String @default("")
@@ -142,6 +145,7 @@ model HelpDeskTicket {
   @@index([shop, editStatus])
   @@index([shop, replacementStatus])
   @@index([shop, quoteStatus])
+  @@index([shop, humanRequestedAt])
 }
 
 // Conversation after the original request. kind: customer (portal reply),
@@ -159,7 +163,8 @@ model HelpDeskMessage {
   @@index([ticketId, createdAt])
 }
 
-// Chat widget knowledge base: the bot answers with the best-matching entry.
+// Help articles: answers customers find by searching the storefront form
+// (app/services/help-desk-articles.ts). The starter set is added once per store.
 model HelpDeskFaq {
   id        String   @id @default(cuid())
   shop      String
@@ -167,12 +172,27 @@ model HelpDeskFaq {
   // Comma-separated words and phrases customers might use.
   keywords  String   @default("")
   answer    String
+  // One of articleCollections, to browse by.
+  collection String  @default("")
+  // The storefront form's flow the article's button opens ("Orders › Track Order"), or "".
+  action    String   @default("")
+  // A starter article's lasting name (help-desk-articles.server.ts), "" for the store's own.
+  starterKey String  @default("")
+  // Saved by the team in Settings: a starter article is then theirs, never updated by the app.
+  edited     Boolean @default(false)
+  // "Did this answer your question?" votes.
+  helpful    Int     @default(0)
+  notHelpful Int     @default(0)
   createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
 
   @@index([shop])
+  @@index([shop, starterKey])
 }
 
-// Questions asked to the chat bot. result: faq, order, none or escalated.
+// What customers searched for in the help articles. result: faq (an article
+// was opened), shopify (a store policy, page or product), none (nothing
+// matched), or the old chat bot's order and escalated.
 model HelpDeskBotQuestion {
   id        String   @id @default(cuid())
   shop      String
@@ -302,6 +322,12 @@ model HelpDeskSettings {
   chatGreeting String  @default("")
   // Starter FAQs are added once, so deleting them sticks.
   faqsSeeded   Boolean @default(false)
+  // Starter help articles the store deleted (comma-separated keys), so they aren't added back.
+  dismissedArticles String @default("")
+  // The request page's chat assistant: on or off, and the store's own wording
+  // for its messages (JSON, see help-desk-assistant.ts); blank uses the defaults.
+  assistantEnabled Boolean @default(true)
+  assistantCopy    String  @default("")
   // AI photo check. Mode: always (detector for every photo layers 1-4 can't
   // settle), suspicious (skips clear camera originals) or manual. Detector
   // credentials are the store's own; they're never sent back to the browser.

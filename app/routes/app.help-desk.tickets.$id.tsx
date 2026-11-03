@@ -1496,6 +1496,9 @@ function TicketDetail({ screen }: { screen: TicketData }) {
     {link && <s-button slot="secondary-actions" icon="external" href={link} target="_blank">Customer&apos;s request page</s-button>}
 
     <style>{LAYOUT_CSS}</style>
+    {ticket.humanRequestedAt && !resolved && <s-banner tone="critical" heading={`${ticket.name} is waiting to talk to a person`}>
+      The assistant on their request page handed this chat to your team {ago(ticket.humanRequestedAt)}. It stays quiet until you reply.
+    </s-banner>}
     <div className="hd-ticket">
     <div className="hd-ticket-main">
     {/* One chat window, like a messaging app: who and where it stands, the conversation, then the reply box. */}

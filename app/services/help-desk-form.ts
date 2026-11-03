@@ -138,7 +138,7 @@ const formOptions: FormOption[] = [
   question("Buy Replacement Parts", "Warranty", "Buy a replacement part", "Which part, and for which product?"),
   question("Warranty Claim Status", "Warranty", "Claim status", "Please include your order number and claim details."),
   question("PSA Slab Fit", "Product Compatibility", "PSA slab fit", "Which product are you considering?"),
-  question("BGS Slab Fit", "Product Compatibility", "BGS slab fit", "Which product are you considering?"),
+  question("BGS Slab Fit", "Product Compatibility", "BGS slab fit", "Which prodct are you considering?"),
   question("CGC Slab Fit", "Product Compatibility", "CGC slab fit", "Which product are you considering?"),
   question("SGC or TAG Slab Fit", "Product Compatibility", "SGC or TAG slab fit", "Which product are you considering?"),
   question("Graded Guard Fit", "Product Compatibility", "Graded guards fit", "Which product are you considering?"),

@@ -117,11 +117,25 @@ const STYLES = `<style>
 .hdt-drop input{position:absolute;inset:0;opacity:0;cursor:pointer}
 .hdt-drop i{flex:none;display:grid;place-items:center;width:36px;height:36px;border-radius:10px;background:var(--soft);font-style:normal;font-size:18px}
 .hdt-drop strong{display:block;font-size:14px}.hdt-drop small{color:var(--muted);font-size:12px}
-.hdt-actions{display:flex;justify-content:flex-end;margin-top:14px}
+.hdt-actions{display:flex;flex-wrap:wrap;align-items:center;justify-content:flex-end;gap:10px;margin-top:14px}
+.hdt .hdt-person{background:#fff;color:var(--ink);border:1px solid #c9ccd5;box-shadow:none}
+.hdt .hdt-person:hover{border-color:var(--ink)}
+.hdt-waiting{margin-right:auto;color:var(--muted);font-size:13.5px}
 .hdt button{min-width:170px;margin:0;padding:14px 28px;border:0;border-radius:6px;background:var(--accent);color:#fff;font:inherit;font-weight:600;letter-spacing:.02em;text-transform:none;cursor:pointer;box-shadow:0 4px 5px rgba(0,0,0,.2);transition:transform .15s ease,background-color .15s ease,box-shadow .15s ease}
 .hdt button:hover{background:var(--accent-dark);transform:translateY(-1px);box-shadow:0 8px 16px rgba(239,58,36,.28)}
 .hdt button:focus-visible{outline:3px solid rgba(239,58,36,.45);outline-offset:2px}
-.hdt-aside{display:grid;gap:22px;position:sticky;top:24px}
+.hdt-aside{display:grid;gap:22px}
+/* The chat stays in view, pinned under the store's header, while the page and its details scroll; only the messages scroll inside it. */
+.hdt-chatbox{position:sticky;top:var(--hdt-top,16px);display:flex;flex-direction:column;height:calc(100vh - var(--hdt-top,16px) - 16px);height:calc(100dvh - var(--hdt-top,16px) - 16px);min-height:460px;max-height:900px}
+.hdt-chatbox .hdt-thread{flex:1;min-height:0;max-height:none}
+.hdt-chatbox .hdt-foot{flex:none}
+.hdt-compose{display:flex;align-items:flex-end;gap:10px;margin-top:6px}
+.hdt .hdt-compose textarea{flex:1;min-height:50px;max-height:160px;padding:13px 18px;border-radius:25px;resize:none;line-height:1.45;overflow-y:auto}
+.hdt .hdt-send{flex:none;display:grid;place-items:center;width:50px;min-width:0;height:50px;padding:0;border-radius:50%}
+.hdt .hdt-send svg{width:21px;height:21px;margin-left:-2px}
+.hdt .hdt-person{min-width:0;padding:9px 16px;font-size:13.5px}
+.hdt-hint{margin-left:auto;color:#8f9bc2;font-size:12px}
+.hdt-chatbox .hdt-actions{justify-content:flex-start;margin-top:10px}
 .hdt dl{display:grid}
 .hdt dl div{display:flex;justify-content:space-between;gap:16px;padding:11px 0;border-bottom:1px solid var(--line)}
 .hdt dl div:last-child{border-bottom:0;padding-bottom:0}
@@ -150,8 +164,8 @@ const STYLES = `<style>
 .hdt-cancel blockquote{margin:12px 0 0;padding:12px 14px;border-radius:12px;background:var(--soft);font-size:14px;overflow-wrap:anywhere}
 .hdt-lookup{max-width:500px;margin:0 auto}
 .hdt-lookup form{display:grid;gap:14px;margin-top:20px}
-@media (max-width:880px){.hdt-layout{grid-template-columns:minmax(0,1fr)}.hdt-aside{position:static}}
-@media (max-width:560px){.hdt-steps li{font-size:11px}.hdt button{width:100%}.hdt-actions{display:block}.hdt-body{max-width:90%}}
+@media (max-width:880px){.hdt-layout{grid-template-columns:minmax(0,1fr)}.hdt-chatbox{position:static;height:auto;min-height:0;max-height:none}.hdt-chatbox .hdt-thread{max-height:min(64vh,640px)}}
+@media (max-width:560px){.hdt-steps li{font-size:11px}.hdt button{width:100%}.hdt .hdt-send{width:50px}.hdt-actions{display:block}.hdt-hint{display:none}.hdt-body{max-width:90%}}
 .hdt-toast{position:fixed;left:50%;bottom:24px;z-index:9999;transform:translateX(-50%);padding:12px 20px;border-radius:999px;background:#172351;color:#fff;font-size:14px;font-weight:600;box-shadow:0 10px 30px rgba(23,35,81,.3);transition:opacity .4s ease,transform .4s ease}
 .hdt-toast[data-hide]{opacity:0;transform:translate(-50%,10px)}
 .hdt-msg[data-fresh] .hdt-body{animation:hdt-fresh 2.4s ease}
@@ -306,14 +320,19 @@ const SCRIPT = `<script>
     form.addEventListener('submit', function (event) {
       event.preventDefault();
       var foot = form.closest('.hdt-foot');
-      var button = form.querySelector('button[type=submit]');
-      var label = button.textContent;
-      button.disabled = true;
-      button.textContent = 'Sending...';
+      // The button pressed: Send, or Talk to a person (sent along as person=1).
+      var button = event.submitter || form.querySelector('.hdt-send');
+      var body = new FormData(form);
+      if (button && button.name) body.set(button.name, button.value);
+      var text = form.querySelector('textarea');
+      // Nothing written or attached: nothing to send.
+      if (!(button && button.name) && !typing()) { if (text) text.focus(); return; }
+      var buttons = form.querySelectorAll('button[type=submit]');
+      buttons.forEach(function (each) { each.disabled = true; });
+      form.setAttribute('aria-busy', 'true');
       // The message appears in the chat at once, marked as sending, and is
       // swapped for the saved one when the server answers.
       var thread = root.querySelector('.hdt-thread');
-      var text = form.querySelector('textarea');
       var pending = null;
       if (thread && text && text.value.trim()) {
         pending = document.createElement('div');
@@ -336,7 +355,7 @@ const SCRIPT = `<script>
         thread.append(pending);
         toBottom(true);
       }
-      fetch(form.action, { method: 'POST', body: new FormData(form), headers: { Accept: 'application/json' }, credentials: 'same-origin' })
+      fetch(form.action, { method: 'POST', body: body, headers: { Accept: 'application/json' }, credentials: 'same-origin' })
         .then(function (response) {
           return response.text().then(function (text) {
             var data = null;
@@ -353,14 +372,49 @@ const SCRIPT = `<script>
           }
           form.reset();
           return refresh(false).then(function () {
-            var current = root.querySelector('.hdt-foot');
-            if (current) note(current, 'success', 'Thanks, your message has been sent to our team.');
+            var box = root.querySelector('.hdt-foot textarea');
+            if (box) box.focus({ preventScroll: true });
           });
         })
         .catch(function () { if (pending) pending.remove(); note(foot, 'error', 'Your message could not be sent. Check your connection and try again.'); })
-        .then(function () { button.disabled = false; button.textContent = label; });
+        .then(function () { buttons.forEach(function (each) { each.disabled = false; }); form.removeAttribute('aria-busy'); });
     });
   }
+
+  // Enter sends, Shift + Enter starts a new line; the box grows with the message.
+  function grow(box) {
+    box.style.height = 'auto';
+    box.style.height = Math.min(box.scrollHeight + 2, 160) + 'px';
+  }
+  if (root) {
+    root.addEventListener('keydown', function (event) {
+      var box = event.target;
+      if (!box.matches || !box.matches('.hdt-foot textarea')) return;
+      if (event.key !== 'Enter' || event.shiftKey || event.isComposing) return;
+      event.preventDefault();
+      var form = box.form;
+      var send = form && form.querySelector('.hdt-send');
+      if (send && !send.disabled) form.requestSubmit(send);
+    });
+    root.addEventListener('input', function (event) {
+      if (event.target.matches && event.target.matches('.hdt-foot textarea')) grow(event.target);
+    });
+  }
+
+  // Pinned under the store's header when the theme keeps it on screen.
+  function pinUnderHeader() {
+    if (!root) return;
+    var top = 16;
+    document.querySelectorAll('header, .header, .site-header, sticky-header, .shopify-section-header, .section-header').forEach(function (node) {
+      var style = getComputedStyle(node);
+      var rect = node.getBoundingClientRect();
+      if ((style.position === 'fixed' || style.position === 'sticky') && rect.top <= 1 && rect.bottom > 0 && rect.height < window.innerHeight / 3) top = Math.max(top, Math.round(rect.bottom) + 12);
+    });
+    root.style.setProperty('--hdt-top', top + 'px');
+  }
+  pinUnderHeader();
+  window.addEventListener('resize', pinUnderHeader);
+  window.addEventListener('scroll', function () { if (!pinUnderHeader.queued) { pinUnderHeader.queued = true; requestAnimationFrame(function () { pinUnderHeader.queued = false; pinUnderHeader(); }); } }, { passive: true });
 
   enhance(document.querySelector('.hdt') || document);
   toBottom(false);
@@ -404,6 +458,8 @@ export type RequestPageTicket = {
   number: number; topic: string; status: string; channel: string; createdAt: Date; accessToken: string; details: string;
   // Staff turned on photo uploads for this request.
   allowPhotos?: boolean;
+  // When the customer was passed to the team by the chat assistant, until someone replies.
+  humanRequestedAt?: Date | null;
   // ...and a video.
   allowVideos?: boolean;
   // An order cancellation request: Pending, Approved, Rejected or Cancelled, and what the team said.
@@ -643,12 +699,15 @@ ${productList("Received", extras.receivedProducts)}${productList(wrongItem ? "Wa
   const foot = extras.canReply ? `<div class="hdt-foot" id="reply">${note(state)}
 <form method="post" action="?ticket=${escape(ticket.accessToken)}#reply" enctype="multipart/form-data">
 <input type="hidden" name="intent" value="reply"><input type="hidden" name="token" value="${escape(ticket.accessToken)}">
-<label>Reply to our team<textarea name="body" maxlength="${extras.maxLength}" placeholder="Write your reply...">${escape(state.draft ?? "")}</textarea></label>
+<label for="hdt-body">${ticket.status === "Waiting on customer" ? "Reply to our team" : "Ask a question or add a message"}</label>
+<div class="hdt-compose"><textarea id="hdt-body" name="body" rows="1" maxlength="${extras.maxLength}" enterkeyhint="send" placeholder="${ticket.status === "Waiting on customer" ? "Write your reply..." : "For example: how long does a refund take?"}">${escape(state.draft ?? "")}</textarea>
+<button type="submit" class="hdt-send" aria-label="Send" title="Send"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4z"/></svg></button></div>
 ${ticket.allowPhotos ? `<label class="hdt-drop"><i aria-hidden="true">📷</i><span><strong>Add photos</strong><small>Optional · JPG, PNG or WebP · up to ${extras.maxImages}, 10 MB each</small></span>
 <input type="file" name="images" accept="image/jpeg,image/png,image/webp" multiple aria-label="Add photos"></label>` : ""}
 ${ticket.allowVideos ? `<label class="hdt-drop"><i aria-hidden="true">🎥</i><span><strong>Add a video</strong><small>Optional · any video format · 1 video, up to 50 MB</small></span>
 <input type="file" name="videos" accept="video/*,${VIDEO_EXTENSIONS.map((extension) => `.${extension}`).join(",")}" aria-label="Add a video"></label>` : ""}
-<div class="hdt-actions"><button type="submit">Send reply</button></div>
+<div class="hdt-actions">${ticket.humanRequestedAt ? `<p class="hdt-waiting" role="status">Our team has been told you'd like to talk to a person. Someone will reply here soon.</p>`
+    : `<button type="submit" name="person" value="1" class="hdt-person" formnovalidate>Talk to a person</button>`}<span class="hdt-hint">Enter to send · Shift + Enter for a new line</span></div>
 </form></div>`
     : `<div class="hdt-foot" id="reply">${note(state)}<div class="hdt-wait"><i aria-hidden="true">${resolved ? "✅" : "⏳"}</i><div>
 <strong>${resolved ? "This request is closed" : "Our team will reply soon"}</strong>
@@ -672,9 +731,9 @@ ${ticket.allowVideos ? `<label class="hdt-drop"><i aria-hidden="true">🎥</i><s
 <ol class="hdt-steps" aria-label="Request progress">${steps}</ol>
 </div>
 <div class="hdt-layout">
-<div class="hdt-card">
+<div class="hdt-card hdt-chatbox">
 <div class="hdt-chat-head"${resolved ? " data-closed" : ""}><span class="hdt-chat-avatar" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></span>
-<div><h2>Chat with our support team</h2><p><i class="hdt-live" aria-hidden="true"></i>${resolved ? "This chat is closed" : extras.canReply ? "We've replied: it's your turn" : "Our team replies here · updates live"}</p></div>
+<div><h2>Chat with our support team</h2><p><i class="hdt-live" aria-hidden="true"></i>${resolved ? "This chat is closed" : ticket.status === "Waiting on customer" ? "We've replied: it's your turn" : "Ask anything: our assistant answers straight away, and our team replies here"}</p></div>
 <span class="hdt-count">${count} message${count === 1 ? "" : "s"}</span></div>
 <div class="hdt-thread">${thread}</div>
 ${foot}

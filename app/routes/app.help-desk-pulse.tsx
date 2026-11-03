@@ -11,6 +11,16 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const ticketId = new URL(request.url).searchParams.get("ticket");
   const headers = { "Cache-Control": "private, no-store" };
 
+  // The notification bell: customers the chat assistant passed to the team, newest first.
+  if (new URL(request.url).searchParams.get("waiting")) {
+    const where = { shop, status: { not: "Resolved" }, humanRequestedAt: { not: null } };
+    const [count, waiting] = await Promise.all([
+      db.helpDeskTicket.count({ where }),
+      db.helpDeskTicket.findMany({ where, orderBy: { humanRequestedAt: "desc" }, take: 8, select: { id: true, number: true, name: true, topic: true, humanRequestedAt: true } }),
+    ]);
+    return Response.json({ count, waiting }, { headers });
+  }
+
   if (ticketId) {
     // Not the ticket's updatedAt: opening the ticket marks it read (and syncs its
     // order), which would change the stamp and reload the page over and over.

@@ -77,15 +77,15 @@ function BulkBar({ ids, team, onDone }: { ids: string[]; team: string[]; onDone:
 }
 
 // Views as tabs with a count each; the first four are what a team works in daily.
-const VIEW_ORDER: View[] = ["open", "waiting", "resolved", "all", "unassigned", "urgent", "flagged"];
+const VIEW_ORDER: View[] = ["open", "human", "waiting", "resolved", "all", "unassigned", "urgent", "flagged"];
 
 function ViewTabs({ current, counts, onSelect }: { current: View; counts: Record<View, number>; onSelect: (view: View) => void }) {
   return <div role="tablist" aria-label="Ticket views" style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
     {VIEW_ORDER.map((key, index) => {
       const active = current === key;
-      const alert = (key === "open" || key === "flagged") && counts[key] > 0;
+      const alert = (key === "open" || key === "human" || key === "flagged") && counts[key] > 0;
       return <span key={key} style={{ display: "contents" }}>
-        {index === 4 && <span aria-hidden="true" style={{ width: 1, alignSelf: "stretch", margin: "4px 4px", background: "#E3E3E3" }} />}
+        {index === 5 && <span aria-hidden="true" style={{ width: 1, alignSelf: "stretch", margin: "4px 4px", background: "#E3E3E3" }} />}
         <button type="button" role="tab" aria-selected={active} onClick={() => onSelect(key)} style={{
           display: "inline-flex", alignItems: "center", gap: 8, padding: "7px 12px", borderRadius: 10, cursor: "pointer", font: "inherit", fontSize: 13,
           fontWeight: active ? 650 : 500, color: active ? "#fff" : "#303030", background: active ? "#172351" : "#fff",
@@ -139,6 +139,13 @@ function TicketList({ screen }: { screen: InboxData }) {
     <s-button slot="secondary-actions" icon="image" href="/app/photo-checks">Photo checks</s-button>
 
     <HelpDeskNavigation current="tickets" />
+
+    {views.human > 0 && view !== "human" && <s-banner tone="warning" heading={`${views.human} customer${views.human === 1 ? " is" : "s are"} waiting to talk to a person`}>
+      <s-stack gap="small-200">
+        <s-text>The assistant on their request page couldn&apos;t answer, or they asked for someone from the team.</s-text>
+        <s-stack direction="inline"><s-button onClick={() => navigate(listLink({ view: "human" }))}>Show them</s-button></s-stack>
+      </s-stack>
+    </s-banner>}
 
     {remaining.length > 0 && <s-banner tone="info" heading={`Finish setting up: ${steps.length - remaining.length} of ${steps.length} done`}>
       <s-stack gap="small-200">
@@ -258,7 +265,8 @@ function TicketList({ screen }: { screen: InboxData }) {
                       </s-link>
                     </s-stack>
                     {ticket.category && <s-text color="subdued">{ticket.subcategory ? `${ticket.category} › ${ticket.subcategory}` : ticket.category}</s-text>}
-                    {(ticket.photoFlag || ticket.cancelStatus || ticket.addressStatus || ticket.priority === "High" || ticket.priority === "Urgent") && <s-stack direction="inline" gap="small-100">
+                    {(ticket.humanRequestedAt || ticket.photoFlag || ticket.cancelStatus || ticket.addressStatus || ticket.priority === "High" || ticket.priority === "Urgent") && <s-stack direction="inline" gap="small-100">
+                      {ticket.humanRequestedAt && <s-badge tone="critical" icon="person">Wants a person</s-badge>}
                       {(ticket.priority === "High" || ticket.priority === "Urgent") && <PriorityBadge priority={ticket.priority} />}
                       <CancelBadge status={ticket.cancelStatus} />
                       <AddressBadge status={ticket.addressStatus} />

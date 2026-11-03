@@ -21,6 +21,237 @@
     return login.href;
   }
 
+  // The search at the top of the form: the store's help articles, then the parts
+  // of its policies, pages and products that answer the question. Each answer
+  // opens on a page of its own, with the request for it if it isn't enough.
+  function answersPanel({ endpoint, articles, name }) {
+    const panel = node('section', '', { class: 'help-desk-answers', 'aria-label': 'Help center' });
+    const hero = node('div', '', { class: 'help-desk-hero' });
+    const first = String(name || '').trim().split(/\s+/)[0];
+    hero.append(node('h3', first ? `Hi ${first}, how can we help?` : 'How can we help?'));
+    const bar = node('div', '', { class: 'help-desk-search', role: 'search' });
+    // Suggestions open under the box as the customer types, like a search engine's.
+    const listId = `help-desk-suggest-${Math.random().toString(36).slice(2, 8)}`;
+    const input = node('input', '', {
+      type: 'search', class: 'help-desk-search-input', placeholder: 'Search for answers, like "where is my order?"',
+      'aria-label': 'Search for answers', autocomplete: 'off', maxlength: '300', enterkeyhint: 'search',
+      role: 'combobox', 'aria-autocomplete': 'list', 'aria-expanded': 'false', 'aria-controls': listId,
+    });
+    const clear = node('button', '', { type: 'button', class: 'help-desk-search-clear', 'aria-label': 'Clear search', hidden: '' });
+    const suggest = node('ul', '', { class: 'help-desk-suggest', role: 'listbox', id: listId, 'aria-label': 'Suggested answers', hidden: '' });
+    bar.append(node('span', '', { class: 'help-desk-search-icon', 'aria-hidden': 'true' }), input, clear, suggest);
+    const results = node('div', '', { class: 'help-desk-answer-list', 'aria-live': 'polite' });
+    hero.append(bar);
+    panel.append(hero, results);
+    const LABELS = { policy: 'Store policy', page: 'From our website', product: 'Product', store: 'Live from our store' };
+    let query = '';
+    let controller = null;
+    let timer = 0;
+    let idle = 0;
+    const logged = new Set();
+
+    function post(fields) {
+      const body = new FormData();
+      for (const [key, value] of Object.entries(fields)) body.set(key, value);
+      fetch(endpoint, { method: 'POST', body, headers: { Accept: 'application/json' } }).catch(() => {});
+    }
+    function row(answer) {
+      const button = node('button', '', { type: 'button', class: 'help-desk-answer-row', 'data-href': answerHref(answer) });
+      if (answer.image) button.append(node('img', '', { src: answer.image, alt: '', loading: 'lazy', width: '44', height: '44' }));
+      const words = node('span', '', { class: 'help-desk-answer-row-text' });
+      words.append(node('strong', answer.question));
+      const snippet = String(answer.answer).replace(/\s+/g, ' ').trim();
+      if (snippet) words.append(node('span', snippet.length > 140 ? `${snippet.slice(0, 140).replace(/\s+\S*$/, '')}...` : snippet));
+      if (answer.source !== 'article') words.append(node('small', LABELS[answer.source] || ''));
+      button.append(words);
+      button.onclick = () => open(answer);
+      return button;
+    }
+    function list(answers, heading) {
+      const wrap = node('div', '', { class: 'help-desk-answer-card' });
+      if (heading) wrap.append(node('h4', heading, { class: 'help-desk-answer-heading' }));
+      for (const answer of answers) wrap.append(row(answer));
+      results.replaceChildren(wrap);
+    }
+    // Nothing typed: no list under the search, the answers come as suggestions.
+    function browse() {
+      results.replaceChildren();
+    }
+    // An answer opens on a page of its own, like a help center article. It
+    // knows this page, to come back to, search from, or send a request on.
+    function answerHref(answer) {
+      const url = new URL(endpoint);
+      url.searchParams.set('article', answer.id);
+      url.searchParams.set('from', location.pathname);
+      if (query) url.searchParams.set('q', query);
+      return url.pathname + url.search;
+    }
+    function open(answer) {
+      closeSuggest();
+      location.assign(answerHref(answer));
+    }
+    // ---------- Suggestions as they type ----------
+    // Straight away from the articles already loaded (each word must start a
+    // word in the question or keywords), then the app's fuller answer, which
+    // also searches the store's policies, pages, products and live settings.
+    const words = text => String(text).toLowerCase().split(/[^a-z0-9']+/).filter(Boolean);
+    const indexed = articles.map(article => ({ article, question: words(article.question), keywords: words(article.keywords || '') }));
+    // Any of the customer's words can find an article: a word matches when it
+    // starts a word of the question or keywords ("refun" finds "refund"), or a
+    // longer word starts with one ("refunds"). At least half the words that
+    // say something must match; small words ("the", "my") don't count.
+    const QUICK_STOP = new Set('a an and are am at be but by can could did do does for from get got had has have hi hello hey how i if in is it its me my no not of on or our please so that the their them there this to us was we what when where which who why will with would you your'.split(' '));
+    const same = (part, word) => part.startsWith(word) || (word.length >= 5 && part.length >= 4 && word.startsWith(part));
+    function quickMatches(text) {
+      const asked = [...new Set(words(text).filter(word => !QUICK_STOP.has(word) && (word.length > 1 || /\d/.test(word))))];
+      if (!asked.length) return [];
+      const needed = Math.max(1, Math.ceil(asked.length / 2));
+      return indexed.map(({ article, question, keywords }) => {
+        let score = 0;
+        let hits = 0;
+        for (const word of asked) {
+          if (question.some(part => same(part, word))) { score += 2; hits++; } else if (keywords.some(part => same(part, word))) { score += 1; hits++; }
+        }
+        return hits >= needed ? { article, score: score + hits * 2 } : null;
+      }).filter(Boolean).sort((a, b) => b.score - a.score).slice(0, 6).map(entry => entry.article);
+    }
+    let found = [];
+    let active = -1;
+    let settled = false;
+    const escapeRegex = text => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    // The question with the typed words' beginnings in bold.
+    function highlighted(text) {
+      const asked = words(query).filter(word => word.length > 1 && !QUICK_STOP.has(word));
+      const holder = node('span', '', { class: 'help-desk-suggest-title' });
+      if (!asked.length) { holder.textContent = text; return holder; }
+      const pattern = new RegExp(`\\b(${asked.map(escapeRegex).join('|')})`, 'gi');
+      let last = 0;
+      for (const match of String(text).matchAll(pattern)) {
+        holder.append(document.createTextNode(text.slice(last, match.index)), node('mark', match[0]));
+        last = match.index + match[0].length;
+      }
+      holder.append(document.createTextNode(text.slice(last)));
+      return holder;
+    }
+    function closeSuggest() {
+      suggest.hidden = true;
+      active = -1;
+      input.setAttribute('aria-expanded', 'false');
+      input.removeAttribute('aria-activedescendant');
+    }
+    function highlight(index) {
+      const options = [...suggest.querySelectorAll('[role=option]')];
+      active = options.length ? (index + options.length) % options.length : -1;
+      options.forEach((option, at) => option.setAttribute('aria-selected', String(at === active)));
+      if (active >= 0) { input.setAttribute('aria-activedescendant', options[active].id); options[active].scrollIntoView({ block: 'nearest' }); }
+    }
+    function renderSuggest() {
+      suggest.replaceChildren();
+      active = -1;
+      if (query.length < 2) { closeSuggest(); return; }
+      found.forEach((answer, index) => {
+        const option = node('li', '', { role: 'option', id: `${listId}-${index}`, 'aria-selected': 'false', class: 'help-desk-suggest-option', 'data-href': answerHref(answer) });
+        option.append(node('span', '', { class: `help-desk-suggest-icon help-desk-suggest-${answer.source || 'article'}`, 'aria-hidden': 'true' }), highlighted(answer.question));
+        const where = answer.source === 'article' ? answer.collection : LABELS[answer.source];
+        if (where) option.append(node('small', where));
+        // mousedown, so the box doesn't lose focus and close first.
+        option.addEventListener('mousedown', event => event.preventDefault());
+        option.onclick = () => open(answer);
+        suggest.append(option);
+      });
+      if (!found.length) {
+        suggest.append(node('li', settled ? `No answers for “${query}” yet. Choose a topic below and our team will help.` : 'Searching...', { class: 'help-desk-suggest-empty' }));
+      } else {
+        const all = node('li', `See all results for “${query}”`, { role: 'option', id: `${listId}-all`, 'aria-selected': 'false', class: 'help-desk-suggest-all' });
+        all.addEventListener('mousedown', event => event.preventDefault());
+        all.onclick = () => showAll();
+        suggest.append(all);
+      }
+      suggest.hidden = false;
+      input.setAttribute('aria-expanded', 'true');
+    }
+    // Every answer found, listed under the hero (Enter, or "See all results").
+    function showAll() {
+      closeSuggest();
+      if (found.length) list(found, `${found.length === 1 ? 'Answer' : 'Answers'} for “${query}”`);
+      else {
+        const text = query;
+        const none = node('div', '', { class: 'help-desk-answer-none' });
+        none.append(node('strong', `No answers for “${text}” yet.`), node('span', 'Try other words, or choose a topic below and our team will help.'));
+        results.replaceChildren(none);
+      }
+    }
+    async function search(text) {
+      controller?.abort();
+      controller = new AbortController();
+      const url = new URL(endpoint);
+      url.searchParams.set('answers', text);
+      bar.dataset.loading = 'true';
+      try {
+        const response = await fetch(url, { headers: { Accept: 'application/json' }, signal: controller.signal });
+        const result = await response.json();
+        if (text !== query) return;
+        const answers = Array.isArray(result.results) ? result.results : [];
+        // The app's answers first, then any quick match it didn't include.
+        const ids = new Set(answers.map(answer => answer.id));
+        found = [...answers, ...found.filter(answer => !ids.has(answer.id))].slice(0, 8);
+        settled = true;
+        if (document.activeElement === input) renderSuggest();
+        if (!answers.length) {
+          // A search that settled with nothing found, for the team to write an answer.
+          clearTimeout(idle);
+          idle = setTimeout(() => { if (text === query && text.length >= 4 && !logged.has(text.toLowerCase())) { logged.add(text.toLowerCase()); post({ intent: 'no-answer', question: text }); } }, 1500);
+        }
+      } catch (error) {
+        if (error.name !== 'AbortError' && text === query) { settled = true; if (document.activeElement === input) renderSuggest(); }
+      } finally {
+        if (text === query) delete bar.dataset.loading;
+      }
+    }
+    input.addEventListener('input', () => {
+      query = input.value.trim();
+      clear.hidden = !input.value;
+      clearTimeout(timer);
+      if (query.length < 2) { controller?.abort(); delete bar.dataset.loading; found = []; closeSuggest(); return; }
+      found = quickMatches(query);
+      settled = false;
+      renderSuggest();
+      timer = setTimeout(() => search(query), 200);
+    });
+    input.addEventListener('keydown', event => {
+      const options = suggest.hidden ? [] : [...suggest.querySelectorAll('[role=option]')];
+      if (event.key === 'ArrowDown' && options.length) { event.preventDefault(); highlight(active + 1); }
+      else if (event.key === 'ArrowUp' && options.length) { event.preventDefault(); highlight(active - 1); }
+      else if (event.key === 'Enter') {
+        event.preventDefault();
+        if (active >= 0 && options[active]) { options[active].click(); return; }
+        clearTimeout(timer);
+        if (query.length >= 2) { if (settled) showAll(); else search(query).then(showAll); }
+      } else if (event.key === 'Escape') {
+        event.preventDefault();
+        if (!suggest.hidden) closeSuggest(); else if (input.value) clear.onclick();
+      }
+    });
+    input.addEventListener('focus', () => { if (query.length >= 2) renderSuggest(); });
+    input.addEventListener('blur', () => setTimeout(closeSuggest, 120));
+    clear.onclick = () => { input.value = ''; input.dispatchEvent(new Event('input')); browse(); input.focus(); };
+    const popular = [...articles].sort((a, b) => (b.helpful || 0) - (a.helpful || 0)).slice(0, 4);
+    if (popular.length) {
+      const chips = node('div', '', { class: 'help-desk-popular' });
+      chips.append(node('span', 'Popular:'));
+      for (const answer of popular) {
+        const chip = node('button', answer.question, { type: 'button' });
+        chip.onclick = () => open(answer);
+        chips.append(chip);
+      }
+      hero.append(chips);
+    }
+    browse();
+    // A search started elsewhere (an answer's page sends it back here).
+    panel.searchFor = text => { input.value = text; input.dispatchEvent(new Event('input')); input.focus({ preventScroll: true }); };
+    return panel;
+  }
+
   async function initialize(root) {
     if (root.dataset.initialized) return;
     root.dataset.initialized = 'true';
@@ -38,21 +269,10 @@
       message('The help desk address is not configured correctly. Please contact the store.', true, false);
       return;
     }
-    // Sign-in first (the block's setting): a guest sees only a prompt to sign
-    // in, not the topics. The theme editor still shows the form, to style it.
+    // Sign-in first (the block's setting): a guest sees the help search and a
+    // prompt to sign in, not the topics. The theme editor still shows the form, to style it.
     const guest = !root.querySelector('[data-help-desk-customer]');
-    if (guest && root.dataset.requireLogin === 'true' && !window.Shopify?.designMode) {
-      const gate = node('div', '', { class: 'help-desk-login help-desk-gate' });
-      const text = node('div');
-      text.append(node('strong', 'Sign in to get help'), node('span', 'Sign in to see your orders and send us a request. Your details are filled in for you.'));
-      const actions = node('div', '', { class: 'help-desk-gate-actions' });
-      actions.append(node('a', 'Sign in', { href: signInLink(root), class: 'help-desk-login-button' }));
-      if (root.dataset.registerUrl) actions.append(node('a', 'Create an account', { href: root.dataset.registerUrl, class: 'help-desk-link' }));
-      gate.append(text, actions);
-      root.querySelector('[data-help-desk-form]').replaceChildren(gate);
-      message('', false, false);
-      return;
-    }
+    const gated = guest && root.dataset.requireLogin === 'true' && !window.Shopify?.designMode;
     let config;
     try {
       const response = await fetch(endpoint, { headers: { Accept: 'application/json' } });
@@ -64,6 +284,23 @@
       const retry = node('button', 'Try again', { type: 'button' });
       retry.onclick = () => { retry.disabled = true; delete root.dataset.initialized; initialize(root); };
       status.append(retry);
+      return;
+    }
+    const articles = Array.isArray(config.articles) ? config.articles : [];
+    if (gated) {
+      const gate = node('div', '', { class: 'help-desk-login help-desk-gate' });
+      const text = node('div');
+      text.append(node('strong', 'Need to send us a request?'), node('span', 'Sign in to see your orders and send us a request. Your details are filled in for you.'));
+      const actions = node('div', '', { class: 'help-desk-gate-actions' });
+      actions.append(node('a', 'Sign in', { href: signInLink(root), class: 'help-desk-login-button' }));
+      if (root.dataset.registerUrl) actions.append(node('a', 'Create an account', { href: root.dataset.registerUrl, class: 'help-desk-link' }));
+      gate.append(text, actions);
+      const host = root.querySelector('[data-help-desk-form]');
+      const panel = answersPanel({ endpoint, articles });
+      host.before(panel);
+      host.replaceChildren(gate);
+      message('', false, false);
+      if (new URLSearchParams(location.search).get('q')) panel.searchFor(new URLSearchParams(location.search).get('q'));
       return;
     }
     const { topics, issues, countries } = config;
@@ -78,6 +315,9 @@
     // Signed-in customers: the block renders their contact details and recent orders.
     let customer = null;
     try { customer = JSON.parse(root.querySelector('[data-help-desk-customer]')?.textContent || 'null'); } catch { customer = null; }
+    // The help center above the form: shown on the first step, where a question starts.
+    const helpPanel = answersPanel({ endpoint, articles, name: customer?.name });
+    root.querySelector('[data-help-desk-form]').before(helpPanel);
     // A signed-in customer's orders: live ones from the app (signed proxy
     // request, up-to-date fulfillment) merged with the theme's copy, which also
     // has orders older than the 60 days the app can read. Newest first.
@@ -121,6 +361,7 @@
     function go(index) {
       const moved = step !== -1 && index !== step;
       step = index;
+      helpPanel.hidden = index !== 0;
       panels.forEach((panel, at) => { panel.hidden = at !== index; });
       [...progress.children].forEach((item, at) => { item.dataset.state = at < index ? 'done' : at === index ? 'current' : ''; });
       const active = [...progress.children].map((item, at) => ({ item, at })).filter(({ item }) => !item.hidden);
@@ -418,7 +659,7 @@
     }
 
     // Step 1: the topic. The cards set the (hidden) topic dropdown.
-    const topicSection = section('How can we help?', 'Choose a topic to get started.', 'Topic');
+    const topicSection = section('Send us a request', 'Choose a topic and we’ll guide you through it.', 'Topic');
     const group = field(topicSection, 'group', 'How can we help?', { choices: groups.map((entry, index) => [String(index), entry.label]), placeholder: 'Select a topic' });
     group.removeAttribute('name');
     group.classList.add('help-desk-category-select');
@@ -430,6 +671,18 @@
       topicTiles.append(card);
       group.addEventListener('change', () => card.setAttribute('aria-pressed', String(group.value === String(index))));
     });
+    // An answer's button: "Topic › Option" opens that request, "Topic" its options.
+    function startRequest(action) {
+      const [topicLabel, optionLabel] = String(action).split(' › ');
+      const at = groups.findIndex(entry => entry.label === topicLabel);
+      if (at < 0) return;
+      if (group.value !== String(at)) { group.value = String(at); group.onchange(); } else go(1);
+      const index = optionLabel ? groups[at].options.findIndex(entry => entry.label === optionLabel) : -1;
+      const option = optionFields.querySelector('select');
+      if (index >= 0 && option && option.value !== String(index)) { option.value = String(index); option.onchange(); }
+      else if (index >= 0) go(detailsStep);
+      form.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
     topicSection.append(topicTiles);
 
     // Step 2: the issue, within the topic.
@@ -2107,6 +2360,11 @@
       // A group with one option needs no second choice.
       if (chosen.options.length === 1) { option.value = '0'; option.onchange(); }
     };
+    // Back from an answer's page (once the topics can be chosen): the request it offered, or a new search.
+    const asked = new URLSearchParams(location.search);
+    if (asked.get('start')) startRequest(asked.get('start'));
+    else if (asked.get('request')) form.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    else if (asked.get('q')) helpPanel.searchFor(asked.get('q'));
     form.onsubmit = async event => {
       event.preventDefault();
       if (controls.disabled) return;

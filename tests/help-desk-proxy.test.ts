@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   authenticate: vi.fn(), submit: vi.fn(), read: vi.fn(), reply: vi.fn(), queue: vi.fn(), shipping: vi.fn(),
-  db: { helpDeskTicket: { findMany: vi.fn(), findFirst: vi.fn() }, helpDeskSettings: { updateMany: vi.fn() } },
+  db: { helpDeskTicket: { findMany: vi.fn(), findFirst: vi.fn() }, helpDeskSettings: { updateMany: vi.fn(), findUnique: vi.fn() }, helpDeskFaq: { findMany: vi.fn() } },
 }));
 vi.mock("../app/shopify.server", () => ({ authenticate: { public: { appProxy: mocks.authenticate } } }));
 vi.mock("../app/db.server", () => ({ default: mocks.db }));
@@ -24,6 +24,9 @@ const post = (fields: Record<string, string>, headers: Record<string, string> = 
 beforeEach(() => {
   vi.resetAllMocks();
   mocks.db.helpDeskSettings.updateMany.mockResolvedValue({ count: 1 });
+  // Help articles already added for this store.
+  mocks.db.helpDeskSettings.findUnique.mockResolvedValue({ faqsSeeded: true });
+  mocks.db.helpDeskFaq.findMany.mockResolvedValue([]);
   resetRateLimits();
   mocks.authenticate.mockResolvedValue({ session: { shop: "verified.myshopify.com" } });
   mocks.read.mockResolvedValue(new FormData());
@@ -49,10 +52,33 @@ describe("Storefront help desk endpoint", () => {
     expect((await loader(args("GET"))).status).toBe(403);
     expect(mocks.submit).not.toHaveBeenCalled();
   });
+  it("opens a help answer on its own page, back to this store only", async () => {
+    const open = (query: string) => loader({ ...args("GET"), request: new Request(`https://app.example/help-desk?${query}`) });
+    mocks.db.helpDeskFaq.findMany.mockResolvedValue([
+      { id: "a1", question: "Where is my <order>?", answer: "Choose Track Order.\n\n- Fast\n- Live", keywords: "", collection: "Orders & Delivery", action: "Orders › Track Order", helpful: 2, updatedAt: new Date("2026-11-02T00:00:00Z") },
+      { id: "a2", question: "Can I cancel my order?", answer: "Yes.", keywords: "", collection: "Orders & Delivery", action: "Orders › Cancel Order", helpful: 0, updatedAt: new Date() },
+    ]);
+    const page = await open(`article=a1&from=${encodeURIComponent("/pages/support")}&q=order`);
+    expect(page.status).toBe(200);
+    expect(page.headers.get("Content-Type")).toBe("application/liquid");
+    const html = await page.text();
+    expect(html).toContain("<h1>Where is my &lt;order&gt;?</h1>");
+    expect(html).toContain("<ul><li>Fast</li><li>Live</li></ul>");
+    expect(html).toContain(`href="/pages/support?start=Orders+%E2%80%BA+Track+Order"`);
+    expect(html).toContain("Can I cancel my order?");
+    expect(html).toContain('data-hda-vote="a1"');
+    expect(mocks.db.helpDeskFaq.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { shop: "verified.myshopify.com" } }));
+    // Unknown answers, and a "from" that isn't a page on this store.
+    const missing = await open(`article=nope&from=${encodeURIComponent("//evil.example/x")}`);
+    expect(missing.status).toBe(404);
+    const text = await missing.text();
+    expect(text).toContain(`href="/"`);
+    expect(text).not.toContain("evil.example");
+  });
   it("exposes only form choices to logged-out shoppers, never tickets", async () => {
     const data = await (await loader(args("GET"))).json();
     expect(data.topics).toHaveLength(6);
-    expect(Object.keys(data).sort()).toEqual(["addressProvider", "addressSuggestions", "cancelReasons", "cancelScopes", "countries", "deliveryIssues", "groups", "home", "issueResolutions", "issues", "orderTypes", "orders", "productParts", "provinces", "purchasePlaces", "shippingCountries", "tickets", "topics", "updates"]);
+    expect(Object.keys(data).sort()).toEqual(["addressProvider", "addressSuggestions", "articles", "cancelReasons", "cancelScopes", "collections", "countries", "deliveryIssues", "groups", "home", "issueResolutions", "issues", "orderTypes", "orders", "productParts", "provinces", "purchasePlaces", "shippingCountries", "tickets", "topics", "updates"]);
     // Orders and tickets are only looked up for a signed-in shopper (logged_in_customer_id).
     expect(data.orders).toBeNull();
     expect(data.tickets).toBeNull();

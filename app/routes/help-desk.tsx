@@ -16,6 +16,10 @@ import { SHIPPING_TIMES_COUNTRIES } from "../services/help-desk-shipping";
 import { queueTicketScans } from "../services/image-scan/scan.server";
 import { blocked, clear, clientKey, hit } from "../services/rate-limit.server";
 import { addressDetails, suggestAddresses } from "../services/help-desk-places.server";
+import { answerPage, answerQuestion, ensureArticles, listArticles, recordSearch, voteArticle } from "../services/help-desk-articles.server";
+import { renderArticlePage, renderMissingArticle } from "../services/help-desk-article-page";
+import { articleCollections, validAction } from "../services/help-desk-articles";
+import { answerNewRequest, assistantTurn } from "../services/help-desk-assistant.server";
 
 const headers = { "Cache-Control": "no-store" };
 const privateHeaders = { "Cache-Control": "private, no-store" };
@@ -53,6 +57,10 @@ export async function loader({ request }: LoaderFunctionArgs) {
   // Signed by Shopify, so this is the shopper's own customer ID (empty when logged out).
   const customerId = params.get("logged_in_customer_id") || "";
 
+  // The search at the top of the form: help articles, then the store's policies, pages and products.
+  if (params.get("answers") !== null) return answers(shop, admin, params.get("answers") || "", clientKey(request, shop));
+  // One answer on a page of its own, opened from the search.
+  if (params.get("article") !== null) return articlePage(shop, admin, params, clientKey(request, shop));
   // Self-service order tracking from the form: answered without a ticket.
   if (params.get("track")) return track(admin, params.get("order") || "", params.get("email") || "", clientKey(request, shop));
   // Shipping Times: rates and delivery times for a destination, and optionally the customer's own order.
@@ -75,7 +83,9 @@ export async function loader({ request }: LoaderFunctionArgs) {
   if (token !== null) return trackingPage(shop, admin, token, {}, params.get("live") === "1");
 
   void markSeen(shop, "formLastSeenAt");
-  const [orders, tickets, shippingSetup, placesKey] = await Promise.all([
+  const [articles, orders, tickets, shippingSetup, placesKey] = await Promise.all([
+    // The store's help articles, to browse by collection before searching.
+    ensureArticles(db, shop).then(() => listArticles(db, shop)).catch((error) => { console.error(`Help Desk could not load help articles for ${shop}:`, error); return []; }),
     customerOrders(admin, customerId),
     /^\d+$/.test(customerId) ? db.helpDeskTicket.findMany({
       where: { shop, customerId }, orderBy: { createdAt: "desc" }, take: 20,
@@ -88,7 +98,40 @@ export async function loader({ request }: LoaderFunctionArgs) {
   return json({
     home: shippingSetup?.home || "US", addressSuggestions: true, addressProvider: placesKey ? "google" : "osm", shippingCountries: SHIPPING_TIMES_COUNTRIES, countries, issues, orderTypes, topics, updates, deliveryIssues, productParts, cancelReasons, cancelScopes, issueResolutions, purchasePlaces, provinces: PROVINCES, groups: formGroups, orders,
     tickets: tickets && tickets.map(({ accessToken, lastActivityAt, ...ticket }) => ({ ...ticket, updatedAt: lastActivityAt ?? ticket.createdAt, token: accessToken })),
+    collections: articleCollections,
+    articles: articles.map(({ id, question, answer, collection, action, helpful }) => ({ id, question, answer, collection, action: validAction(action) ? action : "", helpful, source: "article", url: "", image: "" })),
   }, 200, privateHeaders);
+}
+
+// The store page with the Help Desk form, as the form sent it: a path on this
+// store only (never another site), else the store's home page.
+const homePath = (value: string | null) => value && /^\/(?![/\\])[\w\-./%~]*$/.test(value) && value.length <= 200 ? value : "/";
+
+// A help answer as a page, with its "Still need help?" request and more to read.
+// Opening it is recorded for the team (as what the customer searched for).
+async function articlePage(shop: string, admin: Parameters<typeof lookupTracking>[0] | undefined, params: URLSearchParams, client: string) {
+  const home = homePath(params.get("from"));
+  const query = (params.get("q") || "").slice(0, 300);
+  if (!hit(`article|${client}`, 60, MINUTE)) return liquid(renderMissingArticle(home, query), 429);
+  const id = (params.get("article") || "").slice(0, 140);
+  const found = id ? await answerPage(db, admin, shop, id).catch((error) => { console.error(`Help Desk could not open help answer ${id} for ${shop}:`, error); return null; }) : null;
+  if (!found) return liquid(renderMissingArticle(home, query), 404);
+  void recordSearch(db, shop, query || found.answer.question, found.answer.source === "article" ? "faq" : "shopify", found.answer.source === "article" ? found.answer.id : undefined).catch(() => undefined);
+  return liquid(renderArticlePage(found.answer, { home, endpoint: "/apps/help-desk", related: found.related, popular: found.popular, query }));
+}
+
+// Answers for what the customer typed. Asked as they type, so it's quick and
+// not logged here: the form reports what they opened, or that nothing helped.
+async function answers(shop: string, admin: Parameters<typeof lookupTracking>[0] | undefined, question: string, client: string) {
+  if (!hit(`answers|${client}`, 90, MINUTE)) return json({ error: "Too many searches. Please wait a minute and try again.", results: [] }, 200, privateHeaders);
+  const text = question.trim().slice(0, 500);
+  if (text.length < 2) return json({ results: [] }, 200, privateHeaders);
+  try {
+    return json({ results: await answerQuestion(db, admin, shop, text) }, 200, privateHeaders);
+  } catch (error) {
+    console.error(`Help Desk search failed for ${shop}:`, error);
+    return json({ error: "Search is unavailable right now. Please choose a topic below.", results: [] }, 200, privateHeaders);
+  }
 }
 
 export async function action({ request }: ActionFunctionArgs) {
@@ -111,9 +154,17 @@ export async function action({ request }: ActionFunctionArgs) {
       const token = text("token");
       if (!hit(`reply|${client}`, 10, MINUTE)) return wantsJson ? tooMany() : trackingPage(shop, admin, token, { error: "Too many messages. Please wait a minute.", draft: text("body") });
       try {
-        const result = await addCustomerMessage(db, shop, token, text("body"), files(form), files(form, "videos"));
+        // "Talk to a person" on the request page: the message, or one saying so.
+        const body = text("body").trim() || (text("person") ? "I'd like to talk to a person." : "");
+        const result = await addCustomerMessage(db, shop, token, body, files(form), files(form, "videos"));
         if (result.messageId && result.ticketId) {
-          queueEmail(db, { shop, ticketId: result.ticketId, kind: "customer-reply", messageId: result.messageId }, admin);
+          // The assistant answers first; the team is emailed when it hands over
+          // (or already has the chat), not for every question it answered.
+          const turn = await (text("person") ? assistantTurn(db, admin, shop, result.ticketId, "I'd like to talk to a person.") : assistantTurn(db, admin, shop, result.ticketId, body)).catch((error) => {
+            console.error(`Help Desk assistant failed on ticket ${result.ticketId}:`, error);
+            return null;
+          });
+          if (!turn || turn.notifyTeam) queueEmail(db, { shop, ticketId: result.ticketId, kind: turn?.handoff ? "handoff" : "customer-reply", messageId: result.messageId }, admin);
           void queueTicketScans(db, result.ticketId, result.messageId);
         }
         if (wantsJson) return json(result, result.messageId ? 200 : 400);
@@ -138,6 +189,22 @@ export async function action({ request }: ActionFunctionArgs) {
       clear(key);
       return trackingPage(shop, admin, ticket.accessToken);
     }
+    // The help search: an answer the customer opened, or a search nothing answered,
+    // so the team sees what customers look for. source: article or a Shopify one.
+    case "answer-opened":
+    case "no-answer": {
+      if (!hit(`answer-log|${client}`, 30, MINUTE)) return json({ ok: false }, 200);
+      const opened = form.get("intent") === "answer-opened";
+      const id = text("id").slice(0, 100);
+      await recordSearch(db, shop, text("question"), !opened ? "none" : text("source") === "article" ? "faq" : "shopify", opened && text("source") === "article" ? id : undefined).catch(() => undefined);
+      return json({ ok: true }, 200);
+    }
+    // "Did this answer your question?"
+    case "answer-vote": {
+      if (!hit(`answer-vote|${client}`, 20, MINUTE)) return json({ ok: false }, 200);
+      const ok = await voteArticle(db, shop, text("id").slice(0, 100), text("helpful") === "yes").catch(() => false);
+      return json({ ok }, 200);
+    }
     case null:
     case undefined:
       break;
@@ -154,6 +221,12 @@ export async function action({ request }: ActionFunctionArgs) {
     if (result.created && result.ticketId) {
       queueEmail(db, { shop, ticketId: result.ticketId, kind: "new-ticket" }, admin);
       queueEmail(db, { shop, ticketId: result.ticketId, kind: "ack" }, admin);
+      // A question gets a first answer on its request page when the assistant is sure of one.
+      if (form.get("topic") === topics[5]) {
+        const ticketId = result.ticketId;
+        void answerNewRequest(db, admin, shop, ticketId, [text("query"), text("details"), text("productDetails"), text("otherDetails")].filter(Boolean).join("\n"))
+          .catch((error) => console.error(`Help Desk assistant could not answer ticket ${ticketId}:`, error));
+      }
       // Photos are checked for AI generation and reuse in the background.
       void queueTicketScans(db, result.ticketId);
       // The order and its tracking are attached in the background too. A

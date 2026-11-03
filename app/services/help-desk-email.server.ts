@@ -502,7 +502,8 @@ export async function sendAddressEmail(db: PrismaClient, shop: string, admin: Ad
 }
 
 // Tells the store a customer added a message to their ticket.
-export async function notifyCustomerReply(db: PrismaClient, shop: string, admin: AdminClient, messageId: string): Promise<SendResult> {
+// handoff: the assistant on the request page couldn't answer, or the customer asked for a person.
+export async function notifyCustomerReply(db: PrismaClient, shop: string, admin: AdminClient, messageId: string, handoff = false): Promise<SendResult> {
   const message = await db.helpDeskMessage.findFirst({ where: { id: messageId, kind: "customer", ticket: { shop } }, include: { ticket: true } });
   const recipient = message && await notificationRecipient(db, shop, admin);
   if (!message || !recipient?.to) return "skipped";
@@ -513,12 +514,13 @@ export async function notifyCustomerReply(db: PrismaClient, shop: string, admin:
     from: sender(storeName),
     to: recipient.to,
     replyTo: { name: ticket.name, address: ticket.email },
-    subject: `Re: [#${ticket.number}] ${ticket.name} replied`,
+    subject: handoff ? `[#${ticket.number}] ${ticket.name} wants to talk to a person` : `Re: [#${ticket.number}] ${ticket.name} replied`,
     html: renderCustomerEmail({
-      storeName, heading: `${ticket.name} replied to #${ticket.number}`, paragraphs: [`About: ${ticket.topic}`], quote: message.body,
-      buttonUrl: adminUrl, buttonLabel: "Open ticket in Shopify", footer: `Ticket #${ticket.number} · ${ticket.email}`,
+      storeName, heading: handoff ? `${ticket.name} is waiting for a person on #${ticket.number}` : `${ticket.name} replied to #${ticket.number}`,
+      paragraphs: handoff ? [`About: ${ticket.topic}`, "The assistant on their request page couldn't answer this, or they asked for a person. Please reply on the ticket."] : [`About: ${ticket.topic}`],
+      quote: message.body, buttonUrl: adminUrl, buttonLabel: "Open ticket in Shopify", footer: `Ticket #${ticket.number} · ${ticket.email}`,
     }),
-    text: `${ticket.name} replied to #${ticket.number}:\n\n${message.body}\n\nOpen ticket: ${adminUrl}`,
+    text: `${ticket.name} ${handoff ? "wants to talk to a person on" : "replied to"} #${ticket.number}:\n\n${message.body}\n\nOpen ticket: ${adminUrl}`,
   });
   return "sent";
 }

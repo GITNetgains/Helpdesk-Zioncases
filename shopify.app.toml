@@ -12,7 +12,9 @@ embedded = true
 # read_products: product picker on the form and ticket product images.
 # read_orders: the customer's orders on the form and the agent's order lookup.
 # write_orders: cancelling an order from an approved cancellation request.
-scopes = "read_products,read_orders,write_orders,write_order_edits,read_shipping,write_draft_orders,write_app_proxy"
+# read_legal_policies, read_online_store_pages: the store's policies and pages
+# answer customers' searches on the form, next to the help articles.
+scopes = "read_products,read_orders,write_orders,write_order_edits,read_shipping,write_draft_orders,write_app_proxy,read_legal_policies,read_online_store_pages"
 
 # Storefront Help Desk form, customer request page and ticket tracking links.
 # Customers reach it at https://<store>/apps/help-desk.

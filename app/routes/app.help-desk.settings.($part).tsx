@@ -5,13 +5,15 @@ import { useAppBridge } from "@shopify/app-bridge-react";
 import { countries, macroPlaceholders, MAX_MESSAGE_LENGTH, PROVINCES } from "../services/help-desk";
 import { describeRate, parseDays, processingDays, rateTransit, shippingAnswer, type TransitSource } from "../services/help-desk-shipping";
 import { adminContext, helpDeskAction, loadSettings } from "../services/help-desk-admin.server";
+import { articleActions, articleCollections } from "../services/help-desk-articles";
+import { ASSISTANT_COPY, ASSISTANT_COPY_FIELDS, MAX_ASSISTANT_COPY } from "../services/help-desk-assistant";
 import { categories, categoryNames, describeCategory, resolutionTypes, rootCauses, rootCauseTeams, subcategoriesOf } from "../services/help-desk-taxonomy";
 import { IconTile, since } from "../components/HelpDeskUi";
 import SectionNavigation from "../components/SectionNavigation";
 import { DAY, HelpDeskNavigation, useResultToast } from "../components/help-desk/shared";
 
 // Help Desk settings: /app/help-desk/settings/:part (emails by default).
-const SETTINGS_PARTS = ["email", "team", "replies", "categories", "photos", "shipping", "shipstation", "storefront"];
+const SETTINGS_PARTS = ["email", "team", "articles", "replies", "categories", "photos", "shipping", "shipstation", "storefront"];
 
 export const loader = async ({ request }: LoaderFunctionArgs) => loadSettings(await adminContext(request));
 
@@ -112,6 +114,182 @@ function SavedReplies({ macros }: { macros: SettingsData["macros"] }) {
       </s-box> : <s-stack direction="inline"><s-button icon="plus" onClick={() => setAdding(true)}>Add saved reply</s-button></s-stack>}
     </s-stack>
   </s-section>;
+}
+
+// ---------- Help articles ----------
+
+type HelpArticle = SettingsData["articles"][number];
+type Draft = { question: string; answer?: string };
+
+function ArticleEditor({ article, draft, onDone }: { article?: HelpArticle; draft?: Draft; onDone?: () => void }) {
+  const fetcher = useFetcher<typeof action>();
+  const [question, setQuestion] = useState(article?.question ?? draft?.question ?? "");
+  const [answer, setAnswer] = useState(article?.answer ?? draft?.answer ?? "");
+  const [keywords, setKeywords] = useState(article?.keywords ?? "");
+  const [collection, setCollection] = useState(article?.collection ?? articleCollections[0]);
+  const [button, setButton] = useState(article?.action ?? "");
+  useResultToast(fetcher, article ? "Answer updated" : "Question and answer added");
+  useEffect(() => {
+    if (fetcher.state !== "idle" || !fetcher.data || Object.keys(fetcher.data.errors).length) return;
+    if (!article) { setQuestion(""); setAnswer(""); setKeywords(""); setButton(""); }
+    onDone?.();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fetcher.state, fetcher.data]);
+  return <s-stack gap="base">
+    <s-text-field label="Question" value={question} maxLength={200} error={fetcher.data?.errors.question}
+      details="Write it the way a customer would ask it." onInput={(event) => setQuestion(event.currentTarget.value ?? "")} />
+    <s-text-area label="Answer" rows={7} value={answer} maxLength={5000} error={fetcher.data?.errors.answer}
+      details="Shown in full when a customer opens it. Start a line with - for a bullet point." onInput={(event) => setAnswer(event.currentTarget.value ?? "")} />
+    <s-text-field label="Words customers use" value={keywords} maxLength={1000} error={fetcher.data?.errors.keywords}
+      details="Comma-separated, in customers' own words, typos and all (for example: says delivered, never got it, ups). They help the search find this article."
+      onInput={(event) => setKeywords(event.currentTarget.value ?? "")} />
+    <s-grid gridTemplateColumns="repeat(auto-fit, minmax(240px, 1fr))" gap="base">
+      <s-select label="Collection" value={collection} onChange={(event) => setCollection(event.currentTarget.value ?? articleCollections[0])}>
+        {articleCollections.map((name) => <s-option key={name} value={name}>{name}</s-option>)}
+      </s-select>
+      <s-select label="Button under the answer" value={button} details="Opens this request on the form, for when the answer isn't enough."
+        onChange={(event) => setButton(event.currentTarget.value ?? "")}>
+        <s-option value="">No button</s-option>
+        {articleActions.map((value) => <s-option key={value} value={value}>{value}</s-option>)}
+      </s-select>
+    </s-grid>
+    <s-stack direction="inline" gap="small-200">
+      <s-button variant="primary" loading={fetcher.state !== "idle"} disabled={!question.trim() || !answer.trim()}
+        onClick={() => void fetcher.submit({ intent: "article-save", id: article?.id ?? "", question, answer, keywords, collection, action: button }, { method: "post" })}>{article ? "Save" : "Add question & answer"}</s-button>
+      {onDone && <s-button variant="tertiary" onClick={onDone}>Cancel</s-button>}
+    </s-stack>
+  </s-stack>;
+}
+
+const ANSWER_SOURCES = { policies: "Store policies", pages: "Online store pages", products: "Products" } as const;
+
+// The chat assistant on customers' request pages: on or off, and its wording.
+function AssistantSettings({ assistant }: { assistant: SettingsData["assistant"] }) {
+  const fetcher = useFetcher<typeof action>();
+  const [enabled, setEnabled] = useState(assistant.enabled);
+  const [copy, setCopy] = useState<Record<string, string>>(assistant.copy);
+  useEffect(() => { setEnabled(assistant.enabled); setCopy(assistant.copy); }, [assistant]);
+  useResultToast(fetcher, "Chat assistant saved");
+  return <s-section heading="Chat assistant">
+    <s-stack gap="base">
+      <s-paragraph color="subdued">When a customer writes on their request page, the assistant answers straight away from your help articles, shipping settings, policies, pages and products, but only when it&apos;s sure. Otherwise, or when the customer asks for a person, it passes the chat to your team: you&apos;re emailed, and the request shows in Waiting for a person.</s-paragraph>
+      <s-switch label="Answer customers' questions on their request page" checked={enabled} onChange={(event) => setEnabled(event.currentTarget.checked ?? false)}
+        details="Off: every message goes straight to your team, as before." />
+      {ASSISTANT_COPY_FIELDS.map((field) => <s-text-area key={field.key} label={field.label} rows={2} maxLength={MAX_ASSISTANT_COPY} value={copy[field.key] ?? ""}
+        details={field.details || undefined} error={fetcher.data?.errors[field.key]} disabled={!enabled}
+        onInput={(event) => setCopy((current) => ({ ...current, [field.key]: event.currentTarget.value ?? "" }))} />)}
+      <s-stack direction="inline" gap="small-200">
+        <s-button variant="primary" loading={fetcher.state !== "idle"} onClick={() => void fetcher.submit({ intent: "assistant-settings", enabled: String(enabled), ...copy }, { method: "post" })}>Save chat assistant</s-button>
+        <s-button variant="tertiary" onClick={() => setCopy({ ...ASSISTANT_COPY })}>Use the default wording</s-button>
+      </s-stack>
+    </s-stack>
+  </s-section>;
+}
+
+function HelpArticles({ screen }: { screen: SettingsData }) {
+  const { articles, unanswered, answerSources } = screen;
+  const [editing, setEditing] = useState("");
+  const [adding, setAdding] = useState<Draft | null>(null);
+  const [filter, setFilter] = useState("");
+  const remove = useFetcher<typeof action>();
+  const restore = useFetcher<typeof action>();
+  const refresh = useFetcher<typeof action>();
+  useResultToast(remove, "Article deleted");
+  useResultToast(restore, (result) => result.notice || "Done");
+  useResultToast(refresh, "Your policies, pages and products will be read again on the next search");
+  const words = filter.trim().toLowerCase();
+  const shown = words ? articles.filter((article) => `${article.question} ${article.keywords} ${article.answer}`.toLowerCase().includes(words)) : articles;
+  const groups = [...articleCollections, ""].map((name) => [name, shown.filter((article) => (article.collection || "") === name)] as const).filter(([, list]) => list.length);
+  const missingScope = (error: string | null) => Boolean(error && /access|scope|denied|permission/i.test(error));
+  return <>
+    <s-section heading="How it works">
+      <s-paragraph color="subdued">Customers search at the top of your storefront form. They see your articles first, then matching parts of your store policies, online store pages and products, read straight from Shopify. Each article can end with a button that opens the right request, so if the answer isn&apos;t enough they&apos;re one click from the right form.</s-paragraph>
+    </s-section>
+
+    <AssistantSettings assistant={screen.assistant} />
+
+    {unanswered.length > 0 && <s-section heading="Searches nothing answered (last 30 days)">
+      <s-stack gap="small-200">
+        <s-text color="subdued">What customers looked for and didn&apos;t find. Write an article for the ones that keep coming up.</s-text>
+        {unanswered.map((search) => <s-box key={search.question} border="base" borderRadius="base" padding="small-200">
+          <s-stack direction="inline" gap="base" alignItems="center" justifyContent="space-between">
+            <s-stack direction="inline" gap="small-200" alignItems="center">
+              <s-text>&ldquo;{search.question}&rdquo;</s-text>
+              {search.count > 1 && <s-badge>{search.count} times</s-badge>}
+            </s-stack>
+            <s-button variant="tertiary" icon="plus" onClick={() => { setAdding({ question: search.question }); setEditing(""); }}>Write an answer</s-button>
+          </s-stack>
+        </s-box>)}
+      </s-stack>
+    </s-section>}
+
+    {adding && <s-section heading="New question & answer">
+      <ArticleEditor key={adding.question} draft={adding} onDone={() => setAdding(null)} />
+    </s-section>}
+
+    <s-section heading="Questions & answers">
+      <s-stack gap="base">
+        <s-grid gridTemplateColumns="1fr auto auto" gap="small-200" alignItems="center">
+          <s-search-field label="Find an article" labelAccessibilityVisibility="exclusive" placeholder="Find an article" value={filter} onInput={(event) => setFilter(event.currentTarget.value ?? "")} />
+          <s-button variant="primary" icon="plus" disabled={Boolean(adding)} onClick={() => setAdding({ question: "" })}>Add question &amp; answer</s-button>
+          <s-button variant="tertiary" loading={restore.state !== "idle"} onClick={() => void restore.submit({ intent: "article-restore" }, { method: "post" })}>Restore starter articles</s-button>
+        </s-grid>
+        {!shown.length && <s-text color="subdued">{articles.length ? "No articles match." : "No articles yet. Add one, or restore the starter set."}</s-text>}
+        {groups.map(([name, list]) => <s-stack key={name || "none"} gap="small-200">
+          <s-stack direction="inline" gap="small-200" alignItems="center">
+            <s-heading>{name || "No collection"}</s-heading>
+            <s-badge>{list.length}</s-badge>
+          </s-stack>
+          {list.map((article) => editing === article.id
+            ? <s-box key={article.id} border="base" borderRadius="base" padding="base"><ArticleEditor article={article} onDone={() => setEditing("")} /></s-box>
+            : <s-box key={article.id} border="base" borderRadius="base" padding="base">
+              <s-stack direction="inline" gap="base" alignItems="center" justifyContent="space-between">
+                <s-stack gap="none">
+                  <s-stack direction="inline" gap="small-200" alignItems="center">
+                    <s-text type="strong">{article.question}</s-text>
+                    {article.action && <s-badge tone="info">{article.action}</s-badge>}
+                  </s-stack>
+                  <s-text color="subdued">{article.answer.replace(/\s+/g, " ").slice(0, 120)}{article.answer.length > 120 ? "..." : ""}</s-text>
+                  {(article.helpful > 0 || article.notHelpful > 0) && <s-text color="subdued">Helpful: {article.helpful} yes · {article.notHelpful} no</s-text>}
+                </s-stack>
+                <s-stack direction="inline" gap="small-100">
+                  <s-button variant="tertiary" icon="edit" accessibilityLabel={`Edit ${article.question}`} onClick={() => setEditing(article.id)} />
+                  <s-button variant="tertiary" tone="critical" icon="delete" accessibilityLabel={`Delete ${article.question}`} disabled={remove.state !== "idle"}
+                    onClick={() => void remove.submit({ intent: "article-delete", id: article.id }, { method: "post" })} />
+                </s-stack>
+              </s-stack>
+            </s-box>)}
+        </s-stack>)}
+      </s-stack>
+    </s-section>
+
+    <s-section heading="From Shopify">
+      <s-stack gap="base">
+        <s-text color="subdued">Read from your store every 30 minutes, so edits in Shopify show up in the search on their own.</s-text>
+        {(Object.keys(ANSWER_SOURCES) as (keyof typeof ANSWER_SOURCES)[]).map((key) => {
+          const source = answerSources[key];
+          return <s-stack key={key} direction="inline" gap="small-200" alignItems="center">
+            <s-text type="strong">{ANSWER_SOURCES[key]}</s-text>
+            {source.error
+              ? <s-badge tone="warning">{missingScope(source.error) ? "Needs your approval" : "Couldn't be read"}</s-badge>
+              : <s-badge tone="success">{`${source.count} ${key === "products" ? "products" : "sections"} searchable`}</s-badge>}
+          </s-stack>;
+        })}
+        <s-stack gap="small-100">
+          <s-text type="strong">Live answers from your settings</s-text>
+          <s-text color="subdued">{answerSources.facts.length
+            ? `${answerSources.facts.join(" · ")}. Built from your Shopify shipping settings, Shipping times and store email, so they change when those do.`
+            : "None yet: they come from your Shopify shipping zones, the Shipping times tab and your store's contact email."}</s-text>
+        </s-stack>
+        {(["policies", "pages"] as const).some((key) => missingScope(answerSources[key].error)) && <s-banner tone="warning" heading="Approve access to your policies and pages">
+          Open the app from Shopify admin and approve the updated permissions, so customers&apos; searches can include your store policies and pages.
+        </s-banner>}
+        <s-stack direction="inline">
+          <s-button loading={refresh.state !== "idle"} onClick={() => void refresh.submit({ intent: "answers-refresh" }, { method: "post" })}>Read again now</s-button>
+        </s-stack>
+      </s-stack>
+    </s-section>
+  </>;
 }
 
 const DETECTOR_MODE_LABELS: Record<string, { label: string; details: string }> = {
@@ -550,6 +728,7 @@ function SettingsScreen({ screen }: { screen: SettingsData }) {
     <SectionNavigation label="Settings categories" current={part} items={[
       { id: "email", label: "Emails", href: "/app/help-desk/settings" },
       { id: "team", label: "Team", href: "/app/help-desk/settings/team" },
+      { id: "articles", label: "Help articles", href: "/app/help-desk/settings/articles" },
       { id: "replies", label: "Saved replies", href: "/app/help-desk/settings/replies" },
       { id: "categories", label: "Categories", href: "/app/help-desk/settings/categories" },
       { id: "photos", label: "AI photo check", href: "/app/help-desk/settings/photos" },
@@ -605,6 +784,12 @@ function SettingsScreen({ screen }: { screen: SettingsData }) {
         status={!screen.ai.enabled ? "Off" : detectorConnected ? "Detector connected" : "Detector not connected"}
         statusTone={!screen.ai.enabled ? "neutral" : detectorConnected ? "success" : "warning"} />
       <AiSettings ai={screen.ai} />
+    </>}
+
+    {part === "articles" && <>
+      <SettingsIntro icon="chat" tone="blue" title="Help articles" description="Answers customers find by searching your storefront form, before they send a request."
+        status={`${screen.articles.length} articles`} statusTone={screen.articles.length ? "success" : "warning"} />
+      <HelpArticles screen={screen} />
     </>}
 
     {part === "replies" && <>

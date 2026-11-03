@@ -1,0 +1,632 @@
+[
+  {
+    "collection": "Orders & Delivery",
+    "question": "Where is my order?",
+    "keywords": "track, tracking, order status, update, no updates, when will it arrive, not arrived yet, haven't received, unfulfilled, shipped, not delivered yet, hasn't been delivered, package is not delivered, still not here",
+    "action": "Orders › Track Order",
+    "answer": "Choose Track Order below and enter your order number and the email you ordered with. You'll see your order's live status straight away: whether it has shipped, the carrier, the tracking number and the latest update.\n\nIf it hasn't shipped yet, it's still being prepared, and you'll get an email with tracking as soon as it leaves us."
+  },
+  {
+    "collection": "Orders & Delivery",
+    "question": "My tracking says delivered, but I don't have my package",
+    "keywords": "delivered but not received, says delivered, marked delivered, shows delivered, delivered and it didn't, never got, didn't receive, missing package, ups, usps, fedex, dhl, carrier",
+    "action": "Other Queries › Delivered but Not Received",
+    "answer": "Sorry it hasn't turned up. Before anything else:\n\n- Check around your door, mailbox, garage and with neighbours or your building's front desk.\n- Carriers sometimes mark a package as delivered a little before it actually arrives, so it's worth checking again later today.\n- Make sure the address on your order confirmation is right.\n\nStill nothing? Let us know below with your order number. We'll look into it with the carrier and keep you updated on your request page."
+  },
+  {
+    "collection": "Orders & Delivery",
+    "question": "Only part of my order arrived",
+    "keywords": "partial delivery, some items, few items, split, separate packages, fragments, rest of my order, only one case, coming separately, 2 out of 4",
+    "action": "Other Queries › Partial Delivery",
+    "answer": "Larger orders sometimes ship in more than one package, and each package can arrive on a different day. Check your shipping emails for more than one tracking number.\n\nIf every package has been delivered and something is still missing, report it below and we'll send what's missing."
+  },
+  {
+    "collection": "Orders & Delivery",
+    "question": "Can I cancel my order?",
+    "keywords": "cancel, cancellation, i want to cancel, cancel it, stop the order, don't want it, ordered by mistake, delayed cancel, refund before shipping",
+    "action": "Orders › Cancel Order",
+    "answer": "Yes, as long as it hasn't shipped yet. Choose Cancel Order below: we check that the order can still be stopped, then you can cancel the whole order or just some items.\n\nOur team reviews every cancellation and confirms it on your request page and by email. The refund goes back to your original payment method; if you don't see it after 5-7 business days, check with your bank, then let us know.\n\nOnce an order has shipped it can't be cancelled, but you can return it when it arrives (international orders are final sale)."
+  },
+  {
+    "collection": "Orders & Delivery",
+    "question": "Can I change an item, colour or quantity on my order?",
+    "keywords": "edit order, change order, wrong colour ordered, change variant, change size, swap item, add item, remove item, fix before shipping, instead of",
+    "action": "Orders › Edit Existing Order",
+    "answer": "Yes, before it ships. Choose Edit Existing Order below and pick what to change: remove an item, change a quantity, or switch to another colour or size.\n\nWe check with our warehouse that it hasn't been packed yet. If the change costs more or less, you'll see the difference before you send the request."
+  },
+  {
+    "collection": "Orders & Delivery",
+    "question": "Can I change my shipping address?",
+    "keywords": "address change, wrong address, update address, new address, moved, ship to a different address",
+    "action": "Orders › Modify Address",
+    "answer": "Please tell us straight away. Choose Modify Address below and enter the new address: we check the order can still be changed before you send it.\n\nWe can't guarantee a change once the order is being processed or has shipped, and once a shipping label has been created the address can no longer be changed on our side. Double-check your address at checkout to avoid this."
+  },
+  {
+    "collection": "Orders & Delivery",
+    "question": "My package is lost or the tracking hasn't moved",
+    "keywords": "lost package, tracking not moving, stuck, cancelled tracking, tracking says cancelled, never arrived, package lost, armorship, package protection, stolen, theft, investigation, not updating",
+    "action": "Orders › Lost Package",
+    "answer": "Sorry about this. Tracking can take 24-48 hours to start updating after your shipping email, so give it a day if your order only just shipped.\n\nStill stuck? Choose Lost Package below with your order number. We check the latest tracking and open an investigation with the carrier for you, and you can tell us whether you'd like the products sent again or a refund. Our team keeps you updated on your request page.\n\nAdded ARMORSHIP® package protection at checkout? It covers eligible loss, theft and damage in transit: tell us and we'll help with the claim."
+  },
+  {
+    "collection": "Orders & Delivery",
+    "question": "My order is delayed",
+    "keywords": "delay, delayed, late, taking too long, pre-order, preorder, back order, estimated arrival, still waiting, months",
+    "action": "Other Queries › Shipment Delayed",
+    "answer": "Orders usually take 2-3 business days to process (Monday to Friday, not holidays). During product launches, sales and holidays it can take longer, and carriers' delivery estimates aren't guaranteed: weather and carrier delays can add a few days.\n\nPre-order and back-ordered items ship as soon as they're in stock, and we email you the tracking when they do. You can check your order's status any time with Track Order. If the wait no longer works for you and your order hasn't shipped, you can ask to cancel it."
+  },
+  {
+    "collection": "Orders & Delivery",
+    "question": "The carrier couldn't deliver my package",
+    "keywords": "failed delivery, delivery attempt, attempted delivery, missed delivery, delivery notice, return to sender, returned to sender, held at, pick up",
+    "action": "Other Queries › Delivery Attempted or Failed",
+    "answer": "Check your tracking for the carrier's note: it usually says whether they'll try again, or where the package is waiting for you to pick it up.\n\nIf it's being sent back to us, or you'd like help arranging delivery, let us know below with your order number."
+  },
+  {
+    "collection": "Orders & Delivery",
+    "question": "My order was delivered to the wrong address",
+    "keywords": "wrong address, delivered somewhere else, neighbour, delivered to wrong house",
+    "action": "Other Queries › Delivered to Wrong Address",
+    "answer": "Let us know below with your order number and the address it should have gone to. We'll take it up with the carrier and keep you updated on your request page."
+  },
+  {
+    "collection": "Shipping",
+    "question": "How long does shipping take, and what does it cost?",
+    "keywords": "shipping time, delivery time, how much is shipping, shipping price, cost to ship, how long, how many days, shipping cost, when will it arrive, arrive before, processing time, lead time, free shipping, $125, 125, how long to ship",
+    "action": "Shipping › Domestic Shipping",
+    "answer": "Orders usually take 2-3 business days to process, then they're in transit with the carrier. Shipping is free on orders of $125 or more within the continental U.S.; below that, the cost depends on your address and the shipping method, and you'll see it at checkout.\n\nChoose Domestic Shipping below and pick your products and address: you'll see each shipping option with its price and the date it should arrive if you order today."
+  },
+  {
+    "collection": "Shipping",
+    "question": "Can I get faster or expedited shipping?",
+    "keywords": "expedited, expedite, faster, rush, overnight, express, 2 day, next day, need it by",
+    "action": "Shipping › Domestic Shipping",
+    "answer": "Faster shipping options, where we have them, are offered at checkout. To compare them for your address before you order, choose Domestic Shipping below: it lists every option with its price and arrival date.\n\nAlready ordered? Tell us the date you need it by and we'll see what we can do."
+  },
+  {
+    "collection": "Shipping",
+    "question": "Do you ship internationally?",
+    "keywords": "international, outside the us, overseas, worldwide, uk, canada, australia, europe, spain, france, singapore, ship to my country",
+    "action": "Shipping › International Shipping",
+    "answer": "Yes, to select countries. Choose International Shipping below, pick the products you want and enter your address. Our team sends you a quote with the shipping method, delivery date, shipping cost and any taxes, and you decide from there. You can also email help@zioncases.com for a quote.\n\nGood to know before you order:\n\n- Customs duties, import taxes, VAT and brokerage fees are paid by you, the customer.\n- International orders are final sale, including the product and shipping costs.\n- We can't refund international orders lost or damaged in transit or sent to a wrong address, but we'll work with the carrier on a claim for you."
+  },
+  {
+    "collection": "Shipping",
+    "question": "Do you ship to Hawaii, Alaska and U.S. territories?",
+    "keywords": "hawaii, alaska, puerto rico, guam, territories, apo, fpo",
+    "action": "Shipping › Domestic Shipping",
+    "answer": "Yes. Free shipping on orders of $125 or more covers the continental U.S. only.\n\nHawaii orders are shipped manually because of the carrier's extra fees: tell us your address and the products you'd like below, and we'll send you an invoice with the shipping cost. For Alaska and U.S. territories, choose Domestic Shipping below and enter your address to see the options and prices, or ask us and we'll send a quote."
+  },
+  {
+    "collection": "Shipping",
+    "question": "Will I pay customs, duties or taxes?",
+    "keywords": "customs, duties, import tax, vat, gst, taxes, sales tax, charged tax, brokerage, refused, import fees",
+    "action": "Shipping › Taxes, Customs & Duties",
+    "answer": "For orders shipped outside the U.S., yes: customs duties, import taxes, VAT and brokerage fees are the customer's responsibility, and the destination country can charge them when the package arrives. Our international shipping quote includes the taxes we can estimate.\n\nA package that's refused, or whose fees aren't paid, may be sent back at your expense. Have a question about tax on an order? Choose Taxes, Customs & Duties below."
+  },
+  {
+    "collection": "Returns & Exchanges",
+    "question": "What is your return policy?",
+    "keywords": "return, returns, return policy, send back, how long to return, return window, refund, money back, unused, still in the box, 6 months, six months, proof of purchase, receipt, final sale, partial refund, how to return, how do i return, how can i return, return my case, return a product, return an item, start a return, send it back, returning",
+    "action": "Returns, Exchanges & Refunds",
+    "answer": "We accept returns and exchanges within 6 months of purchase, as long as it's unused, in the condition you received it and in its original packaging, with your receipt or proof of purchase.\n\nChoose your reason below. Please don't send anything back before our team has approved the return: once it's approved, we send you the instructions, and your refund goes back to your original payment method once the return reaches us and is checked.\n\nGood to know:\n\n- Exchanges are subject to shipping charges.\n- Items that show signs of use, are damaged or are missing parts may only get a partial refund.\n- International orders are final sale.\n- Arrived damaged, defective or wrong? Tell us within 7 days of delivery instead, with photos: choose Damaged or Defective or Received the Wrong Item."
+  },
+  {
+    "collection": "Returns & Exchanges",
+    "question": "I ordered the wrong model or colour. Can I exchange it?",
+    "keywords": "exchange, swap, wrong model, horizontal instead of vertical, vertical instead of horizontal, wrong colour ordered, wrong size, different colour, ordered wrong, upgrade",
+    "action": "Returns, Exchanges & Refunds › Exchange for another model",
+    "answer": "Yes. If it's unused and in its original packaging, you can exchange it for the same item in another model or colour, or upgrade, within 6 months of purchase. Exchanges are subject to shipping charges.\n\nChoose Exchange for another model below and tell us which one you'd like instead. Not shipped yet? Change the order before it ships with Edit Existing Order."
+  },
+  {
+    "collection": "Returns & Exchanges",
+    "question": "I ordered more than I need. Can I return the extra?",
+    "keywords": "ordered extra, too many, only needed one, only need one, only need 1, return one, ordered two, ordered 2, duplicate, one too many",
+    "action": "Returns, Exchanges & Refunds › Ordered extra",
+    "answer": "Yes, within 6 months of purchase, as long as the extra is unused and in its original packaging. Choose Ordered extra below and tell us how many you'd like to send back, and wait for our team to approve it before you ship anything."
+  },
+  {
+    "collection": "Returns & Exchanges",
+    "question": "It doesn't fit my slabs or cards. Can I return it?",
+    "keywords": "doesn't fit, won't fit, too tight, graded guards, slab won't go in, wrong size for my cards, accommodate",
+    "action": "Returns, Exchanges & Refunds › Doesn't fit my cards",
+    "answer": "Yes, if it's unused and in its original packaging, within 6 months of purchase. Choose Doesn't fit my cards below and tell us which slab or holder you're using: we can often point you to a model that fits, as an exchange (exchanges are subject to shipping charges)."
+  },
+  {
+    "collection": "Returns & Exchanges",
+    "question": "Where is my refund?",
+    "keywords": "refund status, refund update, haven't got my refund, money back, when will i get my refund, how long does a refund take, refund take, refund to show up, refund time, not refunded yet, credit",
+    "action": "Returns, Exchanges & Refunds › Refund status",
+    "answer": "We issue your refund once your return reaches us and is checked, back to your original payment method. It can then take a few business days for your bank to show it.\n\nHaven't seen it 5-7 business days after we confirmed it? Check with your bank or card company first, then choose Refund status below with your order number and the date you sent it back."
+  },
+  {
+    "collection": "Returns & Exchanges",
+    "question": "The product isn't what I expected",
+    "keywords": "not as expected, disappointed, quality, flimsy, colour different from photos, not happy, don't like it",
+    "action": "Returns, Exchanges & Refunds › Doesn't meet expectations",
+    "answer": "Sorry it wasn't what you hoped for. If it's unused and in its original packaging, you can return or exchange it within 6 months of purchase. Choose Doesn't meet expectations below and tell us what wasn't right: your feedback goes to our product team."
+  },
+  {
+    "collection": "Damaged, Missing or Wrong Items",
+    "question": "My item arrived damaged or broken",
+    "keywords": "damaged, broken, cracked, crack, arrived cracked, came cracked, arrived broken, came broken, chipped, chip, dent, dented, snapped, gouge, bent, broken handle, broken lid, cracked lid, corner, arrived damaged, damaged in shipping, 7 days, seven days, photos, packaging damaged",
+    "action": "Product Issues › Damaged or Defective",
+    "answer": "Sorry it arrived like that. Please tell us within 7 days of delivery: choose Damaged or Defective below, pick the item from your order and add a few clear photos of the damage and of the packaging it came in.\n\nOur team reviews it and sends a replacement, a replacement part or a refund."
+  },
+  {
+    "collection": "Damaged, Missing or Wrong Items",
+    "question": "A riser arrived broken or the pins snapped",
+    "keywords": "riser broken, broken riser, pins broke, tabs broke, insert pins, riser snapped, locking riser",
+    "action": "Product Issues › Damaged or Defective",
+    "answer": "Sorry about that. Choose Damaged or Defective below within 7 days of delivery, pick the risers from your order and add a photo of the broken riser. We'll send you a replacement riser."
+  },
+  {
+    "collection": "Damaged, Missing or Wrong Items",
+    "question": "Something is missing from my order",
+    "keywords": "missing, not in the box, didn't come with, without risers, no risers, lids missing, inserts missing, foam missing, labels missing, only received one, missing accessory, card holder, magnetic card holder, sling bag, labels",
+    "action": "Product Issues › Missing Item or Part",
+    "answer": "Sorry about that. First, check every box and bag in your delivery: large orders can come in more than one package, on different days, and pre-order items ship when they're in stock.\n\nStill missing? Within 7 days of delivery, choose Missing Item or Part below, pick what's missing from your order, and we'll send it to you."
+  },
+  {
+    "collection": "Damaged, Missing or Wrong Items",
+    "question": "I received the wrong item, colour or risers",
+    "keywords": "wrong item, wrong product, wrong colour, wrong variant, wrong risers, risers for vertical, received instead of, delivered instead, got instead, sent instead, sent the wrong, incorrect order, wrong quantity, out of, not the same, and got, but got, i got, they sent, was sent",
+    "action": "Product Issues › Received the Wrong Item",
+    "answer": "Sorry we got that wrong. Within 7 days of delivery, choose Received the Wrong Item below, pick what you ordered and tell us what arrived instead, with a photo. We'll send the right item."
+  },
+  {
+    "collection": "Damaged, Missing or Wrong Items",
+    "question": "My case looks scratched, cloudy or not clear",
+    "keywords": "scratches, scratched, scratched lid, marks on the lid, cloudy, hazy, foggy, not clear, not transparent, lines, marks, film, protective film, wrapper, cannot remove, won't come off",
+    "action": "Product Issues › Damaged or Defective",
+    "answer": "Our acrylic ships with a thin protective film on both sides, and it can look like scratches, haze or a cloudy finish. Peel it off gently from one corner on each side, inside and out.\n\nMarks still there with the film off? Choose Damaged or Defective below with a photo and we'll make it right."
+  },
+  {
+    "collection": "Damaged, Missing or Wrong Items",
+    "question": "The lid doesn't close properly or the latches don't line up",
+    "keywords": "lid won't close, lid shifts, latches, doesn't close, loose lid, hinge, alignment, jiggle",
+    "action": "Product Issues › Damaged or Defective",
+    "answer": "Sorry about that. Choose Damaged or Defective, then \"Doesn't work properly\", and add a short video of the lid closing if you can. Our team checks it and sends a fix, a replacement or a refund."
+  },
+  {
+    "collection": "Damaged, Missing or Wrong Items",
+    "question": "The lock won't open or won't take the combination",
+    "keywords": "lock, locked, combination, code, unable to open, can't open, lock won't set, lock issue, only one lock works, 000, default code, tsa, dial lock, forgot code, locked out",
+    "action": "Product Issues › Damaged or Defective",
+    "answer": "Most of our TSA locks come set to 000. To set your own code: open the lock with the current code, activate the reset mechanism, choose your new code, then return the reset mechanism to its original position. Test the new code a few times before you lock the case. Our video guide walks you through each lock type: https://zioncases.com/pages/setting-tsa-dial-combination-locks\n\nStill won't open or set? Choose Damaged or Defective, then \"Doesn't work properly\", tell us which case you have and add a short video of what happens. We'll help, and if the lock is faulty, we'll make it right."
+  },
+  {
+    "collection": "Damaged, Missing or Wrong Items",
+    "question": "The bottom of my case is bowing or not flat",
+    "keywords": "bowing, warped, not flat, bottom bowing, uneven, wobble, rocking",
+    "action": "Product Issues › Damaged or Defective",
+    "answer": "Sorry about that. Choose Damaged or Defective, then \"Doesn't work properly\", and add a photo from the side showing the bowing. Our team reviews it and gets back to you with a solution."
+  },
+  {
+    "collection": "Warranty & Parts",
+    "question": "Is my case covered by warranty?",
+    "keywords": "warranty, wheel fell off, handle stopped working, rust, rusting, hinge torn, rivets, stopped working, after a few months, used it for a while, less than a year",
+    "action": "Product Issues › Warranty Claim",
+    "answer": "For a problem that started after you've used your case for a while, choose Warranty Claim below. Tell us what happened and when you bought it, and add photos or a video.\n\nOur team checks your purchase date and warranty coverage, then confirms whether a replacement, a repair or another solution is available."
+  },
+  {
+    "collection": "Warranty & Parts",
+    "question": "Can I buy replacement parts like wheels, risers, lids or foam?",
+    "keywords": "replacement parts, spare parts, buy wheels, extra risers, foam dividers, inserts, buy a lid, replacement wheel, parts",
+    "action": "Other Queries › General question",
+    "answer": "Tell us below which part you need, how many, and which product it's for. Our team will let you know what's available and the price.\n\nIf a part arrived broken, report it within 7 days of delivery with Damaged or Defective. If it broke later with normal use, choose Warranty Claim."
+  },
+  {
+    "collection": "Products & Care",
+    "question": "Which slabs and cards fit my case?",
+    "keywords": "fit, fits, psa, bgs, cgc, sgc, tag, graded guards, one touch, magnetic holder, top loader, sleeve, 35pt, 130pt, dimensions, size, will it fit",
+    "action": "Other Queries",
+    "answer": "Our slab cases fit most standard graded slabs: PSA, BGS, CGC, SGC and TAG, and you can mix brands in one case. Each product page lists what it holds, and our size guide has every measurement: https://zioncases.com/pages/zion-cases-size-dimension-guide\n\nNot sure? Choose your slab or holder below (PSA, BGS, CGC, graded guards, One Touch and more), tell us which product you're looking at, and we'll confirm the right fit."
+  },
+  {
+    "collection": "Products & Care",
+    "question": "How do I clean my case?",
+    "keywords": "clean, cleaning, clean acrylic, acrylic, care, polish, smudges, fingerprints, dust",
+    "action": "Other Queries › Cleaning and care",
+    "answer": "Wipe it with a soft microfiber cloth, slightly dampened with water. Avoid harsh chemicals, abrasives and solvents (including paper towels, alcohol and ammonia glass cleaners): they can scratch or cloud acrylic.\n\nTo keep your case in shape, don't overfill it, keep the latches closed when you carry it, and store it somewhere clean and dry."
+  },
+  {
+    "collection": "Products & Care",
+    "question": "How do I put my case together?",
+    "keywords": "assembly, assemble, set up, setup, put together, install risers, no instructions, how to use",
+    "action": "Other Queries › Assembly help",
+    "answer": "Tell us which product you have and where you're stuck, and add a photo if you can. We'll walk you through it."
+  },
+  {
+    "collection": "Payments & Discounts",
+    "question": "My discount code isn't working",
+    "keywords": "discount code, promo code, coupon, code not working, code failed, invalid code, code expired",
+    "action": "Other Queries › Discount code not working",
+    "answer": "Check that the code is typed exactly as given, that it hasn't expired, and that the items in your cart qualify. Discount codes usually can't be combined with each other, and gift cards can't be combined with discount codes or promotions: you choose one or the other.\n\nStill not working? Tell us the code and the message you see."
+  },
+  {
+    "collection": "Payments & Discounts",
+    "question": "Why is my order on hold?",
+    "keywords": "on hold, order held, security check, verification, payment review, fraud check",
+    "action": "Other Queries › Order on Hold",
+    "answer": "Orders are sometimes held for a short security check of the payment. Our team reviews it and releases the order, or contacts you if we need anything. Tell us your order number below if you'd like an update."
+  },
+  {
+    "collection": "Payments & Discounts",
+    "question": "How do I cancel shipping protection?",
+    "keywords": "shipping protection, armorship, armourship, insurance, remove protection, package protection, shipping insurance",
+    "action": "Other Queries › Cancel Shipping Protection",
+    "answer": "Shipping protection (ARMORSHIP®) is optional: it covers eligible loss, theft and damage in transit. Tell us your order number below and we'll check whether it can still be removed and refunded."
+  },
+  {
+    "collection": "Payments & Discounts",
+    "question": "Can I get an invoice or receipt?",
+    "keywords": "invoice, receipt, proof of purchase, tax invoice, billing",
+    "action": "Other Queries › Invoice or Receipt",
+    "answer": "Your order confirmation email works as a receipt. Need a formal invoice, or extra details on it? Tell us your order number and what you need."
+  },
+  {
+    "collection": "Wholesale & Partners",
+    "question": "Do you offer wholesale?",
+    "keywords": "wholesale, sell wholesale, dealer, reseller, store, bulk, moq, minimum order, carry your cases, card shop",
+    "action": "Wholesale Queries",
+    "answer": "Yes. Wholesale accounts are for businesses with a brick-and-mortar store, a card show presence or a large breaking channel. You can apply at https://zioncaseswholesale.com/pages/b2b-wholesale\n\nRegistered wholesalers get access to select products 2-3 times a year, each window open for 10-14 days. Have a question about pricing, minimum orders, your application or tax certificates? Choose it below and our wholesale team will get back to you."
+  },
+  {
+    "collection": "Wholesale & Partners",
+    "question": "How do I join the affiliate program?",
+    "keywords": "affiliate, creator, influencer, partner, commission, payout, collab, sponsorship, 10%, referral link, goaffpro",
+    "action": "Affiliate Queries",
+    "answer": "Joining is free. Sign up on our affiliate page, https://zioncases.com/pages/become-an-affiliate, and you get your own referral link and dashboard straight away. Share the link on social media, YouTube, streams or your website and earn up to 10% on every successful referral, with no cap, paid monthly.\n\nAlready a partner and need help? Choose your question below and our partnerships team will get back to you."
+  },
+  {
+    "collection": "Orders & Delivery",
+    "question": "My order hasn't shipped yet",
+    "keywords": "not shipped, hasn't shipped, has my order shipped, did my order ship, shipped yet, unfulfilled, still processing, when will it ship, label created, waiting to ship, no tracking yet, ordered days ago",
+    "action": "Other Queries › Order Not Shipped Yet",
+    "answer": "Orders usually take 2-3 business days to process (Monday to Friday, not holidays); orders placed at the weekend start on the next business day. During launches, sales and holidays it can take a little longer.\n\nAs soon as yours leaves us, you'll get an email with the tracking number (tracking can take 24-48 hours to start updating). You can check where it is any time with Track Order. Pre-order and back-ordered items ship once they're in stock.\n\nWaiting longer than that? Let us know below."
+  },
+  {
+    "collection": "Orders & Delivery",
+    "question": "What happens with my pre-order?",
+    "keywords": "pre-order, preorder, pre order, limited edition, back in stock, estimated arrival, shipped early, when will my pre-order ship",
+    "action": "Orders › Track Order",
+    "answer": "Each pre-order item's estimated ship date is on its product page. Pre-order items ship as soon as they arrive in stock, and we email you the tracking when they do. Unless the product page says otherwise, the rest of an order with a pre-order item may wait and ship together with it.\n\nIf the estimated date changes, we email you about it. Check your order's status any time with Track Order. If the wait no longer works for you and the order hasn't shipped, you can ask to cancel it."
+  },
+  {
+    "collection": "Orders & Delivery",
+    "question": "Is the free gift included with my order?",
+    "keywords": "free gift, free sling bag, sling bag wasn't in the box, free sling bag missing, gift missing, complimentary, promotion, promo gift, bonus item, free item, gift with purchase, t-shirt, tshirt, shirt, sling, sling 2.0, $300, spend 300",
+    "action": "Product Issues › Missing Item or Part",
+    "answer": "When your order qualifies for a free gift (like our free T-shirt or Sling 2.0 on orders of $300 or more, while that offer is running), it's added to your order and ships with it.\n\nYour order arrived without it? Choose Missing Item or Part below, pick the gift, and we'll send it to you."
+  },
+  {
+    "collection": "Orders & Delivery",
+    "question": "Do I need to sign for my package?",
+    "keywords": "signature, sign for, signature required, missed delivery, needs signature, adult signature, couldn't sign",
+    "action": "Other Queries › Delivery Attempted or Failed",
+    "answer": "Some deliveries need a signature, depending on the carrier and the order. If you missed it, the carrier usually leaves a notice saying when they'll try again or where you can pick it up.\n\nNeed help arranging delivery, or want a signature added or removed? Tell us below with your order number."
+  },
+  {
+    "collection": "Orders & Delivery",
+    "question": "How do I contact customer support?",
+    "keywords": "contact, email, phone, call, talk to someone, customer service, support team, human, agent, reach you, response time, reply",
+    "action": "",
+    "answer": "Search for your question above, or choose a topic below and send us a request. You'll get a request number and a private page where you can follow it and chat with our team, and we'll email you each reply.\n\nYou can also email us at help@zioncases.com.\n\nAlready sent a request? Open it from the link in your email, or from Your requests when you're signed in."
+  },
+  {
+    "collection": "Payments & Discounts",
+    "question": "My payment didn't go through, or I was charged twice",
+    "keywords": "payment declined, card declined, payment failed, charged twice, double charged, pending charge, authorization, payment pending, billing, paypal, shop pay, afterpay, klarna",
+    "action": "Other Queries › Payment Issue",
+    "answer": "A declined payment is usually down to the card's details or billing address not matching what the bank has, so check those first or try another payment method.\n\nA charge for an order that didn't go through is often a temporary hold that your bank releases on its own within a few business days.\n\nCharged twice, or the charge hasn't dropped off? Tell us below with your order number and we'll look into it."
+  },
+  {
+    "collection": "Shipping",
+    "question": "Can I pre-order from outside the U.S.?",
+    "keywords": "international pre-order, pre-order international, pre order to, ship pre-order to, outside us pre-order",
+    "action": "Shipping › International Shipping",
+    "answer": "Yes, ask us for a quote. Choose International Shipping below, pick the products and enter your address, and our team replies with the shipping method, delivery date, cost and any taxes.\n\nInternational orders are final sale, and customs duties and taxes are paid by you on arrival."
+  },
+  {
+    "collection": "Returns & Exchanges",
+    "question": "Can I return something I ordered by mistake?",
+    "keywords": "ordered by mistake, ordered the wrong, clicked wrong, wrong one ordered, ordered wrong size, ordered wrong colour, my mistake",
+    "action": "Returns, Exchanges & Refunds › Ordered the wrong item or colour",
+    "answer": "Yes. If it's unused and in its original packaging, you can return or exchange it within 6 months of purchase (exchanges are subject to shipping charges). Choose Ordered the wrong item or colour below. Hasn't shipped yet? Change the order instead with Edit Existing Order."
+  },
+  {
+    "collection": "Returns & Exchanges",
+    "question": "Who pays for return shipping?",
+    "keywords": "return shipping cost, return label, prepaid label, pay for return, shipping back, return postage",
+    "action": "Returns, Exchanges & Refunds",
+    "answer": "It depends on the reason. For a return you choose (you changed your mind or ordered the wrong thing), our team tells you how to send it back and about any cost before you ship it, and exchanges are subject to shipping charges.\n\nFor items that arrived damaged, defective or wrong, reported within 7 days of delivery, we cover it and send you what you need."
+  },
+  {
+    "collection": "Warranty & Parts",
+    "question": "What's the status of my warranty claim or request?",
+    "keywords": "claim status, warranty status, any update, update on my claim, follow up, my request, my ticket, haven't heard back, waiting for reply",
+    "action": "",
+    "answer": "Open your request from the link in our email, or from Your requests when you're signed in. Its page shows where it stands, and you can reply to our team there.\n\nCan't find it? Look it up with your request number and email from the request page."
+  },
+  {
+    "collection": "Warranty & Parts",
+    "question": "What does the warranty cover?",
+    "keywords": "warranty coverage, warranty period, how long warranty, covered, guarantee, lifetime, warranty length",
+    "action": "Product Issues › Warranty Claim",
+    "answer": "Warranty claims are for problems that show up with normal use. Our team checks your purchase date and coverage for each claim, and confirms whether a replacement, a repair or another solution is available.\n\nSomething went wrong with yours? Choose Warranty Claim below."
+  },
+  {
+    "collection": "Warranty & Parts",
+    "question": "Can a wheel be replaced?",
+    "keywords": "replace wheel, wheel replacement, new wheel, wheel cracked, wheel broke, spare wheel, wheels",
+    "action": "Other Queries › Replacing a wheel",
+    "answer": "Tell us below which case you have and which wheel broke, with a photo if you can. We'll let you know whether it's covered by warranty or available as a spare part, and how to fit it."
+  },
+  {
+    "collection": "Products & Care",
+    "question": "Will PSA slabs fit in my case?",
+    "keywords": "psa, psa slab, psa graded, psa cards",
+    "action": "Other Queries › PSA slab fit",
+    "answer": "Yes. Our slab cases fit most standard graded slabs, including PSA, BGS, CGC, SGC and TAG. You can mix slab brands in the same case; how many fit depends on the slabs' thickness and the foam layout. Each product page lists exactly what it holds, and our size guide has every measurement: https://zioncases.com/pages/zion-cases-size-dimension-guide\n\nNot sure about yours? Ask us below with the product you're looking at, and we'll confirm the fit before you order. Already bought one that doesn't fit? If it's unused and in its original packaging, you can exchange or return it within 6 months of purchase."
+  },
+  {
+    "collection": "Products & Care",
+    "question": "Will BGS slabs fit in my case?",
+    "keywords": "bgs, beckett, bgs slab, bvg",
+    "action": "Other Queries › BGS slab fit",
+    "answer": "Yes. Our slab cases fit most standard graded slabs, including BGS, PSA, CGC, SGC and TAG. You can mix slab brands in the same case; how many fit depends on the slabs' thickness and the foam layout. Each product page lists exactly what it holds, and our size guide has every measurement: https://zioncases.com/pages/zion-cases-size-dimension-guide\n\nNot sure about yours? Ask us below with the product you're looking at, and we'll confirm the fit before you order. Already bought one that doesn't fit? If it's unused and in its original packaging, you can exchange or return it within 6 months of purchase."
+  },
+  {
+    "collection": "Products & Care",
+    "question": "Will CGC slabs fit in my case?",
+    "keywords": "cgc, cgc slab, csg",
+    "action": "Other Queries › CGC slab fit",
+    "answer": "Yes. Our slab cases fit most standard graded slabs, including CGC, PSA, BGS, SGC and TAG. You can mix slab brands in the same case; how many fit depends on the slabs' thickness and the foam layout. Each product page lists exactly what it holds, and our size guide has every measurement: https://zioncases.com/pages/zion-cases-size-dimension-guide\n\nNot sure about yours? Ask us below with the product you're looking at, and we'll confirm the fit before you order. Already bought one that doesn't fit? If it's unused and in its original packaging, you can exchange or return it within 6 months of purchase."
+  },
+  {
+    "collection": "Products & Care",
+    "question": "Will SGC or TAG slabs fit in my case?",
+    "keywords": "sgc, tag, tag slab, sgc slab",
+    "action": "Other Queries › SGC or TAG slab fit",
+    "answer": "Yes. Our slab cases fit most standard graded slabs, including SGC, TAG, PSA, BGS and CGC. You can mix slab brands in the same case; how many fit depends on the slabs' thickness and the foam layout. Each product page lists exactly what it holds, and our size guide has every measurement: https://zioncases.com/pages/zion-cases-size-dimension-guide\n\nNot sure about yours? Ask us below with the product you're looking at, and we'll confirm the fit before you order. Already bought one that doesn't fit? If it's unused and in its original packaging, you can exchange or return it within 6 months of purchase."
+  },
+  {
+    "collection": "Products & Care",
+    "question": "Will graded guards fit in my case?",
+    "keywords": "graded guard, graded guards, slab guard, guard sleeve, slabs in guards",
+    "action": "Other Queries › Graded guards fit",
+    "answer": "Each product page lists the slabs and holders it's made for. Not sure about yours? Ask us below: tell us which product you're looking at and how your cards are stored (for example in a graded guard or a sleeve), and we'll confirm the right fit before you order.\n\nAlready bought one that doesn't fit? If it's unused and in its original packaging, you can exchange or return it within 6 months of purchase."
+  },
+  {
+    "collection": "Products & Care",
+    "question": "Will One Touch or magnetic holders fit in my case?",
+    "keywords": "one touch, onetouch, magnetic holder, mag, mags, 35pt, 35 pt, 55pt, 75pt, 130pt, magpro, mag pro",
+    "action": "Other Queries › One Touch or magnetic holder fit",
+    "answer": "Each product page lists the slabs and holders it's made for. Not sure about yours? Ask us below: tell us which product you're looking at and how your cards are stored (for example in a graded guard or a sleeve), and we'll confirm the right fit before you order.\n\nAlready bought one that doesn't fit? If it's unused and in its original packaging, you can exchange or return it within 6 months of purchase."
+  },
+  {
+    "collection": "Products & Care",
+    "question": "Will top loaders and sleeves fit in my case?",
+    "keywords": "top loader, toploader, sleeve, sleeves, penny sleeve, snug fit, card saver",
+    "action": "Other Queries › Top loader or sleeve fit",
+    "answer": "Each product page lists the slabs and holders it's made for. Not sure about yours? Ask us below: tell us which product you're looking at and how your cards are stored (for example in a graded guard or a sleeve), and we'll confirm the right fit before you order.\n\nAlready bought one that doesn't fit? If it's unused and in its original packaging, you can exchange or return it within 6 months of purchase."
+  },
+  {
+    "collection": "Products & Care",
+    "question": "How many cards fit in a binder?",
+    "keywords": "binder, binder capacity, pages, pockets, how many cards, 9 pocket, 4 pocket, binder size",
+    "action": "Other Queries › Binder: which cards fit",
+    "answer": "Each binder's product page lists its pages, pockets and the cards they hold. Tell us below which binder and which cards (raw, sleeved, top loaders or slabs) and we'll confirm."
+  },
+  {
+    "collection": "Products & Care",
+    "question": "What are the dimensions of a case?",
+    "keywords": "dimensions, size, measurements, how big, interior, inside measurements, weight, carry on size, height, width, size guide, dimension guide",
+    "action": "Other Queries › Dimensions",
+    "answer": "Every case's size is in our size and dimension guide: https://zioncases.com/pages/zion-cases-size-dimension-guide, and on each product page.\n\nNeed a measurement that isn't listed, like the inside depth? Tell us below which product and which measurement."
+  },
+  {
+    "collection": "Products & Care",
+    "question": "How do I remove the protective film?",
+    "keywords": "remove film, peel film, protective film, plastic film, wrapper, sticker, peel off, cloudy",
+    "action": "Other Queries › Removing protective film",
+    "answer": "Our acrylic ships with a thin protective film on both sides of each panel. Lift it from one corner with a fingernail and peel slowly, inside and out. Don't use a blade: it can scratch the acrylic.\n\nMarks still there once the film is off? Choose Damaged or Defective, with a photo."
+  },
+  {
+    "collection": "Products & Care",
+    "question": "How do I set or reset the lock combination?",
+    "keywords": "lock code, combination, set code, reset code, change combination, forgot code, tsa lock, lock instructions, 000, default code, default combination, tsa, dial lock, change code",
+    "action": "Other Queries › Setting the lock code",
+    "answer": "Most of our TSA locks come set to 000.\n\n- Open the lock with the current code (000 if you haven't changed it).\n- Activate the reset mechanism.\n- Set your new code.\n- Return the reset mechanism to its original position.\n- Test the new code a few times before you lock your case.\n\nYou can change the code as often as you like. Our video guide shows each lock type, including the upgraded TSA locks and dial locks: https://zioncases.com/pages/setting-tsa-dial-combination-locks\n\nNot every case has a TSA lock; the product page says which do. Forgot the code, or the lock won't open or set? Tell us below which case you have, with a short video of what happens."
+  },
+  {
+    "collection": "Products & Care",
+    "question": "How should I display my cards?",
+    "keywords": "display tips, card show, show table, arrange cards, set up a display, angle my cards",
+    "action": "Other Queries › Display tips",
+    "answer": "Tell us below which case you have and what you'd like to show, and we'll share our tips for setting it up, like using risers to angle your cards toward customers."
+  },
+  {
+    "collection": "Website & Account",
+    "question": "Checkout isn't working",
+    "keywords": "checkout, can't check out, checkout error, payment page, place order, order won't go through, cart, button not working",
+    "action": "Other Queries › Checkout not working",
+    "answer": "Try refreshing the page, using another browser or turning off ad blockers, and check that your address and payment details are complete.\n\nStill stuck? Tell us below what happens and the message you see."
+  },
+  {
+    "collection": "Website & Account",
+    "question": "The website shows an error",
+    "keywords": "website error, page not loading, broken link, 404, site down, error message, bug, glitch",
+    "action": "Other Queries › Website error",
+    "answer": "Sorry about that. Tell us below which page and what you see (a screenshot helps), and we'll fix it."
+  },
+  {
+    "collection": "Website & Account",
+    "question": "I can't sign in to my account",
+    "keywords": "sign in, log in, login, account, password, sign in code, verification code, can't access account, create account",
+    "action": "Other Queries › Account or login",
+    "answer": "Sign in with the email you ordered with. If we send you a sign-in code, check your spam or promotions folder for it.\n\nStill can't get in? Tell us below which email you're using."
+  },
+  {
+    "collection": "Feedback & Ideas",
+    "question": "I'm not happy with my product",
+    "keywords": "complaint, unhappy, bad review, disappointed, poor quality, not worth, terrible, angry, frustrated",
+    "action": "Other Queries › Bad review or complaint",
+    "answer": "We're sorry. Tell us below what went wrong: your feedback goes straight to our team, and we'll work with you to put it right.\n\nIf it's damaged or defective, choose Damaged or Defective instead, so we can send a fix."
+  },
+  {
+    "collection": "Feedback & Ideas",
+    "question": "Will you make it in another colour?",
+    "keywords": "new colour, new color, other colours, more colors, colorway, restock colour, coming soon",
+    "action": "Other Queries › New colour",
+    "answer": "We'd love to know which colour you'd like to see. Tell us below: requests go straight to our product team."
+  },
+  {
+    "collection": "Feedback & Ideas",
+    "question": "Will you make a bigger or smaller size?",
+    "keywords": "new size, bigger, smaller, larger, more slots, size option",
+    "action": "Other Queries › New size",
+    "answer": "Tell us below which product and the size you need: requests go straight to our product team."
+  },
+  {
+    "collection": "Feedback & Ideas",
+    "question": "I have an idea for a new product",
+    "keywords": "product idea, new product, suggestion, would love, please make, wish you made",
+    "action": "Other Queries › New product",
+    "answer": "We'd love to hear it. Tell us below: ideas go straight to our product team."
+  },
+  {
+    "collection": "Feedback & Ideas",
+    "question": "Feedback about packaging",
+    "keywords": "packaging, box, packed, packing, damaged box, more protection, eco",
+    "action": "Other Queries › Packaging suggestion",
+    "answer": "Thanks for telling us. Tell us below what you'd change about how your order was packed: it helps us protect every order better.\n\nDid something arrive damaged? Choose Damaged or Defective instead, so we can send a fix."
+  },
+  {
+    "collection": "Feedback & Ideas",
+    "question": "I have another suggestion",
+    "keywords": "suggestion, feedback, idea, improve, recommend",
+    "action": "Other Queries › Other idea",
+    "answer": "Tell us below. Every suggestion is read by our team."
+  },
+  {
+    "collection": "Wholesale & Partners",
+    "question": "How much is wholesale pricing?",
+    "keywords": "wholesale price, dealer price, price list, wholesale cost, reseller price, distributor",
+    "action": "Wholesale Queries › Dealer pricing",
+    "answer": "Wholesale accounts are for businesses with a brick-and-mortar store, a card show presence or a large breaking channel. You can apply at https://zioncaseswholesale.com/pages/b2b-wholesale\n\nOr tell us below about your store: its name, website and where you're based, and our wholesale team will send you our dealer pricing."
+  },
+  {
+    "collection": "Wholesale & Partners",
+    "question": "Is there a minimum order for wholesale?",
+    "keywords": "moq, minimum order, minimum quantity, how many to order, wholesale minimum",
+    "action": "Wholesale Queries › Minimum order (MOQ)",
+    "answer": "Our wholesale team confirms the minimum order with your pricing. Tell us below about your store and what you'd like to stock. Registered wholesalers can order select products 2-3 times a year, each window open for 10-14 days."
+  },
+  {
+    "collection": "Wholesale & Partners",
+    "question": "What's the status of my wholesale application?",
+    "keywords": "wholesale application, applied, application status, approved, dealer application, account approval",
+    "action": "Wholesale Queries › Application status",
+    "answer": "Tell us below the email and store name you applied with, and our wholesale team will update you."
+  },
+  {
+    "collection": "Wholesale & Partners",
+    "question": "Can I buy tax-free with a resale certificate?",
+    "keywords": "tax exempt, tax exemption, resale certificate, resale permit, sales tax exempt, reseller certificate",
+    "action": "Wholesale Queries › Tax exemption or resale certificate",
+    "answer": "Send us your resale or tax exemption certificate below, with the email you order with. Our team will set up your account so tax isn't charged on qualifying orders."
+  },
+  {
+    "collection": "Wholesale & Partners",
+    "question": "Do you offer discounts on bulk orders?",
+    "keywords": "bulk, bulk discount, large order, quantity discount, buy in bulk, 25 of them, volume, many units",
+    "action": "Wholesale Queries › Bulk discount",
+    "answer": "Yes, ask us. Tell us below what you'd like and how many, and our team will get back to you with pricing."
+  },
+  {
+    "collection": "Wholesale & Partners",
+    "question": "Can you make cases with my logo?",
+    "keywords": "private label, custom logo, put my logo, logo on, branding, custom cases, logo, personalized, engraving, custom order, custom labels, custom label, label, team labels",
+    "action": "Wholesale Queries › Private label",
+    "answer": "We offer custom labels: see the options at https://zioncases.com/pages/custom-labels, and email custom@zioncases.com to order.\n\nFor custom or private-label products, tell us below about your business, the products and quantities, and the branding you have in mind. Our team will let you know what's possible."
+  },
+  {
+    "collection": "Wholesale & Partners",
+    "question": "I have another wholesale question",
+    "keywords": "wholesale question, dealer, retailer, store, shop owner",
+    "action": "Wholesale Queries › Other wholesale",
+    "answer": "Ask our wholesale team below and they'll get back to you."
+  },
+  {
+    "collection": "Wholesale & Partners",
+    "question": "How do I become an affiliate?",
+    "keywords": "join affiliate, become affiliate, apply affiliate, creator program, influencer, ambassador, collab, sponsorship, commission, 10%, referral, sign up, goaffpro",
+    "action": "Affiliate Queries › Join the program",
+    "answer": "Joining is free: sign up at https://zioncases.com/pages/become-an-affiliate and you get your referral link and affiliate dashboard straight away. You earn up to 10% on every successful referral, with no cap, and affiliates from most countries can join.\n\nQuestions before you join? Tell us below about yourself and where you share content (with links), and our partnerships team will get back to you."
+  },
+  {
+    "collection": "Wholesale & Partners",
+    "question": "I'm an affiliate and need help",
+    "keywords": "affiliate support, my affiliate link, affiliate code, partner help, affiliate account, tracking link",
+    "action": "Affiliate Queries › Existing partner support",
+    "answer": "Tell us below what you need help with, and the email you joined with."
+  },
+  {
+    "collection": "Wholesale & Partners",
+    "question": "When are affiliate commissions paid?",
+    "keywords": "commission, payout, affiliate payment, paid, earnings, referral payment",
+    "action": "Affiliate Queries › Commission or payout",
+    "answer": "Commissions are paid monthly through the affiliate system; you can follow your referrals and earnings in your affiliate dashboard.\n\nMissing a payout? Tell us below the email you joined with and the period you're asking about, and our partnerships team will check your commissions and payouts."
+  },
+  {
+    "collection": "Shipping",
+    "question": "Do you offer free shipping?",
+    "keywords": "free shipping, free delivery, $125, 125, minimum for free shipping, threshold, shipping free",
+    "action": "Shipping › Domestic Shipping",
+    "answer": "Yes: shipping is free on orders of $125 or more within the continental U.S. It's applied at checkout when your order qualifies.\n\nBelow $125, or outside the continental U.S., the cost depends on your address and the shipping method. Choose Domestic Shipping below to see the options and prices for your address."
+  },
+  {
+    "collection": "Shipping",
+    "question": "What is ARMORSHIP® package protection?",
+    "keywords": "armorship, armor ship, package protection, shipping protection, shipping insurance, insurance, protect my order, claim",
+    "action": "Other Queries › Cancel Shipping Protection",
+    "answer": "ARMORSHIP® is optional package protection you can add at checkout. It covers your order against eligible loss, theft and damage while it's being shipped, under ARMORSHIP's terms. It isn't required, but we recommend it.\n\nSomething went wrong with a protected order? Tell us below with your order number and we'll help with the claim. Want it removed from an order? Choose Cancel Shipping Protection."
+  },
+  {
+    "collection": "Products & Care",
+    "question": "How many slabs fit in a slab case?",
+    "keywords": "how many slabs, how many cards, capacity, hold, holds, how many fit, fit how many, how many graded",
+    "action": "Other Queries › General question",
+    "answer": "It depends on the case and the foam layout:\n\n- Slab Case X: about 20 to 110 graded slabs.\n- Slab Case XL: about 40 to 172 slabs.\n- Slab Case 2-Row: up to 80 slabs, in two rows.\n- Sling Bag 2.0: 7 to 10 cards, depending on their thickness.\n\nFoam inserts come with every case, and the product page shows each layout. Thicker slabs mean fewer fit. The X suits small to medium collections, the XL large ones, and the 2-Row organizing and carrying big collections."
+  },
+  {
+    "collection": "Products & Care",
+    "question": "Are your cases waterproof?",
+    "keywords": "waterproof, water resistant, rain, wet, water, dust, dustproof, humidity",
+    "action": "Other Queries › General question",
+    "answer": "Our cases protect your cards from dust, scratches and handling, for display and long-term storage. They aren't fully waterproof unless the product page says so, so keep them out of the rain and store them somewhere clean and dry."
+  },
+  {
+    "collection": "Products & Care",
+    "question": "Can I take my case on a plane?",
+    "keywords": "plane, flight, fly, airline, carry on, carry-on, travel, airport, tsa, luggage, overhead",
+    "action": "Other Queries › General question",
+    "answer": "Our cases are made for travel, and many have TSA locks. Carry-on size limits vary by airline, so check your airline's rules against the case's dimensions in our size guide: https://zioncases.com/pages/zion-cases-size-dimension-guide"
+  },
+  {
+    "collection": "Products & Care",
+    "question": "Is it in stock, and when will a sold-out product be back?",
+    "keywords": "in stock, stock, available, availability, restock, back in stock, sold out, out of stock, notify me, when available, available again, restocking, coming back",
+    "action": "Other Queries › General question",
+    "answer": "The product page shows whether it's in stock: if you can add it to your cart, it's available to order now. Pre-order items show their estimated ship date there too.\n\nSold out? Press Notify Me When Available on the product's page and we'll email you as soon as it's back in stock. Want to know about a specific product? Ask us below."
+  },
+  {
+    "collection": "Payments & Discounts",
+    "question": "How do gift cards work?",
+    "keywords": "gift card, gift cards, giftcard, gift certificate, balance, expire, expiry, combine gift card",
+    "action": "Other Queries › General question",
+    "answer": "Our gift cards never expire, and any balance you don't use stays on the card for your next order. Gift cards can't be combined with discount codes or promotions: choose one or the other at checkout.\n\nA question about a gift card? Ask us below."
+  }
+]
