@@ -342,15 +342,28 @@ describe("Storefront Help Desk form", () => {
       expect(date.disabled && note.disabled).toBe(true);
     });
 
-    it("about an order, without an account: asks to sign in, or to type the order on the next step", async () => {
+    it("about an order, without an account: asks to sign in, or to enter the order's number, date and description", async () => {
       await mount();
       tileButton("I have a question about an order").click();
       expect(document.querySelector(".help-desk-start-note")?.textContent).toContain("Sign in to see your orders");
       expect((document.querySelector(".help-desk-start-need") as HTMLElement).hidden).toBe(false);
+      const box = document.querySelector(".help-desk-unlisted:not(.help-desk-ask-order)") as HTMLElement;
+      expect(box.hidden).toBe(false);
+      const date = box.querySelector("input[name=orderDate]") as HTMLInputElement;
+      const note = box.querySelector("textarea[name=orderNote]") as HTMLTextAreaElement;
+      expect(date.disabled || note.disabled).toBe(false);
       pickStart("Category", "Orders");
       pickStart("What would you like to do?", "Track Order");
       button("Continue with this order").click();
+      expect(status()).toContain("Enter your order number");
+      (box.querySelector("input:not([name])") as HTMLInputElement).value = "#3001";
+      date.value = "2026-10-01";
+      note.value = "Bought as a gift.";
+      button("Continue with this order").click();
       expect(shown()).toEqual(["Your details"]);
+      // Not about an order after all: they don't go with the request.
+      tileButton("My question isn’t about an order").click();
+      expect(date.disabled && note.disabled).toBe(true);
     });
 
     it("not about an order: their own words become the question, filed as a general question", async () => {
@@ -361,7 +374,32 @@ describe("Storefront Help Desk form", () => {
       startField("Describe your question").value = "Do you take PayPal?";
       button("Continue with my question").click();
       await vi.waitFor(() => expect((control("Your Inquiry") as HTMLTextAreaElement).value).toBe("Do you take PayPal?"));
-      expect(await submit(posts)).toMatchObject({ category: "Other", subcategory: "General question", query: "Do you take PayPal?" });
+      const sent = await submit(posts);
+      expect(sent).toMatchObject({ category: "Other", subcategory: "General question", query: "Do you take PayPal?" });
+      expect(sent.orderDate || "").toBe("");
+    });
+
+    it("not about an order: an order it mentions (number and date) can go with the question", async () => {
+      const posts = await mount(undefined, undefined, undefined, { ...sandy, orders: [] });
+      tileButton("My question isn’t about an order").click();
+      const box = document.querySelector(".help-desk-ask-order") as HTMLElement;
+      expect(box.querySelector("h4")?.textContent).toBe("About an order? (optional)");
+      startField("Describe your question").value = "Can I get an invoice?";
+      const number = box.querySelector("input:not([name])") as HTMLInputElement;
+      const date = box.querySelector("input[name=orderDate]") as HTMLInputElement;
+      number.value = "nope";
+      button("Continue with my question").click();
+      expect(status()).toContain("or leave it blank");
+      number.value = "#4100";
+      date.removeAttribute("max");
+      date.value = "2999-01-01";
+      button("Continue with my question").click();
+      expect(status()).toBe("The order date can’t be in the future.");
+      date.value = "2026-09-30";
+      button("Continue with my question").click();
+      await vi.waitFor(() => expect((control("Your Inquiry") as HTMLTextAreaElement).value).toBe("Can I get an invoice?"));
+      expect((control("Order Number (optional)") as HTMLInputElement).value).toBe("#4100");
+      expect(await submit(posts)).toMatchObject({ subcategory: "General question", orderNumber: "#4100", orderDate: "2026-09-30" });
     });
 
     it("not about an order: International Shipping and Product Query open their own requests", async () => {

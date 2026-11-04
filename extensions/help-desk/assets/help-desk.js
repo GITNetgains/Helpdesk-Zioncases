@@ -731,7 +731,10 @@
       // Not about an order: the flows ask for one only if they need it, and an
       // unlisted order's date and description don't go with the request.
       if (which === 'other') { preferredOrder = null; showUnlisted(false); }
-      // Back to the order: as it was left.
+      // Its own optional order details only go while it's shown.
+      showAskOrder(which === 'other');
+      // Back to the order: as it was left. No orders to pick from: it's entered here.
+      if (which === 'order' && !orders.length) { preferredOrder = 'other'; showUnlisted(true); }
       if (which === 'order') orderPane.querySelector('input[name=help-desk-start-order]:checked')?.onchange?.();
       message('', false, false);
     }
@@ -856,10 +859,11 @@
     } else {
       const hint = node('div', '', { class: 'help-desk-start-note' });
       if (!signedIn) {
-        hint.append(node('span', 'Sign in to see your orders and pick one. Or choose what you need below, and enter your order number on the next step. '));
+        hint.append(node('span', 'Sign in to see your orders and pick one. Or tell us about the order below. '));
         hint.append(node('a', 'Sign in', { href: signInLink(root) }));
-      } else hint.append(node('span', 'We couldn’t find recent orders on your account. Choose what you need below, and enter your order number on the next step.'));
-      orderPane.append(hint);
+      } else hint.append(node('span', 'We couldn’t find recent orders on your account. Tell us about the order below, then choose what you need.'));
+      // No orders to pick from: the order is entered straight away.
+      orderPane.append(hint, unlisted);
     }
     // What they need with it: a category (the order topics), then its
     // sub-category, as the app files the ticket.
@@ -939,13 +943,29 @@
     // Not about an order: in their own words, or a common question.
     const ask = field(otherPane, 'startQuestion', 'Describe your question', { multiline: true, optional: true, placeholder: 'For example: do your cases fit PSA slabs, or do you take PayPal?' });
     ask.removeAttribute('name');
+    // An order it's about, if any: its number fills the question's own Order
+    // Number; the date goes with the request (off while this pane is hidden).
+    const askOrder = node('div', '', { 'data-fields': '', class: 'help-desk-unlisted help-desk-ask-order' });
+    askOrder.append(node('h4', 'About an order? (optional)'));
+    const askNumber = field(askOrder, 'askNumber', 'Order Number', { placeholder: 'e.g. #1001', optional: true });
+    askNumber.removeAttribute('name');
+    const askDate = field(askOrder, 'orderDate', 'Order Date', { type: 'date', optional: true });
+    askDate.max = new Date().toISOString().slice(0, 10);
+    otherPane.append(askOrder);
+    function showAskOrder(on) { askDate.disabled = !on; }
+    showAskOrder(false);
     const askGo = node('button', 'Continue with my question', { type: 'button', class: 'help-desk-start-go' });
     askGo.onclick = () => {
       const text = ask.value.trim();
       if (!text) { message('Tell us what your question is about.', true); ask.focus(); return; }
+      const number = askNumber.value.trim();
+      if (number && !/^#?\s*[A-Za-z]{0,4}-?\d{3,12}$/.test(number)) { message('Enter your order number like #1001, or leave it blank.', true); askNumber.focus(); return; }
+      if ((askDate.value && askDate.value > new Date().toISOString().slice(0, 10)) || askDate.validity?.rangeOverflow) { message('The order date can’t be in the future.', true); askDate.focus(); return; }
       openOption(findOption(entry => entry.category === 'Other' && entry.subcategory === 'General question'), () => {
         const question = form.querySelector('[name=query]');
         if (question && !question.value.trim()) question.value = text;
+        const box = form.querySelector('input[name=orderNumber]');
+        if (box && number && !box.value.trim()) { box.value = number; box.dispatchEvent(new Event('input', { bubbles: true })); }
       });
     };
     otherPane.append(askGo);
