@@ -38,7 +38,8 @@ export type FormOption = {
   region?: "domestic" | "international";
   // One option covering several ticket categories: the customer's answer
   // ("What happened?") sets the ticket's category and sub-category.
-  kinds?: { label: string; hint: string; category: string; subcategory: string }[];
+  // details: what exactly is wrong, ticked (any number); the ticket is filed under the first one ticked.
+  kinds?: { label: string; hint: string; category: string; subcategory: string; details?: { label: string; category: string; subcategory: string }[] }[];
 };
 // An option's section is its ticket category, shown as a heading in the
 // subcategory list when a main topic covers several categories. An option's
@@ -222,13 +223,25 @@ const QUALITY_KINDS: NonNullable<FormOption["kinds"]> = [
   { label: "Manufacturing defect", hint: "Made wrong: a part doesn't work, fit or line up as it should.", category: "Manufacturing Defect", subcategory: "Poor quality overall" },
   { label: "Inside of the product is damaged", hint: "The outside looks fine, but the inside (foam, inserts, lining) is damaged.", category: "Product Damage", subcategory: "Inside damaged" },
 ];
-// Damaged and defective ask the same things; one question picks the ticket's
-// category, so the team tells a carrier claim (the box was damaged too) from
-// damage at packing (the box was fine) and a factory fault.
+// Damaged and defective ask the same things. Two kinds of defect: damaged at
+// the time of delivery, or a manufacturing defect; then what exactly is wrong,
+// ticked, so the team can filter by it. A damaged outer box makes it a carrier
+// claim (Shipping Damage); a broken part with the box fine is Product Damage.
+const damaged = (label: string, subcategory: string) => ({ label, category: "Product Damage", subcategory });
+const defect = (label: string, subcategory: string) => ({ label, category: "Manufacturing Defect", subcategory });
+export const BOX_DAMAGED = "The outer shipping box was crushed, wet or torn";
 const DAMAGE_KINDS: NonNullable<FormOption["kinds"]> = [
-  { label: "Damaged in shipping", hint: "The outer box was crushed, wet or torn too.", category: "Shipping Damage", subcategory: "Damaged in transit" },
-  { label: "Broken on arrival", hint: "The outer box looked fine.", category: "Product Damage", subcategory: "Other damage" },
-  { label: "Doesn't work properly", hint: "A lid, lock, wheel or part doesn't work.", category: "Manufacturing Defect", subcategory: "Defective or not working" },
+  { label: "Damaged at the time of delivery", hint: "It arrived broken, cracked or dented.", category: "Shipping Damage", subcategory: "Damaged in transit", details: [
+    { label: BOX_DAMAGED, category: "Shipping Damage", subcategory: "Box crushed or dented" },
+    damaged("Cracked acrylic or guard", "Cracked acrylic or guard"), damaged("Dented or bent case", "Dented or bent case"), damaged("Broken lid", "Broken lid"),
+    damaged("Broken lock or latch", "Broken lock or latch"), damaged("Broken wheels or handle", "Broken wheels or handle"), damaged("Broken risers", "Broken risers"),
+    damaged("Inside of the product is damaged", "Inside damaged"), damaged("Something else", "Other damage"),
+  ] },
+  { label: "Manufacturing defect in the product", hint: "Made wrong: a part doesn't work, fit or close as it should.", category: "Manufacturing Defect", subcategory: "Defective or not working", details: [
+    defect("Scratches or marks", "Scratches"), defect("Lid shifts or won't close", "Lid shifts or won't close"), defect("Lock won't set or open", "Lock won't set or open"),
+    defect("Insert doesn't fit", "Insert doesn't fit"), defect("Bottom not flat or bowing", "Bottom not flat or bowing"), defect("Squeaking or noise", "Squeaking or noise"),
+    defect("Wheel or handle doesn't work", "Wheel or handle failed"), defect("Something else", "Defective or not working"),
+  ] },
 ];
 const WRONG_KINDS: NonNullable<FormOption["kinds"]> = [
   { label: "Wrong product", hint: "A different product arrived.", category: "Wrong Item Received", subcategory: "Wrong product" },

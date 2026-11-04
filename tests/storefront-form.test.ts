@@ -1062,23 +1062,39 @@ describe("Storefront Help Desk form", () => {
     expect(stageOf()).toBe("ask");
   });
 
-  it("Damaged or Defective: What happened? files it as shipping damage, damage at packing or a defect, and sets the photo tips", async () => {
+  it("Damaged or Defective: damaged at delivery or a manufacturing defect, then what's wrong, ticked, files it and sets the photo tips", async () => {
     await findOrder("Damaged or Defective");
     await vi.waitFor(() => expect(stageOf()).toBe("request"));
     const radios = [...document.querySelectorAll<HTMLInputElement>("input[name=kind]")];
-    expect(radios.map((radio) => radio.value)).toEqual(["Damaged in shipping", "Broken on arrival", "Doesn't work properly"]);
+    expect(radios.map((radio) => radio.value)).toEqual(["Damaged at the time of delivery", "Manufacturing defect in the product"]);
     // Nothing is picked to start with, and it must be answered.
     expect(radios.some((radio) => radio.checked)).toBe(false);
     expect(radios[0].required).toBe(true);
     const hidden = (name: string) => (document.querySelector(`input[type=hidden][name=${name}]`) as HTMLInputElement).value;
-    radios[2].click();
+    const area = document.querySelector(".help-desk-defects") as HTMLElement;
+    expect(area.hidden).toBe(true);
+    const boxes = () => [...area.querySelectorAll<HTMLInputElement>("input[name=defects]")];
+    const tick = (label: string) => { const box = boxes().find((entry) => entry.value === label)!; box.checked = !box.checked; box.dispatchEvent(new Event("change")); };
+    radios[1].click();
+    expect(area.hidden).toBe(false);
+    expect(boxes().map((box) => box.value)).toEqual(["Scratches or marks", "Lid shifts or won't close", "Lock won't set or open", "Insert doesn't fit", "Bottom not flat or bowing", "Squeaking or noise", "Wheel or handle doesn't work", "Something else"]);
     expect([hidden("category"), hidden("subcategory")]).toEqual(["Manufacturing Defect", "Defective or not working"]);
+    tick("Lock won't set or open");
+    tick("Scratches or marks");
+    // The first one ticked (in the list's order) files it.
+    expect([hidden("category"), hidden("subcategory")]).toEqual(["Manufacturing Defect", "Scratches"]);
     item("Slab Case X").click();
     expect(document.querySelector(".help-desk-photo-tips")?.textContent).not.toContain("Shipping box");
-    radios[1].click();
-    expect([hidden("category"), hidden("subcategory")]).toEqual(["Product Damage", "Other damage"]);
+    // Damaged at delivery: its own list; a broken part with the box fine is product damage.
     radios[0].click();
+    expect(boxes().map((box) => box.value)).toContain("Inside of the product is damaged");
+    expect(boxes().some((box) => box.checked)).toBe(false);
     expect([hidden("category"), hidden("subcategory")]).toEqual(["Shipping Damage", "Damaged in transit"]);
+    tick("Broken lid");
+    expect([hidden("category"), hidden("subcategory")]).toEqual(["Product Damage", "Broken lid"]);
+    // A damaged outer box too: a carrier claim.
+    tick("The outer shipping box was crushed, wet or torn");
+    expect([hidden("category"), hidden("subcategory")]).toEqual(["Shipping Damage", "Box crushed or dented"]);
     expect(document.querySelector(".help-desk-photo-tips")?.textContent).toContain("Shipping box and label");
     // No part list: their words, photos and a video say it. A single item asks no quantity. Then what they'd like.
     expect(labels()).toContain("Describe the issue");
@@ -1106,7 +1122,10 @@ describe("Storefront Help Desk form", () => {
     // Each question must be answered before Review: what happened, then what they'd like.
     review();
     expect(reviewOpen()).toBe(false);
-    [...document.querySelectorAll<HTMLInputElement>("input[name=kind]")].find((radio) => radio.value === "Doesn't work properly")!.click();
+    [...document.querySelectorAll<HTMLInputElement>("input[name=kind]")].find((radio) => radio.value === "Manufacturing defect in the product")!.click();
+    const lid = [...document.querySelectorAll<HTMLInputElement>("input[name=defects]")].find((box) => box.value === "Lid shifts or won't close")!;
+    lid.checked = true;
+    lid.dispatchEvent(new Event("change"));
     review();
     expect(reviewOpen()).toBe(false);
     // An exchange starts with the product they picked; without any, Review waits.
@@ -1132,12 +1151,12 @@ describe("Storefront Help Desk form", () => {
     review();
     expect(reviewOpen()).toBe(true);
     const rows = Object.fromEntries([...document.querySelectorAll(".help-desk-review-row")].map((row) => [row.querySelector("span")?.textContent, row.querySelector("strong")?.textContent]));
-    expect(rows).toMatchObject({ "What happened?": "Doesn't work properly", "Slab Case X · Wants": "Exchange", "Slab Case X · Replacement": "Slab Case X",
+    expect(rows).toMatchObject({ "What happened?": "Manufacturing defect in the product", "What’s wrong": "Lid shifts or won't close", "Slab Case X · Wants": "Exchange", "Slab Case X · Replacement": "Slab Case X",
       "Is the product unused and in its original packaging?": "Yes",
       "Slab Case X": "The lid won't close", Products: "Slab Case X", Photos: "1 attached" });
     document.querySelector("form")!.dispatchEvent(new Event("submit", { cancelable: true }));
     await vi.waitFor(() => expect(posts).toHaveLength(1));
-    expect(posts[0]).toMatchObject({ category: "Manufacturing Defect", subcategory: "Defective or not working", "itemResolution:gid://shopify/Product/1": "Exchange", "itemReplacement:gid://shopify/Product/1": "Slab Case X",
+    expect(posts[0]).toMatchObject({ category: "Manufacturing Defect", subcategory: "Lid shifts or won't close", defects: "Lid shifts or won't close", "itemResolution:gid://shopify/Product/1": "Exchange", "itemReplacement:gid://shopify/Product/1": "Slab Case X",
       products: "gid://shopify/Product/1", "itemNote:gid://shopify/Product/1": "The lid won't close", returnCondition: "Yes" });
   });
 

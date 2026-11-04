@@ -3,7 +3,7 @@ import type { LoaderFunctionArgs } from "react-router";
 import { useFetcher, useLoaderData, useNavigate } from "react-router";
 import { priorities, ticketStatuses } from "../services/help-desk";
 import { adminContext, helpDeskAction, loadInbox } from "../services/help-desk-admin.server";
-import { categoryNames, rootCauses, subcategoriesOf } from "../services/help-desk-taxonomy";
+import { categoryNames, defectTypes, isDefectType, rootCauses, subcategoriesOf, type DefectType } from "../services/help-desk-taxonomy";
 import { PAGE_SIZE, PERIODS, SORTS, TOPICS, VIEWS, type View } from "../services/help-desk-views";
 import { StatTile, TONES } from "../components/HelpDeskUi";
 import { AddressBadge, EditBadge, QuoteBadge, ReplacementBadge, ReturnBadge, ago, CancelBadge, DeleteConfirm, duration, HelpDeskNavigation, PriorityBadge, setupSteps, StatusBadge, ticketHref, useInboxLink, useLiveRefresh, useResultToast } from "../components/help-desk/shared";
@@ -109,11 +109,15 @@ function TicketList({ screen }: { screen: InboxData }) {
   const navigate = useNavigate();
   const [search, setSearch] = useState(filters.q);
   const [selected, setSelected] = useState<string[]>([]);
+  const defects = filters.defect.split(",").filter(isDefectType);
+  // Ticking a defect type adds it; unticking removes it.
+  const toggleDefect = (type: DefectType) => navigate(listLink({ defect: (defects.includes(type) ? defects.filter((entry) => entry !== type) : [...defects, type]).join(",") }));
   const activeFilters = [
     filters.topic && { key: "topic", label: filters.topic },
     filters.priority && { key: "priority", label: `${filters.priority} priority` },
     filters.category && { key: "category", label: filters.subcategory ? `${filters.category} › ${filters.subcategory}` : filters.category },
     filters.rootCause && { key: "rootCause", label: `Cause: ${filters.rootCause}` },
+    defects.length > 0 && { key: "defect", label: defects.map((type) => defectTypes[type].label).join(" or ") },
     filters.assignee && { key: "assignee", label: `Assigned to ${filters.assignee}` },
     filters.period && { key: "period", label: `Created: ${PERIODS[filters.period as keyof typeof PERIODS] ?? filters.period}` },
   ].filter(Boolean) as { key: string; label: string }[];
@@ -186,6 +190,10 @@ function TicketList({ screen }: { screen: InboxData }) {
                 <s-option value="">All sub-categories</s-option>
                 {subcategoriesOf(filters.category).map((value) => <s-option key={value} value={value}>{value}</s-option>)}
               </s-select>}
+              <s-stack gap="small-200">
+                <s-text type="strong">Defect type</s-text>
+                {(Object.keys(defectTypes) as DefectType[]).map((type) => <s-checkbox key={type} label={defectTypes[type].label} checked={defects.includes(type)} onChange={() => toggleDefect(type)} />)}
+              </s-stack>
               <s-select label="Root cause" value={filters.rootCause} onChange={(event) => navigate(listLink({ rootCause: event.currentTarget.value ?? "" }))}>
                 <s-option value="">Any root cause</s-option>
                 {rootCauses.map((value) => <s-option key={value} value={value}>{value}</s-option>)}
@@ -207,7 +215,7 @@ function TicketList({ screen }: { screen: InboxData }) {
             <s-text color="subdued">{count} matching ticket{count === 1 ? "" : "s"}</s-text>
             {filters.q && <s-clickable-chip removable onRemove={() => { setSearch(""); navigate(listLink({ q: "" })); }}>&ldquo;{filters.q}&rdquo;</s-clickable-chip>}
             {activeFilters.map((filter) => <s-clickable-chip key={filter.key} removable onRemove={() => navigate(listLink({ [filter.key]: "", ...(filter.key === "category" ? { subcategory: "" } : {}) }))}>{filter.label}</s-clickable-chip>)}
-            <s-button variant="tertiary" onClick={() => { setSearch(""); navigate(listLink({ q: "", topic: "", priority: "", category: "", subcategory: "", rootCause: "", assignee: "", period: "" })); }}>Clear all</s-button>
+            <s-button variant="tertiary" onClick={() => { setSearch(""); navigate(listLink({ q: "", topic: "", priority: "", category: "", subcategory: "", rootCause: "", defect: "", assignee: "", period: "" })); }}>Clear all</s-button>
           </s-stack>}
       </div>
 

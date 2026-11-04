@@ -2323,17 +2323,42 @@
             const subcategory = fields.querySelector('[name=subcategory]');
             category.value = option.category;
             subcategory.value = option.subcategory;
+            // What exactly is wrong (a defect's details), ticked: the first one
+            // ticked files the ticket; a damaged outer box makes it a carrier claim.
+            const detailArea = node('div', '', { 'data-fields': '', class: 'help-desk-defects', hidden: '' });
+            let fileKind = () => {};
             choiceCards(more, 'kind', 'What happened?', option.kinds.map(kind => [kind.label, kind.label, kind.hint]), value => {
               const kind = option.kinds.find(entry => entry.label === value);
-              category.value = kind.category;
-              subcategory.value = kind.subcategory;
-              transit = kind.category === 'Shipping Damage';
-              showTips();
+              fileKind = () => {
+                const ticked = [...detailArea.querySelectorAll('input[name=defects]:checked')].map(box => kind.details.find(entry => entry.label === box.value)).filter(Boolean);
+                const pick = ticked.find(entry => entry.category === 'Shipping Damage') || ticked[0] || kind;
+                category.value = pick.category;
+                subcategory.value = pick.subcategory;
+                transit = pick.category === 'Shipping Damage' || kind.category === 'Shipping Damage';
+                showTips();
+              };
+              detailArea.replaceChildren();
+              detailArea.hidden = !kind.details?.length;
+              if (kind.details?.length) {
+                const set = node('fieldset', '', { class: 'help-desk-defect-list' });
+                set.append(node('legend', 'What’s wrong? Tick all that apply.'));
+                for (const detail of kind.details) {
+                  const label = node('label', '', { class: 'help-desk-defect' });
+                  const box = node('input', '', { type: 'checkbox', name: 'defects', value: detail.label });
+                  box.dataset.review = 'What’s wrong';
+                  box.onchange = () => fileKind();
+                  label.append(box, node('span', detail.label));
+                  set.append(label);
+                }
+                detailArea.append(set);
+              }
+              fileKind();
               // A wrong item asks different things per answer: re-ask them in every product's box.
               wrongKind = kind.subcategory;
               for (const [id, entry] of wrongAreas) if (entry.area.isConnected) askWrong(entry.area, entry.product, id); else wrongAreas.delete(id);
               for (const entry of resolutionBoxes.values()) entry.show();
             });
+            more.append(detailArea);
           }
           // The products to pick from: the order's items when the app found it,
           // else the chosen order's (or every shipped order's) items from the
@@ -2693,6 +2718,8 @@
       }
       // Hidden answers with a Review label (a product's replacement).
       for (const input of fields.querySelectorAll('input[type=hidden][data-review]')) addRow(input.dataset.review, input.value.trim());
+      // Ticked defects, in one row.
+      addRow('What’s wrong', [...fields.querySelectorAll('input[name=defects]:checked')].map(box => box.value).join(', '));
       for (const input of fields.querySelectorAll('input:not([type=hidden]):not([type=file]):not([type=checkbox]):not([type=radio]), select, textarea')) {
         if (!input.name || !input.value.trim()) continue;
         const label = input.dataset.review || input.closest('label')?.querySelector('span')?.textContent?.replace('*', '').trim() || input.name;

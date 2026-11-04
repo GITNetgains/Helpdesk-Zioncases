@@ -63,6 +63,9 @@ export async function submitTicket(db: PrismaClient, shop: string, form: FormDat
   if (!returnClaim) delete values.returnCondition;
   // A damaged, defective or missing item: the products it's about, and an optional video.
   const productIssue = order && values.orderType === orderTypes[1];
+  // Damaged or defective: what exactly is wrong, ticked (the team filters by it).
+  const defects = productIssue ? [...new Set(form.getAll("defects").filter((value): value is string => typeof value === "string").map((value) => value.trim().slice(0, 80)).filter(Boolean))].slice(0, 12) : [];
+  if (defects.length) values.defects = defects.join(", ");
   // A cancellation of selected items: the order lines picked (LineItem gids).
   const cancelItems = order && values.orderType === orderTypes[0] && values.update === updates[2] && values.cancelScope === cancelScopes[1];
   // Editing the order: the order lines picked to change (LineItem gids).

@@ -153,7 +153,9 @@ describe("Help desk persistence", () => {
   it("keeps what each product's customer wants: a refund for one, an exchange for another", async () => {
     const [one, two] = ["gid://shopify/Product/1", "gid://shopify/Product/2"];
     const body = form({ topic: topics[3], orderType: orderTypes[1], issue: issues[0], orderNumber: "#1001", existing: "", query: "",
-      category: "Manufacturing Defect", subcategory: "Defective or not working", returnCondition: "Yes" });
+      category: "Manufacturing Defect", subcategory: "Lock won't set or open", returnCondition: "Yes" });
+    // What's wrong, ticked (repeats once).
+    for (const defect of ["Lock won't set or open", "Scratches or marks", "Lock won't set or open"]) body.append("defects", defect);
     for (const [id, title, resolution] of [[one, "Slab Case X", "Refund"], [two, "Graded Card Display", "Exchange"]]) {
       body.append("products", id);
       body.append(`itemTitle:${id}`, title);
@@ -167,8 +169,8 @@ describe("Help desk persistence", () => {
     expect(saved.errors).toEqual({});
     const ticket = await db.helpDeskTicket.findUniqueOrThrow({ where: { id: saved.ticketId } });
     expect(JSON.parse(ticket.details)).toMatchObject({ resolution: "Refund", replacement: "Graded Card Display → Slab Case Y",
-      details: "Slab Case X: Cracked → Refund\n\nGraded Card Display: Cracked → Exchange: Slab Case Y", returnCondition: "Yes" });
-    expect(ticket).toMatchObject({ returnStatus: "Pending", tags: "return" });
+      details: "Slab Case X: Cracked → Refund\n\nGraded Card Display: Cracked → Exchange: Slab Case Y", returnCondition: "Yes", defects: "Lock won't set or open, Scratches or marks" });
+    expect(ticket).toMatchObject({ returnStatus: "Pending", tags: "return", category: "Manufacturing Defect", subcategory: "Lock won't set or open" });
   });
   it("stores a wrong delivery described per product, with each product's photo", async () => {
     const id = "gid://shopify/Product/1";

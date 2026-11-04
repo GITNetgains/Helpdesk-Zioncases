@@ -491,7 +491,7 @@ export const defaultMacros = [
 // Labels for submitted fields, in display order. Name, email and topic are
 // shown separately in the admin ticket header and the notification email.
 export const fieldLabels: Record<string, string> = {
-  phone: "Phone", orderNumber: "Order number", orderDate: "Order date", orderNote: "About the order", orderType: "Order query", update: "Order update", cancelReason: "Cancellation reason",
+  phone: "Phone", orderNumber: "Order number", orderDate: "Order date", orderNote: "About the order", defects: "What's wrong", orderType: "Order query", update: "Order update", cancelReason: "Cancellation reason",
   shipName: "New address: recipient", shipAddress1: "New address: street", shipAddress2: "New address: apartment, suite", shipCity: "New address: city",
   shipProvince: "New address: state or province", shipZip: "New address: ZIP or postal code", shipCountry: "New address: country", shipPhone: "New address: phone", delivery: "Delivery problem",
   lostPreference: "Would like", shippingMethod: "Shipping method", addedProducts: "Products to add", chargesAccepted: "Price difference confirmed first", issue: "Issue", part: "Part with the problem", returnCondition: "Unused, in original packaging", resolution: "Requested resolution", replacement: "Replacement wanted", purchasedFrom: "Bought from", purchaseDate: "Bought in (month)",

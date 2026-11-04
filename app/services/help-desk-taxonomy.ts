@@ -77,6 +77,16 @@ export const rootCauseTeams = {
   "Unknown": "Support",
 } as const;
 export const rootCauses = Object.keys(rootCauseTeams) as (keyof typeof rootCauseTeams)[];
+
+// The two kinds of defect customers report (Damaged or Defective on the form):
+// damaged at the time of delivery (the box, or the product broken on arrival)
+// or a manufacturing defect. The inbox filters by them.
+export const defectTypes = {
+  delivery: { label: "Damaged at delivery", categories: ["Shipping Damage", "Product Damage"] },
+  manufacturing: { label: "Manufacturing defect", categories: ["Manufacturing Defect"] },
+} as const;
+export type DefectType = keyof typeof defectTypes;
+export const isDefectType = (value: string): value is DefectType => Object.prototype.hasOwnProperty.call(defectTypes, value);
 export const teamFor = (rootCause: string) => (rootCauseTeams as Record<string, string>)[rootCause] ?? "";
 
 // What the team did to close the ticket.

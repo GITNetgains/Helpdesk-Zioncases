@@ -193,7 +193,7 @@ describe("The request page's assistant", () => {
     // The AI's own walk-through isn't repeated underneath.
     const walked = assistantMessage({ kind: "answer", answer: cancel, reply: "Sure:\n1. Choose Orders.\n2. Choose Cancel Order." }, "", ASSISTANT_COPY, "I want to cancel my order");
     expect(walked).not.toContain("How to do it");
-    expect(requestSteps("Product Issues › Damaged or Defective")).toContain("Choose what happened: Damaged in shipping, Broken on arrival, Doesn't work properly.");
+    expect(requestSteps("Product Issues › Damaged or Defective")).toContain("Choose what happened: Damaged at the time of delivery, Manufacturing defect in the product.");
     expect(requestSteps("Wholesale Queries")[1]).toBe("Choose the option that fits your question, and follow the steps it shows.");
     expect(requestSteps("Nowhere › Nothing")).toEqual([]);
     // Every starter answer's action is on the form, so its steps are right.

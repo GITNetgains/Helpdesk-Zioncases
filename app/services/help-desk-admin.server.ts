@@ -5,7 +5,7 @@ import { authenticate } from "../shopify.server";
 import db from "../db.server";
 import { countryName, defaultMacros, suggestTags, MAX_MESSAGE_LENGTH, priorities, ticketStatuses } from "./help-desk";
 import { addStaffMessage, classifyUnsorted, deleteTickets, readHelpDeskForm, startModification, submitTicket, updateTickets } from "./help-desk.server";
-import { categoryNames, rootCauses, subcategoriesOf } from "./help-desk-taxonomy";
+import { categoryNames, defectTypes, isDefectType, rootCauses, subcategoriesOf } from "./help-desk-taxonomy";
 import { cachedProducts, emailConfigured, loadShop, sendTestEmail, trackingUrl } from "./help-desk-email.server";
 import { ordersByEmail, syncTicketOrder } from "./help-desk-orders.server";
 import { cancelOrderInShopify, confirmItemsCancelled, decideCancellation, refundMethods, type RefundMethod } from "./help-desk-cancel.server";
@@ -209,6 +209,8 @@ export async function loadInbox({ shop, settings, base }: Context, url: URL) {
   const category = pick(url.searchParams.get("category"), categoryNames);
   const subcategory = category ? pick(url.searchParams.get("subcategory"), subcategoriesOf(category)) : "";
   const rootCause = pick(url.searchParams.get("rootCause"), rootCauses);
+  // Damaged at delivery, a manufacturing defect, or both (ticked in the filters).
+  const defects = [...new Set((url.searchParams.get("defect") || "").split(",").filter(isDefectType))];
   const assignee = (url.searchParams.get("assignee") || "").slice(0, 80);
   const sort = Object.prototype.hasOwnProperty.call(SORTS, url.searchParams.get("sort") || "activity") ? (url.searchParams.get("sort") || "activity") as keyof typeof SORTS : "activity";
   const q = (url.searchParams.get("q") || "").trim().slice(0, 100);
@@ -222,6 +224,7 @@ export async function loadInbox({ shop, settings, base }: Context, url: URL) {
     ...(category ? { category } : {}),
     ...(subcategory ? { subcategory } : {}),
     ...(rootCause ? { rootCause } : {}),
+    ...(defects.length ? { AND: [{ category: { in: defects.flatMap((type) => [...defectTypes[type].categories]) } }] } : {}),
     ...(assignee ? { assignee } : {}),
     ...(since ? { createdAt: { gte: since } } : {}),
     // details holds every submitted field, so this also matches order numbers and messages.
@@ -262,7 +265,7 @@ export async function loadInbox({ shop, settings, base }: Context, url: URL) {
     }),
     count, page, views: Object.fromEntries(viewCounts) as Record<View, number>,
     metrics: { avgResponse: responseTimes.length ? responseTimes.reduce((sum, value) => sum + value, 0) / responseTimes.length : null },
-    filters: { view, topic, priority, category, subcategory, rootCause, assignee, sort, q, period },
+    filters: { view, topic, priority, category, subcategory, rootCause, defect: defects.join(","), assignee, sort, q, period },
     overview: setupStatus(settings),
   }, { headers });
 }

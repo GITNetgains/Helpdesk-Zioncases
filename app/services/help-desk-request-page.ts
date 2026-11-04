@@ -25,7 +25,7 @@ const STEPS = [
   { label: "Resolved", status: "Resolved" },
 ];
 // Short facts go in the summary; what the customer wrote goes in their message.
-const SUMMARY_FIELDS = ["orderNumber", "orderDate", "orderType", "update", "cancelReason", "issue", "resolution", "existing", "registeredEmail", "country"];
+const SUMMARY_FIELDS = ["orderNumber", "orderDate", "orderType", "update", "cancelReason", "issue", "defects", "resolution", "existing", "registeredEmail", "country"];
 const MESSAGE_FIELDS = ["orderNote", "details", "query", "orderDetails", "productDetails", "quantities", "address", "otherDetails"];
 
 const STYLES = `<style>

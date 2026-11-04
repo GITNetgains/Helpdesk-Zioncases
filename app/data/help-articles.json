@@ -193,21 +193,21 @@
     "question": "The lid doesn't close properly or the latches don't line up",
     "keywords": "lid won't close, lid shifts, latches, doesn't close, loose lid, hinge, alignment, jiggle, cover not closing, cover won't close, not closing, won't shut, wont shut",
     "action": "Product Issues › Damaged or Defective",
-    "answer": "Sorry about that. Choose Damaged or Defective, then \"Doesn't work properly\", and add a short video of the lid closing if you can. Our team checks it and sends a fix, a replacement or a refund."
+    "answer": "Sorry about that. Choose Damaged or Defective, then \"Manufacturing defect in the product\", and add a short video of the lid closing if you can. Our team checks it and sends a fix, a replacement or a refund."
   },
   {
     "collection": "Damaged, Missing or Wrong Items",
     "question": "The lock won't open or won't take the combination",
     "keywords": "lock, locked, combination, code, unable to open, can't open, lock won't set, lock issue, only one lock works, tsa, dial lock, forgot code, locked out, lock stuck, stuck lock, lock jammed, jammed, combination not working, lock broken, broken lock",
     "action": "Product Issues › Damaged or Defective",
-    "answer": "Most of our TSA locks come set to 000. To set your own code: open the lock with the current code, activate the reset mechanism, choose your new code, then return the reset mechanism to its original position. Test the new code a few times before you lock the case. Our video guide walks you through each lock type: https://zioncases.com/pages/setting-tsa-dial-combination-locks\n\nStill won't open or set? Choose Damaged or Defective, then \"Doesn't work properly\", tell us which case you have and add a short video of what happens. We'll help, and if the lock is faulty, we'll make it right."
+    "answer": "Most of our TSA locks come set to 000. To set your own code: open the lock with the current code, activate the reset mechanism, choose your new code, then return the reset mechanism to its original position. Test the new code a few times before you lock the case. Our video guide walks you through each lock type: https://zioncases.com/pages/setting-tsa-dial-combination-locks\n\nStill won't open or set? Choose Damaged or Defective, then \"Manufacturing defect in the product\", tell us which case you have and add a short video of what happens. We'll help, and if the lock is faulty, we'll make it right."
   },
   {
     "collection": "Damaged, Missing or Wrong Items",
     "question": "The bottom of my case is bowing or not flat",
     "keywords": "bowing, warped, not flat, bottom bowing, uneven, wobble, rocking",
     "action": "Product Issues › Damaged or Defective",
-    "answer": "Sorry about that. Choose Damaged or Defective, then \"Doesn't work properly\", and add a photo from the side showing the bowing. Our team reviews it and gets back to you with a solution."
+    "answer": "Sorry about that. Choose Damaged or Defective, then \"Manufacturing defect in the product\", and add a photo from the side showing the bowing. Our team reviews it and gets back to you with a solution."
   },
   {
     "collection": "Warranty & Parts",
