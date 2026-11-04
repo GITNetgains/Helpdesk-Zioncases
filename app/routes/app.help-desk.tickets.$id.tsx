@@ -253,6 +253,8 @@ const LAYOUT_CSS = `
 .hd-bot-face { background: #000 url(${ASSISTANT_AVATAR}) center/cover no-repeat; box-shadow: 0 0 0 1.5px rgba(255,255,255,.25); }
 .hd-ticket-side { display: grid; grid-template-columns: minmax(0, 1.65fr) minmax(280px, .85fr); gap: 18px; min-width: 0; align-items: start; }
 .hd-ticket-main, .hd-ticket-rail { display: grid; gap: 16px; min-width: 0; align-content: start; }
+.hd-ticket-main > [data-modify]:empty { display: none; }
+.hd-ticket-main > [data-modify] { scroll-margin-top: 16px; }
 .hd-chat { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; height: 100%; min-height: 0; }
 .hd-chat-header { display: grid; gap: 12px; padding: 14px 16px; background: var(--hdc-head-bg); color: var(--hdc-head-title); border-bottom: 1px solid var(--hdc-line); }
 .hd-chat-header-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-width: 0; }
@@ -946,6 +948,50 @@ function CheckRow({ check }: { check: { id: string; label: string; ok: boolean; 
 // The customer's request to cancel their order (or some of its items), and the
 // team's decision: approve or reject, then cancel in Shopify. Nothing here
 // changes the order until staff choose to cancel it in Shopify.
+// Any change to the ticket's order, whatever the customer picked on the form:
+// opens its panel below, where it's checked, made in Shopify and emailed to the customer.
+const MODIFY_OPTIONS = [
+  { kind: "edit", label: "Edit items or shipping", icon: "edit", hint: "Change quantities, swap or add products, upgrade to expedited shipping" },
+  { kind: "address", label: "Change shipping address", icon: "location", hint: "Update where the order ships" },
+  { kind: "cancel", label: "Cancel order", icon: "x-circle", hint: "Cancel and refund the order in Shopify" },
+] as const;
+
+function ModifyOrderPanel({ screen }: { screen: TicketData }) {
+  const { ticket, order } = screen;
+  const fetcher = useFetcher<typeof action>();
+  const shopify = useAppBridge();
+  const [started, setStarted] = useState("");
+  const busy = fetcher.state !== "idle";
+  useEffect(() => {
+    if (fetcher.state !== "idle" || !fetcher.data) return;
+    const errors = Object.values(fetcher.data.errors);
+    if (errors.length) { shopify.toast.show(errors[0], { isError: true }); return; }
+    shopify.toast.show("Ready: make the change below");
+    const kind = started;
+    requestAnimationFrame(() => document.querySelector(`[data-modify="${kind}"]`)?.scrollIntoView({ behavior: "smooth", block: "start" }));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fetcher.state, fetcher.data]);
+  if (!order) return null;
+  // Already open (or done for good): the panel below has it.
+  const open: Record<string, boolean> = {
+    edit: ticket.editStatus === "Pending",
+    address: ticket.addressStatus === "Pending" || ticket.addressStatus === "Rejected",
+    cancel: ["Pending", "Approved", "Cancelled"].includes(ticket.cancelStatus) || order.cancelled,
+  };
+  const options = MODIFY_OPTIONS.filter((option) => !open[option.kind]);
+  if (order.cancelled || !options.length) return null;
+  return <s-section heading="Modify this order">
+    <s-stack gap="small-200">
+      <s-paragraph color="subdued">Make any change the customer asks for on order {order.name}. Each change is checked against Shopify and ShipStation, made in Shopify, and the customer gets an email once it&apos;s done.</s-paragraph>
+      <s-stack direction="inline" gap="small-200">
+        {options.map((option) => <s-button key={option.kind} icon={option.icon} accessibilityLabel={`${option.label}: ${option.hint}`} disabled={busy}
+          loading={busy && fetcher.formData?.get("kind") === option.kind}
+          onClick={() => { setStarted(option.kind); void fetcher.submit({ intent: "modify", id: ticket.id, kind: option.kind, author: screen.me || "Staff" }, { method: "post" }); }}>{option.label}</s-button>)}
+      </s-stack>
+    </s-stack>
+  </s-section>;
+}
+
 function CancellationPanel({ screen }: { screen: TicketData }) {
   const { ticket, order, shipStation } = screen;
   const fetcher = useFetcher<typeof action>();
@@ -1082,7 +1128,7 @@ function CancellationPanel({ screen }: { screen: TicketData }) {
 }
 
 const ADDRESS_COPY: Record<string, string> = {
-  Pending: "The customer asked to send their order to a new address. Check it below, correct it if needed, then update it in Shopify, or reject the request.",
+  Pending: "Check the new address below, correct it if needed, then update it in Shopify, or reject the request.",
   Updated: "The order's shipping address was updated in Shopify. The customer has been told.",
   Rejected: "Rejected. The customer was told the address can't be changed. You can still update it if things change.",
 };
@@ -1101,7 +1147,10 @@ function AddressPanel({ screen }: { screen: TicketData }) {
   const { ticket, order, orderError, shipStation } = screen;
   const fetcher = useFetcher<typeof action>();
   const shopify = useAppBridge();
-  const requested = addressFromValues(ticket.details);
+  const asked = addressFromValues(ticket.details);
+  // A change the team started has no requested address: start from the order's.
+  const fromOrder = !asked.address1 && order?.shippingAddress ? order.shippingAddress : null;
+  const requested = fromOrder ? { ...asked, ...fromOrder } : asked;
   const [form, setForm] = useState<AddressForm>(requested);
   const [note, setNote] = useState("");
   const [confirmed, setConfirmed] = useState(false);
@@ -1144,7 +1193,7 @@ function AddressPanel({ screen }: { screen: TicketData }) {
       <s-paragraph color="subdued">{ADDRESS_COPY[status]}</s-paragraph>
       <s-grid gridTemplateColumns="1fr 1fr" gap="base">
         <AddressLines heading={status === "Updated" ? "Ships to now (Shopify)" : "Current address (Shopify)"} lines={order?.shippingAddress ? addressLines(order.shippingAddress) : []} />
-        <AddressLines heading={status === "Updated" ? "Changed to" : "Requested address"} lines={addressLines(status === "Updated" && applied ? applied : requested)} />
+        <AddressLines heading={status === "Updated" ? "Changed to" : "Requested address"} lines={status === "Updated" && applied ? addressLines(applied) : fromOrder ? ["Not given: enter the new address below."] : addressLines(requested)} />
       </s-grid>
       {ticket.details.details && <s-text color="subdued">Customer&apos;s note: {ticket.details.details}</s-text>}
       {ticket.addressDecidedAt && <s-text color="subdued">{status} by {ticket.addressDecidedBy || "Staff"} · <span suppressHydrationWarning>{formatDate(ticket.addressDecidedAt)}</span>
@@ -1310,7 +1359,7 @@ function ReturnPanel({ screen }: { screen: TicketData }) {
 }
 
 const EDIT_COPY: Record<string, string> = {
-  Pending: "Check the order is still at the warehouse, set the new quantities (0 removes an item) and add products by SKU. Preview the new total, confirm any price difference with the customer, then update the order in Shopify.",
+  Pending: "Check the order is still at the warehouse, set the new quantities (0 removes an item), add products by SKU or change the shipping. Preview the new total, confirm any price difference with the customer, then update the order in Shopify.",
   Updated: "The order was updated in Shopify.",
   Rejected: "The request was rejected.",
 };
@@ -1335,6 +1384,8 @@ function EditPanel({ screen }: { screen: TicketData }) {
     return [item.lineItemId, line?.action === "Remove" ? 0 : line?.action === "Change quantity" && line.quantity !== null ? line.quantity : item.current];
   })));
   const [adds, setAdds] = useState<AddRow[]>([]);
+  // An expedited shipping request starts with the upgrade ready to price.
+  const [shipping, setShipping] = useState({ on: ticket.subcategory === "Expedited Shipping", title: "Expedited shipping", amount: "", replace: true });
   const [sku, setSku] = useState("");
   const [note, setNote] = useState("");
   const [notify, setNotify] = useState(true);
@@ -1366,13 +1417,16 @@ function EditPanel({ screen }: { screen: TicketData }) {
     lines: lines.filter((item) => quantities[item.lineItemId] !== undefined && quantities[item.lineItemId] !== item.current)
       .map((item) => ({ lineItemId: item.lineItemId, quantity: quantities[item.lineItemId] })),
     adds: adds.map((add) => ({ variantId: add.variantId, quantity: add.quantity })),
+    shipping: shipping.on && shipping.title.trim() && shipping.amount.trim() ? { title: shipping.title.trim(), amount: shipping.amount.trim(), replace: shipping.replace } : null,
   };
+  const shippingMoney = order ? money(Number(shipping.amount) || 0, order.currency) : shipping.amount;
   const summary = [
     ...lines.filter((item) => ops.lines.some((line) => line.lineItemId === item.lineItemId))
       .map((item) => quantities[item.lineItemId] === 0 ? `removed ${item.title}` : `${item.title} × ${quantities[item.lineItemId]} (was ${item.current})`),
     ...adds.map((add) => `added ${add.title}${add.sku ? ` (${add.sku})` : ""} × ${add.quantity}`),
+    ...(ops.shipping ? [`shipping ${ops.shipping.replace ? "changed to" : "added:"} ${ops.shipping.title} (${shippingMoney})`] : []),
   ].join("; ");
-  const changed = ops.lines.length + ops.adds.length > 0;
+  const changed = ops.lines.length + ops.adds.length > 0 || Boolean(ops.shipping);
   const send = (decision: "preview" | "apply" | "reject") => {
     const target = decision === "preview" ? preview : fetcher;
     void target.submit({ intent: "edit", id: ticket.id, decision, ops: JSON.stringify(ops), note, author: screen.me || "Staff", notifyCustomer: String(notify), summary }, { method: "post" });
@@ -1387,12 +1441,12 @@ function EditPanel({ screen }: { screen: TicketData }) {
         {order && <s-text color="subdued">Order {order.name} · {order.fulfillment || "Unfulfilled"} · {order.total}</s-text>}
       </s-stack>
       <s-paragraph color="subdued">{EDIT_COPY[status]}</s-paragraph>
-      <s-stack gap="small-100">
+      {(request.lines.length > 0 || request.adds.length > 0 || ticket.details.details) && <s-stack gap="small-100">
         <s-text type="strong">The customer asked for</s-text>
         {request.lines.map((line) => <s-text key={line.id}>• {line.title}: {line.action === "Remove" ? "remove" : line.action === "Change quantity" ? `quantity ${line.quantity}` : `change to ${line.variant}`}</s-text>)}
         {request.adds.map((add) => <s-text key={add.id}>• Add {add.title} × {add.quantity}</s-text>)}
         {ticket.details.details && <s-text color="subdued">Customer&apos;s note: {ticket.details.details.split("\n").filter((row) => !request.lines.some((line) => row.startsWith(`${line.title}:`)) && !row.startsWith("Add: ")).join(" ") || "—"}</s-text>}
-      </s-stack>
+      </s-stack>}
       {ticket.editDecidedAt && <s-text color="subdued">{status} by {ticket.editDecidedBy || "Staff"} · <span suppressHydrationWarning>{formatDate(ticket.editDecidedAt)}</span>
         {ticket.editNote ? ` · Told the customer: ${ticket.editNote}` : ""}</s-text>}
       {pending && <>
@@ -1441,6 +1495,20 @@ function EditPanel({ screen }: { screen: TicketData }) {
               onInput={(event) => setAdds(adds.map((entry, at) => at === index ? { ...entry, quantity: Math.min(99, Math.max(1, Math.trunc(Number(event.currentTarget.value)) || 1)) } : entry))} />
             <s-button icon="delete" tone="critical" accessibilityLabel={`Remove ${add.title}`} onClick={() => setAdds(adds.filter((_, at) => at !== index))} />
           </s-grid>)}
+          <s-divider />
+          <s-text type="strong">Shipping</s-text>
+          <s-text color="subdued">Ships with {order.shippingMethod || "no shipping method"} now.</s-text>
+          <s-checkbox label="Change the shipping (e.g. upgrade to expedited shipping)" checked={shipping.on} disabled={busy} onChange={() => setShipping({ ...shipping, on: !shipping.on })} />
+          {shipping.on && <>
+            <s-grid gridTemplateColumns="1fr 160px" gap="base">
+              <s-text-field label="Shipping name" value={shipping.title} maxLength={100} disabled={busy} onInput={(event) => setShipping({ ...shipping, title: event.currentTarget.value ?? "" })} />
+              <s-number-field label={`Price (${order.currency})`} min={0} max={10000} step={0.01} value={shipping.amount} disabled={busy}
+                details="What the customer pays for it" onInput={(event) => setShipping({ ...shipping, amount: event.currentTarget.value ?? "" })} />
+            </s-grid>
+            <s-checkbox label={`Replace the current shipping${order.shippingMethod ? ` (${order.shippingMethod})` : ""}`} checked={shipping.replace} disabled={busy}
+              details={shipping.replace ? "The new price is the whole shipping charge. Preview the total to see what the customer owes." : "Charged on top of the current shipping."}
+              onChange={() => setShipping({ ...shipping, replace: !shipping.replace })} />
+          </>}
           <s-divider />
           <s-stack direction="inline" gap="small-200" alignItems="center">
             <s-button icon="calculator" disabled={!changed} loading={preview.state !== "idle"} onClick={() => send("preview")}>Preview new total</s-button>
@@ -1702,10 +1770,11 @@ function TicketDetail({ screen }: { screen: TicketData }) {
     <div className="hd-ticket-side">
     <div className="hd-ticket-main">
     <TicketProperties ticket={ticket} team={screen.team} suggestions={screen.tagSuggestions} />
-    <CancellationPanel screen={screen} />
-    <AddressPanel screen={screen} />
+    <ModifyOrderPanel screen={screen} />
+    <div data-modify="cancel"><CancellationPanel screen={screen} /></div>
+    <div data-modify="address"><AddressPanel screen={screen} /></div>
     <ReturnPanel screen={screen} />
-    <EditPanel screen={screen} />
+    <div data-modify="edit"><EditPanel screen={screen} /></div>
     <ReplacementPanel screen={screen} />
     <QuotePanel screen={screen} />
     <OrderTracking screen={screen} />

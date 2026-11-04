@@ -14,11 +14,16 @@ import { shipStationAccount, shipStationStatus } from "./help-desk-shipstation.s
 // new total with Shopify's order editing, and update the order in Shopify
 // (orderEditBegin, orderEditSetQuantity, orderEditAddVariant, orderEditCommit),
 // or reject the request. Each decision is logged and emailed to the customer.
+// Staff can also open an edit on any ticket with an order (startModification
+// in help-desk.server.ts), and change its shipping: e.g. upgrade it to
+// expedited shipping (orderEditRemoveShippingLine, orderEditAddShippingLine).
 
 type AdminClient = { graphql: (query: string, options?: { variables?: Record<string, unknown> }) => Promise<Response> };
 export type EditResult = { errors: Record<string, string>; editStatus?: EditStatus };
 // The changes staff apply: order lines' new quantities, and variants to add.
-export type EditOps = { lines: { lineItemId: string; quantity: number }[]; adds: { variantId: string; quantity: number }[] };
+// shipping: a new shipping line (e.g. "Expedited shipping"), replacing the order's current ones or added to them.
+export type EditShipping = { title: string; amount: number; replace: boolean };
+export type EditOps = { lines: { lineItemId: string; quantity: number }[]; adds: { variantId: string; quantity: number }[]; shipping?: EditShipping | null };
 type Money = { amount: string; currencyCode: string };
 export type EditTotals = { before: Money | null; after: Money; outstanding: Money };
 export type SkuVariant = { id: string; sku: string; title: string; product: string; price: string; available: number | null };
@@ -29,7 +34,12 @@ const DECIDED = "This request has already been decided. Reload the page to see w
 const BEGIN = `#graphql
   mutation HelpDeskEditBegin($id: ID!) {
     orderEditBegin(id: $id) {
-      calculatedOrder { id lineItems(first: 100) { nodes { id quantity title variantTitle sku } } }
+      calculatedOrder {
+        id
+        lineItems(first: 100) { nodes { id quantity title variantTitle sku } }
+        shippingLines { id title stagedStatus }
+        originalOrder { presentmentCurrencyCode }
+      }
       userErrors { field message }
     }
   }`;
@@ -43,6 +53,20 @@ const SET_QUANTITY = `#graphql
 const ADD_VARIANT = `#graphql
   mutation HelpDeskEditAddVariant($id: ID!, $variantId: ID!, $quantity: Int!) {
     orderEditAddVariant(id: $id, variantId: $variantId, quantity: $quantity, allowDuplicates: false) {
+      calculatedOrder { id }
+      userErrors { field message }
+    }
+  }`;
+const ADD_SHIPPING = `#graphql
+  mutation HelpDeskEditAddShipping($id: ID!, $shippingLine: OrderEditAddShippingLineInput!) {
+    orderEditAddShippingLine(id: $id, shippingLine: $shippingLine) {
+      calculatedOrder { id }
+      userErrors { field message }
+    }
+  }`;
+const REMOVE_SHIPPING = `#graphql
+  mutation HelpDeskEditRemoveShipping($id: ID!, $shippingLineId: ID!) {
+    orderEditRemoveShippingLine(id: $id, shippingLineId: $shippingLineId) {
       calculatedOrder { id }
       userErrors { field message }
     }
@@ -131,7 +155,10 @@ const lineNumber = (id: string) => id.split("/").pop() || "";
 
 // Starts an edit and stages the changes; returns the calculated order's id.
 async function stage(admin: AdminClient, orderId: string, ops: EditOps) {
-  const begun = await run<{ calculatedOrder: { id: string; lineItems: { nodes: { id: string; quantity: number }[] } } }>(
+  const begun = await run<{ calculatedOrder: {
+    id: string; lineItems: { nodes: { id: string; quantity: number }[] };
+    shippingLines?: { id: string; stagedStatus: string }[]; originalOrder?: { presentmentCurrencyCode: string } | null;
+  } }>(
     admin, BEGIN, { id: `gid://shopify/Order/${orderId}` }, "orderEditBegin");
   const calculated = begun.calculatedOrder;
   for (const line of ops.lines) {
@@ -141,6 +168,16 @@ async function stage(admin: AdminClient, orderId: string, ops: EditOps) {
     await run(admin, SET_QUANTITY, { id: calculated.id, lineItemId: target.id, quantity: line.quantity, restock: true }, "orderEditSetQuantity");
   }
   for (const add of ops.adds) await run(admin, ADD_VARIANT, { id: calculated.id, variantId: add.variantId, quantity: add.quantity }, "orderEditAddVariant");
+  if (ops.shipping) {
+    if (ops.shipping.replace) {
+      for (const line of calculated.shippingLines ?? []) {
+        if (line.stagedStatus !== "REMOVED") await run(admin, REMOVE_SHIPPING, { id: calculated.id, shippingLineId: line.id }, "orderEditRemoveShippingLine");
+      }
+    }
+    const currencyCode = calculated.originalOrder?.presentmentCurrencyCode;
+    if (!currencyCode) throw new EditError("Shopify didn't say the order's currency. Reload the page and try again.");
+    await run(admin, ADD_SHIPPING, { id: calculated.id, shippingLine: { title: ops.shipping.title, price: { amount: ops.shipping.amount.toFixed(2), currencyCode } } }, "orderEditAddShippingLine");
+  }
   return calculated.id;
 }
 
@@ -151,8 +188,16 @@ export function cleanOps(raw: unknown): EditOps | null {
     .map((line) => ({ lineItemId: String(line.lineItemId), quantity: Math.min(Math.max(Math.trunc(Number(line.quantity)) || 0, 0), 999) })).slice(0, 100);
   const adds = value.adds.filter((add) => /^gid:\/\/shopify\/ProductVariant\/\d+$/.test(String(add?.variantId)))
     .map((add) => ({ variantId: String(add.variantId), quantity: Math.min(Math.max(Math.trunc(Number(add.quantity)) || 1, 1), 99) })).slice(0, 20);
-  return { lines, adds };
+  const asked = value.shipping as Partial<EditShipping> | null | undefined;
+  const title = String(asked?.title ?? "").trim().slice(0, 100);
+  // A blank price isn't free shipping.
+  const amount = String(asked?.amount ?? "").trim() ? Math.round(Number(asked?.amount) * 100) / 100 : NaN;
+  const shipping = asked && title && Number.isFinite(amount) && amount >= 0 && amount <= 10000
+    ? { title, amount, replace: asked.replace !== false } : null;
+  return { lines, adds, shipping };
 }
+
+const hasChanges = (ops: EditOps) => ops.lines.length > 0 || ops.adds.length > 0 || Boolean(ops.shipping);
 
 async function ticketOrder(db: PrismaClient, admin: AdminClient, shop: string, id: string) {
   const ticket = await db.helpDeskTicket.findFirst({ where: { id, shop }, select: { email: true, details: true, orderId: true, editStatus: true, resolutionType: true } });
@@ -168,7 +213,7 @@ async function ticketOrder(db: PrismaClient, admin: AdminClient, shop: string, i
 // The order's total before and after the changes, without saving them: the
 // edit is begun and left uncommitted, so the order doesn't change.
 export async function previewOrderEdit(db: PrismaClient, admin: AdminClient, shop: string, id: string, ops: EditOps): Promise<{ errors: Record<string, string>; totals?: EditTotals }> {
-  if (!ops.lines.length && !ops.adds.length) return { errors: { form: "Change a quantity or add a product first." } };
+  if (!hasChanges(ops)) return { errors: { form: "Change a quantity, add a product or change the shipping first." } };
   const found = await ticketOrder(db, admin, shop, id);
   if ("error" in found) return { errors: { form: found.error! } };
   if (!found.order) return { errors: { form: "The order wasn't found in Shopify." } };
@@ -203,7 +248,7 @@ export async function applyOrderEdit(
 ): Promise<EditResult> {
   const note = input.note.trim();
   if (note.length > MAX_MESSAGE_LENGTH) return { errors: { note: `Use no more than ${MAX_MESSAGE_LENGTH.toLocaleString("en")} characters.` } };
-  if (!input.ops.lines.length && !input.ops.adds.length) return { errors: { form: "Change a quantity or add a product first." } };
+  if (!hasChanges(input.ops)) return { errors: { form: "Change a quantity, add a product or change the shipping first." } };
   const found = await ticketOrder(db, admin, shop, id);
   if ("error" in found) return { errors: { form: found.error! } };
   const blocked = (await warehouseChecks(db, shop, found.order, found.ticket.email)).find((check) => !check.ok && !check.warning && check.id !== "verified");

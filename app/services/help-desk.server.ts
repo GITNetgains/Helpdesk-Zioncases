@@ -426,6 +426,39 @@ export async function addCustomerMessage(db: PrismaClient, shop: string, token: 
   return { errors: {}, messageId: message.id, ticketId: ticket.id };
 }
 
+// Staff open an order change on any ticket about an order, whatever the
+// customer picked on the form (they may have asked in the chat, or ask again
+// later): the ticket's edit, address or cancellation panel opens as Pending,
+// and the change is made, logged and emailed to the customer from there.
+export const modificationKinds = ["edit", "address", "cancel"] as const;
+export type ModificationKind = typeof modificationKinds[number];
+const MODIFICATION: Record<ModificationKind, { status: "editStatus" | "addressStatus" | "cancelStatus"; reset: Prisma.HelpDeskTicketUpdateInput; from: string[]; tag: string; event: string; busy: string }> = {
+  edit: { status: "editStatus", reset: { editNote: "", editDecidedBy: "", editDecidedAt: null }, from: ["", "Updated", "Rejected"], tag: "order-edit", event: "Order change started by the team", busy: "An order change is already open on this ticket." },
+  address: { status: "addressStatus", reset: { addressNote: "", addressDecidedBy: "", addressDecidedAt: null }, from: ["", "Updated", "Rejected"], tag: "address-change", event: "Shipping address change started by the team", busy: "An address change is already open on this ticket." },
+  cancel: { status: "cancelStatus", reset: { cancelNote: "", cancelDecidedBy: "", cancelDecidedAt: null }, from: ["", "Rejected"], tag: "cancel", event: "Order cancellation started by the team", busy: "A cancellation is already open on this ticket, or the order is cancelled." },
+};
+
+export async function startModification(db: PrismaClient, shop: string, id: string, kind: string, author = "Staff"): Promise<{ errors: Record<string, string> }> {
+  const plan = MODIFICATION[kind as ModificationKind];
+  if (!plan) return { errors: { form: "Choose what to change on the order." } };
+  const ticket = await db.helpDeskTicket.findFirst({ where: { id, shop } });
+  if (!ticket) return { errors: { form: "This ticket no longer exists." } };
+  let details: Record<string, string> = {};
+  try { details = JSON.parse(ticket.details) as Record<string, string>; } catch { /* no details */ }
+  if (!ticket.orderId && !details.orderNumber) return { errors: { form: "This ticket isn't linked to an order." } };
+  const now = new Date();
+  // Only from where it can start, so two agents can't open it at once.
+  const { count } = await db.helpDeskTicket.updateMany({
+    where: { id, shop, [plan.status]: { in: plan.from } },
+    data: { [plan.status]: "Pending", ...plan.reset, tags: cleanTags(`${ticket.tags}, ${plan.tag}`), lastActivityAt: now } as Prisma.HelpDeskTicketUpdateManyMutationInput,
+  });
+  if (!count) return { errors: { form: plan.busy } };
+  const name = author.trim().slice(0, 80) || "Staff";
+  await db.helpDeskMessage.create({ data: { ticketId: id, kind: "event", author: name, body: plan.event } });
+  if (ticket.status === "Open" || ticket.status === "Resolved") await updateTickets(db, shop, [id], { status: "In progress" }, name);
+  return { errors: {} };
+}
+
 // "Clear chat" on the request page: the customer starts the chat afresh. Only
 // their view is cleared. Nothing is deleted: the team still sees the whole
 // conversation, with a note where it was cleared, and the request page shows

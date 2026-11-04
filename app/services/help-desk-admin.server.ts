@@ -4,7 +4,7 @@ import type { Prisma } from "@prisma/client";
 import { authenticate } from "../shopify.server";
 import db from "../db.server";
 import { countryName, defaultMacros, suggestTags, MAX_MESSAGE_LENGTH, priorities, ticketStatuses } from "./help-desk";
-import { addStaffMessage, classifyUnsorted, deleteTickets, readHelpDeskForm, submitTicket, updateTickets } from "./help-desk.server";
+import { addStaffMessage, classifyUnsorted, deleteTickets, readHelpDeskForm, startModification, submitTicket, updateTickets } from "./help-desk.server";
 import { categoryNames, rootCauses, subcategoriesOf } from "./help-desk-taxonomy";
 import { cachedProducts, emailConfigured, loadShop, sendTestEmail, trackingUrl } from "./help-desk-email.server";
 import { ordersByEmail, syncTicketOrder } from "./help-desk-orders.server";
@@ -337,6 +337,13 @@ export const helpDeskAction = async ({ request }: ActionFunctionArgs) => {
           for (const [ticketId, status] of before) if (status !== changes.status) queueEmail(db, { shop, ticketId, kind: "status" }, admin);
         }
         return data<ActionResult>({ errors: {}, updated });
+      }
+      // Staff open an order change (items and shipping, the address, or a
+      // cancellation) on any ticket about an order; its panel takes it from there.
+      case "modify": {
+        const result = await startModification(db, shop, text("id"), text("kind"), text("author") || "Staff");
+        if (Object.keys(result.errors).length) return data<ActionResult>({ errors: result.errors }, { status: 400 });
+        return data<ActionResult>({ errors: {}, ticketId: text("id") });
       }
       // An order cancellation request: approve or reject it, cancel the order in
       // Shopify, or confirm the items were removed from it there.

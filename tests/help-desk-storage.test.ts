@@ -9,7 +9,7 @@ import { PrismaClient } from "@prisma/client";
 import { mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { addCustomerMessage, addStaffMessage, deleteTickets, purgeShop, readHelpDeskForm, redactCustomer, submitTicket, updateTickets, updateTicketStatus } from "../app/services/help-desk.server";
+import { addCustomerMessage, addStaffMessage, deleteTickets, purgeShop, readHelpDeskForm, redactCustomer, startModification, submitTicket, updateTickets, updateTicketStatus } from "../app/services/help-desk.server";
 import { deliveryIssues, fillMacro, issues, orderTypes, productParts, topics } from "../app/services/help-desk";
 import { conflictingRequest, syncTicketOrder } from "../app/services/help-desk-orders.server";
 import { processEmail, retryEmail } from "../app/services/help-desk-outbox.server";
@@ -844,7 +844,10 @@ describe("Order edit requests", () => {
         calls.push({ query, variables: options?.variables });
         const money = (amount: string) => ({ shopMoney: { amount, currencyCode: "USD" } });
         if (query.includes("orderEditBegin")) return new Response(JSON.stringify({ data: { orderEditBegin: { calculatedOrder: { id: "gid://shopify/CalculatedOrder/9", lineItems: { nodes: [
-          { id: "gid://shopify/CalculatedLineItem/11", quantity: 1 }, { id: "gid://shopify/CalculatedLineItem/12", quantity: 2 }] } }, userErrors: [] } } }));
+          { id: "gid://shopify/CalculatedLineItem/11", quantity: 1 }, { id: "gid://shopify/CalculatedLineItem/12", quantity: 2 }] },
+          shippingLines: [{ id: "gid://shopify/CalculatedShippingLine/5", title: "Standard", stagedStatus: "NONE" }], originalOrder: { presentmentCurrencyCode: "CAD" } }, userErrors: [] } } }));
+        if (query.includes("orderEditRemoveShippingLine")) return new Response(JSON.stringify({ data: { orderEditRemoveShippingLine: { calculatedOrder: { id: "x" }, userErrors: [] } } }));
+        if (query.includes("orderEditAddShippingLine")) return new Response(JSON.stringify({ data: { orderEditAddShippingLine: { calculatedOrder: { id: "x" }, userErrors: [] } } }));
         if (query.includes("orderEditSetQuantity")) return new Response(JSON.stringify({ data: { orderEditSetQuantity: { calculatedOrder: { id: "x" }, userErrors: [] } } }));
         if (query.includes("orderEditAddVariant")) return new Response(JSON.stringify({ data: { orderEditAddVariant: { calculatedOrder: { id: "x" }, userErrors: [] } } }));
         if (query.includes("HelpDeskEditTotals")) return new Response(JSON.stringify({ data: { node: { originalOrder: { totalPriceSet: money("100.00") }, totalPriceSet: money("115.00"), totalOutstandingSet: money("15.00") } } }));
@@ -902,7 +905,40 @@ describe("Order edit requests", () => {
     const { ticketId } = await submitTicket(db, shop, editForm());
     expect((await rejectOrderEdit(db, shop, ticketId!, { note: " ", author: "Priya" })).errors.note).toBeTruthy();
     expect(await rejectOrderEdit(db, shop, ticketId!, { note: "It has already left our warehouse.", author: "Priya" })).toEqual({ errors: {}, editStatus: "Rejected" });
-    expect(cleanOps({ lines: [{ lineItemId: "nope", quantity: 1 }], adds: [{ variantId: "gid://shopify/ProductVariant/1", quantity: 500 }] })).toEqual({ lines: [], adds: [{ variantId: "gid://shopify/ProductVariant/1", quantity: 99 }] });
+    expect(cleanOps({ lines: [{ lineItemId: "nope", quantity: 1 }], adds: [{ variantId: "gid://shopify/ProductVariant/1", quantity: 500 }] })).toEqual({ lines: [], adds: [{ variantId: "gid://shopify/ProductVariant/1", quantity: 99 }], shipping: null });
+    // A shipping change needs a name and a price (blank isn't free).
+    expect(cleanOps({ lines: [], adds: [], shipping: { title: "Expedited", amount: "", replace: true } })?.shipping).toBeNull();
+    expect(cleanOps({ lines: [], adds: [], shipping: { title: " Expedited ", amount: "19.999", replace: false } })?.shipping).toEqual({ title: "Expedited", amount: 20, replace: false });
+    expect(cleanOps({ lines: [], adds: [], shipping: { title: "Expedited", amount: "-5" } })?.shipping).toBeNull();
+  });
+
+  it("can be started by the team on any ticket about an order, e.g. to upgrade it to expedited shipping, and the customer is told", async () => {
+    const { ticketId, errors } = await submitTicket(db, shop, form({ topic: topics[5], orderNumber: "#100950", existing: "", query: "Can you send it faster?" }));
+    expect(errors).toEqual({});
+    expect(await db.helpDeskTicket.findUniqueOrThrow({ where: { id: ticketId } })).toMatchObject({ editStatus: "", addressStatus: "", cancelStatus: "" });
+    expect((await startModification(db, shop, ticketId!, "teleport")).errors.form).toBeTruthy();
+    expect(await startModification(db, shop, ticketId!, "edit", "Priya")).toEqual({ errors: {} });
+    // Once at a time.
+    expect((await startModification(db, shop, ticketId!, "edit", "Sam")).errors.form).toMatch(/already open/);
+    const ticket = await db.helpDeskTicket.findUniqueOrThrow({ where: { id: ticketId } });
+    expect(ticket).toMatchObject({ editStatus: "Pending", status: "In progress" });
+    expect(ticket.tags).toContain("order-edit");
+    const shopify = fakeShopify();
+    const expedite = { lines: [], adds: [], shipping: { title: "Expedited shipping", amount: 24.5, replace: true } };
+    expect(await applyOrderEdit(db, shopify.admin, shop, ticketId!, { ops: expedite, note: "Upgraded!", author: "Priya", notifyCustomer: false, summary: "shipping changed to Expedited shipping ($24.50)" }))
+      .toEqual({ errors: {}, editStatus: "Updated" });
+    expect(shopify.named("orderEditRemoveShippingLine")[0].variables).toEqual({ id: "gid://shopify/CalculatedOrder/9", shippingLineId: "gid://shopify/CalculatedShippingLine/5" });
+    expect(shopify.named("orderEditAddShippingLine")[0].variables).toEqual({ id: "gid://shopify/CalculatedOrder/9", shippingLine: { title: "Expedited shipping", price: { amount: "24.50", currencyCode: "CAD" } } });
+    expect(shopify.named("orderEditCommit")).toHaveLength(1);
+    // Done: another change can be started later, and so can an address change or a cancellation.
+    expect(await startModification(db, shop, ticketId!, "edit")).toEqual({ errors: {} });
+    expect(await db.helpDeskTicket.findUniqueOrThrow({ where: { id: ticketId } })).toMatchObject({ editStatus: "Pending", editNote: "", editDecidedAt: null });
+    expect(await startModification(db, shop, ticketId!, "address")).toEqual({ errors: {} });
+    expect(await startModification(db, shop, ticketId!, "cancel")).toEqual({ errors: {} });
+    expect((await startModification(db, shop, ticketId!, "cancel")).errors.form).toMatch(/already open/);
+    // Not about an order: nothing to change.
+    const other = await submitTicket(db, shop, form({ topic: topics[5], query: "Hi there" }));
+    expect((await startModification(db, shop, other.ticketId!, "edit")).errors.form).toMatch(/linked to an order/);
   });
 });
 

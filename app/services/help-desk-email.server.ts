@@ -414,18 +414,25 @@ export async function sendEditEmail(db: PrismaClient, shop: string, admin: Admin
   const order = ticket.orderName || values.orderNumber ? `order ${ticket.orderName || values.orderNumber}` : "your order";
   const updated = ticket.editStatus === "Updated";
   const heading = updated ? "Your order has been updated" : "We couldn't change your order";
-  const text = updated ? `We've updated ${order} with the changes you asked for. If there's a price difference, you'll receive a separate invoice or refund from us.`
+  // What changed, as logged when the order was updated in Shopify.
+  const logged = updated ? await db.helpDeskMessage.findFirst({
+    where: { ticketId, kind: "event", body: { contains: " updated in Shopify: " } }, orderBy: { createdAt: "desc" }, select: { body: true },
+  }) : null;
+  const changes = logged?.body.split(" updated in Shopify: ")[1]?.split("; ").filter(Boolean) ?? [];
+  const what = changes.length && changes[0] !== "items changed" ? changes.map((change) => `• ${change[0].toUpperCase()}${change.slice(1)}`).join("\n") : "";
+  const text = updated ? `We've updated ${order}. If there's a price difference, you'll receive a separate invoice or refund from us.`
     : `We looked at your request to change ${order}, but unfortunately we're not able to change it.`;
+  const quote = [what, ticket.editNote].filter(Boolean).join("\n\n");
   await transport().sendMail({
     from: sender(storeName),
     to: { name: ticket.name, address: ticket.email },
     replyTo,
     subject: `[#${ticket.number}] ${heading}`,
     html: renderCustomerEmail({
-      storeName, heading, paragraphs: [`Hi ${first},`, text], quote: ticket.editNote || undefined,
-      buttonUrl: url, buttonLabel: "View your request", footer: `Ticket #${ticket.number} · Order change request`,
+      storeName, heading, paragraphs: [`Hi ${first},`, text], quote: quote || undefined,
+      buttonUrl: url, buttonLabel: "View your request", footer: `Ticket #${ticket.number} · Order change`,
     }),
-    text: `Hi ${first},\n\n${text}${ticket.editNote ? `\n\n${ticket.editNote}` : ""}\n\nView your request #${ticket.number}: ${url}`,
+    text: `Hi ${first},\n\n${text}${quote ? `\n\n${quote}` : ""}\n\nView your request #${ticket.number}: ${url}`,
   });
   return "sent";
 }
