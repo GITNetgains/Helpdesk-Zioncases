@@ -1201,3 +1201,41 @@
 .help-desk .help-desk-unlisted h4 { margin: 0; font-size: 15px; }
 .help-desk .help-desk-stage-note { margin: 4px 0 0; padding: 10px 12px; border-radius: 10px; background: #f3f6fb; }
 .help-desk .help-desk-order-card-top em[data-state=shipped] { background: #e3f5ea; color: #0c5132; }
+
+/* Alerts: errors, confirmations and notes, all alike. An icon on the left,
+   a soft tint and border, and a short fade in (not with reduced motion). */
+.help-desk [data-help-desk-status]:not(:empty),
+.help-desk .help-desk-track-error {
+  --hd-alert-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3E%3Cpath d='M10 1.5a8.5 8.5 0 1 1 0 17 8.5 8.5 0 0 1 0-17Zm0 11.75a1.1 1.1 0 1 0 0 2.2 1.1 1.1 0 0 0 0-2.2ZM10 5a1 1 0 0 0-1 1v5a1 1 0 1 0 2 0V6a1 1 0 0 0-1-1Z'/%3E%3C/svg%3E");
+  position: relative; margin: 0 0 20px; padding: 13px 16px 13px 46px;
+  border: 1px solid #f5c6be; border-radius: 12px; background: #fff6f4; color: #7c1d10;
+  box-shadow: 0 1px 2px rgba(124, 29, 16, .06); font-size: 14.5px; line-height: 1.55; font-weight: 500;
+  animation: hd-alert-in .22s ease-out both;
+}
+.help-desk .help-desk-track-error { margin: 0; }
+.help-desk [data-help-desk-status]:not(:empty)::before,
+.help-desk .help-desk-track-error::before {
+  content: ""; position: absolute; top: 14px; left: 16px; width: 19px; height: 19px;
+  background: currentColor; -webkit-mask: var(--hd-alert-icon) center / contain no-repeat; mask: var(--hd-alert-icon) center / contain no-repeat;
+}
+.help-desk [data-help-desk-status][data-error=true] { color: #7c1d10; }
+.help-desk [data-help-desk-status][data-error=true]::before, .help-desk .help-desk-track-error::before { color: #d92d20; background: #d92d20; }
+/* Done: a check. */
+.help-desk [data-help-desk-status][data-error=false]:not(:empty) {
+  --hd-alert-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3E%3Cpath d='M10 1.5a8.5 8.5 0 1 1 0 17 8.5 8.5 0 0 1 0-17Zm3.7 5.3a1 1 0 0 0-1.4 0L8.9 10.2 7.7 9a1 1 0 1 0-1.4 1.4l1.9 1.9a1 1 0 0 0 1.4 0l4.1-4.1a1 1 0 0 0 0-1.4Z'/%3E%3C/svg%3E");
+  border-color: #b7e2c8; background: #f1faf4; color: #14532d; box-shadow: 0 1px 2px rgba(20, 83, 45, .06);
+}
+.help-desk [data-help-desk-status][data-error=false]:not(:empty)::before { background: #1f9254; }
+/* A note: an info mark, in the form's own greys. */
+.help-desk [data-help-desk-status]:not([data-error]):not(:empty) {
+  --hd-alert-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3E%3Cpath d='M10 1.5a8.5 8.5 0 1 1 0 17 8.5 8.5 0 0 1 0-17ZM10 9a1 1 0 0 0-1 1v4a1 1 0 1 0 2 0v-4a1 1 0 0 0-1-1Zm0-3.6a1.1 1.1 0 1 0 0 2.2 1.1 1.1 0 0 0 0-2.2Z'/%3E%3C/svg%3E");
+  border-color: var(--hd-border); background: var(--hd-field); color: var(--hd-text); box-shadow: none;
+}
+.help-desk [data-help-desk-status]:not([data-error]):not(:empty)::before { background: var(--hd-muted); }
+.help-desk [data-help-desk-status] a, .help-desk .help-desk-track-error a { color: inherit; font-weight: 650; text-decoration: underline; text-underline-offset: 2px; }
+.help-desk [data-help-desk-status]:focus { outline: none; }
+.help-desk [data-help-desk-status]:focus-visible { outline: 2px solid color-mix(in srgb, currentColor 45%, transparent); outline-offset: 2px; }
+@keyframes hd-alert-in { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) {
+  .help-desk [data-help-desk-status]:not(:empty), .help-desk .help-desk-track-error { animation: none; }
+}

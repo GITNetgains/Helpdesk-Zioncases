@@ -264,8 +264,13 @@ const STYLES = `<style>
 .hdt-help h2{margin-bottom:10px}
 .hdt-track{margin-top:14px}.hdt .hdt-track a{display:inline-block;padding:10px 18px;border-radius:6px;background:var(--ink);color:#fff;text-decoration:none}
 .hdt a{color:var(--ink);font-weight:700;text-underline-offset:3px}
-.hdt-note{margin-bottom:14px;padding:12px 14px;border-radius:12px;font-size:14px}
-.hdt-note[data-tone="success"]{background:#e3f5ea;color:#0c5132}.hdt-note[data-tone="error"]{background:#fde8e6;color:#8e1f0b}
+.hdt-note{position:relative;margin-bottom:14px;padding:12px 14px 12px 42px;border:1px solid transparent;border-radius:12px;font-size:14px;font-weight:500;line-height:1.5;animation:hdt-note-in .22s ease-out both}
+.hdt-note::before{content:"";position:absolute;top:13px;left:14px;width:18px;height:18px;background:currentColor;-webkit-mask:var(--hdt-note-icon) center/contain no-repeat;mask:var(--hdt-note-icon) center/contain no-repeat}
+.hdt-note[data-tone="success"]{--hdt-note-icon:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3E%3Cpath d='M10 1.5a8.5 8.5 0 1 1 0 17 8.5 8.5 0 0 1 0-17Zm3.7 5.3a1 1 0 0 0-1.4 0L8.9 10.2 7.7 9a1 1 0 1 0-1.4 1.4l1.9 1.9a1 1 0 0 0 1.4 0l4.1-4.1a1 1 0 0 0 0-1.4Z'/%3E%3C/svg%3E");border-color:#b7e2c8;background:#f1faf4;color:#14532d}
+.hdt-note[data-tone="error"]{--hdt-note-icon:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3E%3Cpath d='M10 1.5a8.5 8.5 0 1 1 0 17 8.5 8.5 0 0 1 0-17Zm0 11.75a1.1 1.1 0 1 0 0 2.2 1.1 1.1 0 0 0 0-2.2ZM10 5a1 1 0 0 0-1 1v5a1 1 0 1 0 2 0V6a1 1 0 0 0-1-1Z'/%3E%3C/svg%3E");border-color:#f5c6be;background:#fff6f4;color:#7c1d10}
+.hdt-note[data-tone="error"]::before{background:#d92d20}.hdt-note[data-tone="success"]::before{background:#1f9254}
+@keyframes hdt-note-in{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:none}}
+@media(prefers-reduced-motion:reduce){.hdt-note{animation:none}}
 .hdt-cancel{border-top:4px solid #f0b400}
 .hdt-cancel[data-status="Approved"]{border-top-color:var(--blue)}.hdt-cancel[data-status="Rejected"]{border-top-color:#b3261e}.hdt-cancel[data-status="Cancelled"],.hdt-cancel[data-status="Updated"],.hdt-cancel[data-status="Received"]{border-top-color:var(--ok)}.hdt-cancel[data-status="Label sent"]{border-top-color:var(--blue)}.hdt-cancel[data-status="Shipped"]{border-top-color:var(--ok)}
 .hdt-button{display:inline-block;padding:12px 22px;border-radius:6px;background:var(--accent);color:#fff;font-weight:600;text-decoration:none}
