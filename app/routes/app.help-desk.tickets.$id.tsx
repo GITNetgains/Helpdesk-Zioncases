@@ -9,6 +9,7 @@ import { adminContext, helpDeskAction, loadTicket } from "../services/help-desk-
 import type { TicketProduct } from "../services/help-desk-email.server";
 import { categoryNames, describeCategory, groupMacros, resolutionTypes, rootCauses, subcategoriesOf, teamFor } from "../services/help-desk-taxonomy";
 import { buildChecks, PHOTO_VERDICT, PhotoCheckButton, PhotoReportModal } from "../components/PhotoReport";
+import { ASSISTANT_AVATAR, nameInitial } from "../services/help-desk-avatar";
 import { AddressBadge, EditBadge, QuoteBadge, ReplacementBadge, ReturnBadge, ago, CancelBadge, DAY, DeleteConfirm, duration, formatDate, StatusBadge, ticketHref, useLiveRefresh, useResultToast } from "../components/help-desk/shared";
 
 // One ticket: /app/help-desk/tickets/:id.
@@ -216,7 +217,14 @@ function Message({ message, files, email, isNew, grouped, pending = false }: { m
   const team = mine && !note;
   const tone = note ? "note" : team ? "team" : bot ? "bot" : "in";
   const delivery = pending ? "Sending…" : note ? "🔒 Internal note" : !mine ? "" : email ? "" : message.emailed ? "✓✓ Emailed" : "✓ On request page";
+  // The assistant's logo, or the first letter of the team member's name.
+  const face = (bot || mine) && <span aria-hidden="true" className={bot ? "hd-bot-face" : undefined} style={{
+    display: "grid", placeItems: "center", flex: `0 0 ${bot ? 32 : 28}px`, width: bot ? 32 : 28, height: grouped ? 0 : bot ? 32 : 28, visibility: grouped ? "hidden" : "visible",
+    margin: mine ? "0 0 0 8px" : "0 8px 0 0", borderRadius: "50%", fontSize: 12, fontWeight: 800, color: "#fff",
+    ...(bot ? {} : { background: note ? "#8a6d1f" : "#ef3a24" }),
+  }}>{bot ? "" : nameInitial(message.author)}</span>;
   return <div style={{ display: "flex", justifyContent: mine ? "flex-end" : "flex-start", marginTop: grouped ? 2 : 10, opacity: pending ? 0.7 : 1 }}>
+    {bot && face}
     <div style={{
       position: "relative", maxWidth: "min(620px, 78%)", minWidth: 120, padding: "9px 13px 7px", background: `var(--hdc-${tone}-bg)`, color: `var(--hdc-${tone}-ink)`,
       borderRadius: grouped ? 14 : mine ? "14px 4px 14px 14px" : "4px 14px 14px 14px", boxShadow: "var(--hdc-bubble-shadow)",
@@ -235,12 +243,14 @@ function Message({ message, files, email, isNew, grouped, pending = false }: { m
       </div>
       {email && mine && !note && <div style={{ marginTop: 4, display: "flex", justifyContent: "flex-end" }}><EmailStatus email={email} /></div>}
     </div>
+    {mine && face}
   </div>;
 }
 
 // Keep ticket details readable and let the conversation open as a docked widget.
 const LAYOUT_CSS = `
 .hd-ticket { display: block; }
+.hd-bot-face { background: #000 url(${ASSISTANT_AVATAR}) center/cover no-repeat; box-shadow: 0 0 0 1.5px rgba(255,255,255,.25); }
 .hd-ticket-side { display: grid; grid-template-columns: minmax(0, 1.65fr) minmax(280px, .85fr); gap: 18px; min-width: 0; align-items: start; }
 .hd-ticket-main, .hd-ticket-rail { display: grid; gap: 16px; min-width: 0; align-content: start; }
 .hd-chat { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; height: 100%; min-height: 0; }
@@ -539,6 +549,9 @@ function ChannelPicker({ value, onChange, email }: { value: "page" | "email"; on
   </div>;
 }
 
+// Opens the conversation dock from anywhere on the page ("Join chat").
+const OPEN_CHAT_EVENT = "hd-open-chat";
+
 // Joins a chat that's waiting for a person: a greeting goes to the customer's
 // request page at once (their chat stops showing "Connecting"), the request is
 // no longer flagged, and the assistant stays quiet while the team chats.
@@ -552,7 +565,11 @@ function JoinChat({ ticket, author, storeName }: { ticket: TicketData["ticket"];
   }, [fetcher.state, fetcher.data]);
   return <div style={{ marginTop: 10 }}>
     <s-button variant="primary" icon="chat" loading={fetcher.state !== "idle"}
-      onClick={() => void fetcher.submit({ intent: "message", id: ticket.id, kind: "reply", channel: "page", author, body, status: "In progress" }, { method: "post" })}>Join chat</s-button>
+      onClick={() => {
+        // The conversation opens at once, so the greeting appears in it as it's sent.
+        window.dispatchEvent(new CustomEvent(OPEN_CHAT_EVENT));
+        void fetcher.submit({ intent: "message", id: ticket.id, kind: "reply", channel: "page", author, body, status: "In progress" }, { method: "post" });
+      }}>Join chat</s-button>
   </div>;
 }
 
@@ -1653,6 +1670,12 @@ function TicketDetail({ screen }: { screen: TicketData }) {
     else { shopify.toast.show(`Ticket #${ticket.number} deleted`); navigate("/app/help-desk"); }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [remover.state, remover.data]);
+  // "Join chat" (and anything else on the page) can open the conversation.
+  useEffect(() => {
+    const open = () => { setChatFullscreen(false); setChatOpen(true); };
+    window.addEventListener(OPEN_CHAT_EVENT, open);
+    return () => window.removeEventListener(OPEN_CHAT_EVENT, open);
+  }, []);
   useEffect(() => {
     if (!chatOpen) return;
     const onKeyDown = (event: KeyboardEvent) => {

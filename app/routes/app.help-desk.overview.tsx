@@ -5,7 +5,7 @@ import { DASHBOARD_RANGES } from "../services/help-desk-dashboard";
 import { categoryNames, teamFor } from "../services/help-desk-taxonomy";
 import { SetupChecklist } from "../components/HelpDeskUi";
 import { BarList, hoursLabel, KpiCard, TrendChart } from "../components/HelpDeskDashboard";
-import { Card, duration, HelpDeskNavigation, inboxHref, setupSteps, ticketHref } from "../components/help-desk/shared";
+import { Card, duration, HelpDeskNavigation, inboxHref, setupSteps, ticketHref, useLiveRefresh } from "../components/help-desk/shared";
 
 // The Help Desk overview: /app/help-desk/overview, with ?range= for the period.
 export const loader = async ({ request }: LoaderFunctionArgs) => loadOverview(await adminContext(request), new URL(request.url));
@@ -133,6 +133,8 @@ function HelpDeskOverview({ screen }: { screen: OverviewData }) {
 
 
 export default function HelpDeskOverviewRoute() {
+  // New tickets and messages show up in the numbers as they come in.
+  useLiveRefresh();
   return <s-page heading="Help Desk overview" inlineSize="large">
     <s-button slot="secondary-actions" icon="image" href="/app/photo-checks">Photo checks</s-button>
     <HelpDeskNavigation current="overview" />

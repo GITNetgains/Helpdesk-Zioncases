@@ -1,9 +1,36 @@
 import type { PrismaClient } from "@prisma/client";
-import { assistantSources, rankedAnswers, type Answer } from "./help-desk-articles.server";
+import { assistantSources, listArticles, rankedAnswers, type Answer } from "./help-desk-articles.server";
 import { aiAssistantEnabled, aiDecide, type AiTurn } from "./help-desk-ai.server";
-import { searchWords } from "./help-desk-articles";
-import { ASSISTANT_COPY, readAssistantCopy, withFirstName, type AssistantCopy } from "./help-desk-assistant";
+import { correctQuery, searchWords } from "./help-desk-articles";
+import { ASSISTANT_COPY, CHAT_CLEARED, readAssistantCopy, withFirstName, type AssistantCopy } from "./help-desk-assistant";
 import { asksHow, stepsText, wantsSteps } from "./help-desk-steps";
+import { lookupTracking, type PublicTracking } from "./help-desk-orders.server";
+
+// The order a request is about, from its form values.
+function orderOf(details: string) {
+  try { return String((JSON.parse(details || "{}") as Record<string, unknown>).orderNumber ?? "").trim(); } catch { return ""; }
+}
+
+// Asking where the order is, in any of the usual ways (and Hinglish).
+const ORDER_STATUS = /\bwhere('?s| is)?\b[^?.!]*\b(order|package|parcel|stuff|shipment|delivery)\b|\btrack(ing)?\b|\b(order|delivery|shipping) status\b|\bstatus of (my|the) order\b|\b(has|did) (it|my order|the order) (ship|shipped|arrive|left)\b|\bshipped yet\b|\bwhen (will|does|is) (it|my order|the order|my package)\b[^?.!]*\b(arrive|come|ship|deliver)|\b(kab|kb) (aayega|ayega|aaega|milega|aaegi|ayegi)\b|\bkahan (hai|h)\b/i;
+export const asksOrderStatus = (text: string) => ORDER_STATUS.test(text);
+
+// The order's live status in a few lines: cancelled, on hold, being prepared,
+// or each shipment with its carrier, tracking, and when it arrived or should.
+const day = (iso: string | null) => iso ? new Intl.DateTimeFormat("en-US", { weekday: "long", month: "long", day: "numeric", timeZone: "UTC" }).format(new Date(iso)) : "";
+export function orderStatusText(tracking: PublicTracking) {
+  const name = `Order ${tracking.order}`;
+  if (tracking.cancelled) return `${name} was cancelled.`;
+  if (tracking.onHold) return `${name} is on hold while our team checks it. We'll let you know here as soon as it moves.`;
+  if (!tracking.shipped || !tracking.shipments.length) return `${name} hasn't shipped yet: it's being prepared. You'll get an email with tracking as soon as it leaves us.`;
+  const lines = tracking.shipments.map((shipment, index) => {
+    const which = tracking.shipments.length > 1 ? `Package ${index + 1}: ` : "";
+    const how = [shipment.carrier, shipment.number && `tracking ${shipment.number}`].filter(Boolean).join(", ");
+    const when = shipment.deliveredAt ? `Delivered ${day(shipment.deliveredAt)}.` : shipment.estimatedAt ? `Expected ${day(shipment.estimatedAt)}.` : "";
+    return `${which}${shipment.label || "Shipped"}${how ? ` (${how})` : ""}. ${when}${shipment.url ? `\nTrack it: ${shipment.url}` : ""}`.trim();
+  });
+  return `Here's the latest on your order ${tracking.order}:\n\n${lines.join("\n\n")}`;
+}
 
 // The assistant in the chat on a customer's request page. When the customer
 // writes, it answers straight away from the store's help articles, live
@@ -17,13 +44,45 @@ import { asksHow, stepsText, wantsSteps } from "./help-desk-steps";
 // the customer the team has their message: every message gets a reply.
 
 type AdminClient = { graphql: (query: string, options?: { variables?: Record<string, unknown> }) => Promise<Response> };
-const MINUTE = 60_000;
 export const ASSISTANT = "Assistant";
 export const HUMAN_TAG = "needs-human";
 
 const ASKS_FOR_PERSON = /\b(human|person|people|agent|representative|rep|someone|somebody|staff|manager|supervisor|operator|live (chat|support)|real (person|human)|talk to|speak (to|with)|call me|phone me|customer (service|care))\b/i;
-const GREETING = /^\s*(hi+|hello+|hey+|hiya|yo|good (morning|afternoon|evening)|greetings)\b[\s!.,]*(there|team|guys|zion)?[\s!.,]*$/i;
-const THANKS = /^\s*(thanks?|thank you|thx|ty|cheers|ok(ay)?|great|perfect|awesome|got it|cool|that helps?|that worked|solved)\b[\s\S]{0,40}$/i;
+const GREETING = /^\s*(hi+|hello+|hey+|hiya|yo|howdy|hola|namaste|namaskar|salaam|salam|good (morning|afternoon|evening|day))\b[\s!.,]*(there|team|guys|zion|bhai|sir)?[\s!.,]*$/i;
+const THANKS = /^\s*(thanks?|thank you|thank u|thanku|thnx|thanx|thx|ty|cheers|shukriya|dhanyavad|dhanyawad|ok(ay)?|great|perfect|awesome|got it|cool|nice|that helps?|that worked|solved)\b[\s\S]{0,40}$/i;
+
+// Small talk: the whole message is chat, not a question about the store ("hi,
+// how are you?"). A message that also asks something ("how are you, where's my
+// order?") isn't, and is answered as a question.
+export type SmallTalk = "howAreYou" | "whoAreYou" | "whatCanYouDo" | "stillThere" | "goodbye" | "sorry";
+const SMALL_TALK: [SmallTalk, RegExp][] = [
+  ["howAreYou", /^(how (are|r) (you|u|ya)( doing)?( today)?|how ?(is|s) (it going|your day|everything|life)|how do you do|hows it going|whats up|wassup|wazzup|sup|you good|hope (you are|youre) (well|good|doing well)|kaise ho( aap)?|aap kaise ho|kaisa hai|kya haal( hai)?|kya hal hai|sab (theek|thik|badhiya|badiya)( hai)?)$/],
+  ["whoAreYou", /^(who (are|r) (you|u)|who is this|what (are|r) (you|u)|whats your name|what is your name|your name|(are|r) (you|u) (a |an )?(bot|robot|ai|chat ?bot|machine|computer|human|real|real person|real human|person|automated)|is this (a |an )?(bot|robot|ai|chat ?bot|automated|real person|human|person)|am i (talking|chatting|speaking) (to|with) (a |an )?(bot|robot|ai|human|real person|person|machine)|(aap|tum|ap) (kaun|kon) (ho|hai|hain))$/],
+  ["whatCanYouDo", /^(what can (you|u) (do|help( me)? with)|how can (you|u) help( me)?|can (you|u) help( me)?|could (you|u) help( me)?|(i )?(need|want) (some )?help|help|help me|help please|please help( me)?|i have (a|some) (question|questions|problem|issue|query)|can i ask (you )?(a question|something)|i want to ask (a question|something)|madad|help chahiye|madad chahiye)$/],
+  ["stillThere", /^((are|r) (you|u) (still )?there|(is )?any ?(one|body) (there|here|available)|you there|still there|hello+ (anyone|any one)|koi hai)$/],
+  ["goodbye", /^(bye+|bye bye|good ?bye|see (you|ya|u)( later| soon)?|take care|good ?night|gn|thats (all|it)( for now)?|nothing else|no (thats|that is) (all|it)|im (good|done|all set|fine)|all (good|set|done)|have a (good|nice|great) (day|one|night|evening|weekend)|ok bye|chalo bye|alvida)$/],
+  ["sorry", /^(sorry|so sorry|my bad|oops|apologies|my apologies|sorry for (the )?(trouble|bother|confusion|delay)|maaf karna|sorry bhai)$/],
+];
+
+// The message as small talk is matched: lower case, no punctuation or emoji,
+// without a leading "hi"/"ok" or a trailing "there"/"please".
+function smallTalkOf(message: string): SmallTalk | null {
+  let text = message.toLowerCase().replace(/[’‘`]/g, "'").replace(/'/g, "").replace(/[^a-z0-9\s]+/g, " ").replace(/\s+/g, " ").trim();
+  if (!text || text.length > 80) return null;
+  // Matched as written first, then with each filler word taken off ("are you
+  // there" is asking, "hi there" isn't).
+  const match = (candidate: string) => SMALL_TALK.find(([, pattern]) => pattern.test(candidate))?.[0] ?? null;
+  const LEADING = /^(hi+|hey+|hello+|hiya|yo|ok|okay|so|um+|well|bhai|bro|sir|madam|dear|zion|team|guys|and|also|btw|good (morning|afternoon|evening))\s+/;
+  const TRAILING = /\s+(there|bro|bhai|sir|madam|buddy|mate|friend|today|please|pls|plz|yaar|ji|zion|team|guys)$/;
+  // One word at a time, the leading ones first.
+  for (;;) {
+    const found = match(text);
+    if (found) return found;
+    const shorter = LEADING.test(text) ? text.replace(LEADING, "") : text.replace(TRAILING, "");
+    if (shorter === text) return null;
+    text = shorter;
+  }
+}
 const UNHELPFUL = /^\s*(no+|nope|not (really|helpful|what i (asked|need|meant))|that('s| is)? (didn'?t|does ?n'?t|did not|not) (help|work|answer)|(didn'?t|doesn'?t|does not|did not) (help|work|answer)|wrong answer|useless)\b/i;
 // Don't turn a message rejecting an action into instructions to take that
 // action: the assistant asks what they do want instead.
@@ -47,6 +106,9 @@ export type Decision =
   | { kind: "clarify"; reason: "unsure" | "unhelpful" | "repeat"; suggestions: Answer[]; reply?: string }
   | { kind: "greet" }
   | { kind: "thanks" }
+  | { kind: "smalltalk"; topic: SmallTalk }
+  // The request's order, live from Shopify (asked where it is).
+  | { kind: "orderStatus" }
   | { kind: "handoff"; reason: "asked" }
   | { kind: "silent" };
 
@@ -56,11 +118,16 @@ type Ranked = { answer: Answer; score: number; share: number; coverage: number }
 // ones it already gave.
 const suggestionsFrom = (ranked: Ranked, answered: string[]) => [...ranked].sort((a, b) => b.score - a.score)
   .map((entry) => entry.answer)
-  .filter((answer, index, list) => !answered.includes(answer.question) && list.findIndex((other) => other.question === answer.question) === index)
+  .filter((answer, index, list) => !gave(answer, answered) && list.findIndex((other) => other.question === answer.question) === index)
   .slice(0, 3);
 
-// What to do with the customer's message. answered: what the assistant
-// already answered on this request, so it doesn't repeat itself.
+// Whether the assistant already gave this answer: its words are in one of its
+// messages. (Older messages began with the answer's question instead.)
+export const gave = (answer: Answer, answered: string[]) => answered.some((body) =>
+  body.split("\n")[0] === answer.question || (answer.answer.trim().length >= 20 && body.includes(answer.answer.trim().slice(0, 160))));
+
+// What to do with the customer's message. answered: the assistant's messages
+// on this request so far, newest first, so it doesn't repeat itself.
 export function decide(text: string, ranked: Ranked, answered: string[] = []): Decision {
   const message = text.trim();
   const quick = quickDecision(message);
@@ -78,16 +145,19 @@ export function decide(text: string, ranked: Ranked, answered: string[] = []): D
     && (!next || best.score >= next.score * SURE_MARGIN || alike(best.answer, next.answer));
   if (!sure) return { kind: "clarify", reason: "unsure", suggestions: suggestionsFrom(ranked, answered) };
   // Asked again after the same answer: it didn't help.
-  if (answered.includes(best.answer.question)) return { kind: "clarify", reason: "repeat", suggestions: suggestionsFrom(ranked, answered) };
+  if (gave(best.answer, answered)) return { kind: "clarify", reason: "repeat", suggestions: suggestionsFrom(ranked, answered) };
   const close = next && !alike(best.answer, next.answer) && best.score < next.score * CLOSE_MARGIN
-    && next.share >= SURE_SHARE && next.coverage >= sureCoverage(words) && !answered.includes(next.answer.question);
+    && next.share >= SURE_SHARE && next.coverage >= sureCoverage(words) && !gave(next.answer, answered);
   return close ? { kind: "answer", answer: best.answer, also: next.answer } : { kind: "answer", answer: best.answer };
 }
 
-// What needs no understanding: an empty message, asking for a person, a
-// greeting, or saying the last answer didn't help.
+// What needs no understanding: an empty message, small talk, asking for a
+// person, a greeting, or saying the last answer didn't help. Small talk comes
+// first: "are you a real person?" asks who they're talking to, not for a person.
 function quickDecision(message: string): Decision | null {
   if (!message) return { kind: "silent" };
+  const topic = smallTalkOf(message);
+  if (topic) return { kind: "smalltalk", topic };
   if (ASKS_FOR_PERSON.test(message)) return { kind: "handoff", reason: "asked" };
   if (GREETING.test(message)) return { kind: "greet" };
   if (UNHELPFUL.test(message)) return { kind: "clarify", reason: "unhelpful", suggestions: [] };
@@ -109,16 +179,35 @@ async function smartDecide(db: PrismaClient, admin: AdminClient | undefined, sho
     if (ai?.kind === "human") return { kind: "handoff", reason: "asked" };
     if (ai) return { kind: ai.kind };
   }
-  return decide(text, await rankedAnswers(db, admin, shop, text, 4), answered);
+  return keywordDecide(db, admin, shop, text, answered);
+}
+
+// Without the AI: the message as written, or with its misspellings fixed when
+// that matches clearly better ("cancle my ordr"). Not sure, and nothing close?
+// Still offer what shares a word with it, so the customer has somewhere to go.
+async function keywordDecide(db: PrismaClient, admin: AdminClient | undefined, shop: string, text: string, answered: string[]): Promise<Decision> {
+  const corrected = correctQuery(text, await listArticles(db, shop));
+  const [asWritten, fixed] = await Promise.all([
+    rankedAnswers(db, admin, shop, text, 4),
+    corrected ? rankedAnswers(db, admin, shop, corrected, 4) : Promise.resolve([]),
+  ]);
+  const best = (found: Ranked) => Math.max(0, ...found.map((entry) => entry.score));
+  const useFixed = fixed.length > 0 && best(fixed) > best(asWritten) * 1.2;
+  const decision = decide(useFixed && corrected ? corrected : text, useFixed ? fixed : asWritten, answered);
+  if (decision.kind !== "clarify" || decision.reason !== "unsure" || decision.suggestions.length || DECLINED_ACTION.test(text)) return decision;
+  const loose = await rankedAnswers(db, admin, shop, corrected ?? text, 4, { loose: true });
+  return { ...decision, suggestions: suggestionsFrom(loose, answered) };
 }
 
 // The answer, with the form's steps for it when the customer asked how to do
 // it or wants to do it (unless the AI's reply already walks them through it).
+// It starts with the answer itself: the article's question ("Can I cancel my
+// order?") is the customer's to ask, not the assistant's to say.
 function answerBody(answer: Answer, asked: string, reply?: string) {
   const more = answer.url ? `\n\nMore details: ${answer.url}` : "";
   const walked = Boolean(reply && /(^|\n)\s*1[.)] /.test(reply));
   const steps = answer.action && wantsSteps(asked) && !walked ? stepsText(answer.action) : "";
-  return `${answer.question}\n\n${reply ?? answer.answer}${more}${steps ? `\n\n${steps}` : ""}`;
+  return `${reply ?? answer.answer}${more}${steps ? `\n\n${steps}` : ""}`;
 }
 
 // Not sure: a question back in the store's wording, the closest answers to
@@ -142,6 +231,8 @@ export function assistantMessage(decision: Decision, firstName = "", copy: Assis
       return withFirstName(copy.greeting, firstName);
     case "thanks":
       return withFirstName(copy.thanks, firstName);
+    case "smalltalk":
+      return withFirstName(copy[decision.topic], firstName);
     case "handoff":
       return withFirstName(copy.handoffAsked, firstName);
     default:
@@ -149,14 +240,12 @@ export function assistantMessage(decision: Decision, firstName = "", copy: Assis
   }
 }
 
-// The answer's title, as the first line of the assistant's message.
-const answeredTitle = (body: string) => body.split("\n")[0];
-
-// The assistant's latest answer on this request (titles, newest first), if
-// the form has steps for it.
-async function lastAnswerWithSteps(db: PrismaClient, admin: AdminClient | undefined, shop: string, answered: string[]) {
-  for (const title of answered.slice(0, 3)) {
-    const match = (await rankedAnswers(db, admin, shop, title, 3)).find(({ answer }) => answer.question === title)?.answer;
+// The help article the assistant answered with last on this request
+// (answered: its messages, newest first), if the form has steps for it.
+async function lastAnswerWithSteps(db: PrismaClient, shop: string, answered: string[]) {
+  const articles: Answer[] = (await listArticles(db, shop)).map((row) => ({ id: row.id, question: row.question, answer: row.answer, collection: row.collection, action: row.action, source: "article", url: "", image: "" }));
+  for (const body of answered.slice(0, 3)) {
+    const match = articles.find((article) => gave(article, [body]));
     if (match) return match.action && stepsText(match.action) ? match : null;
   }
   return null;
@@ -171,7 +260,7 @@ export type Turn = { decision: Decision; reply: string; notifyTeam: boolean; han
 export async function assistantTurn(db: PrismaClient, admin: AdminClient | undefined, shop: string, ticketId: string, text: string, now = new Date()): Promise<Turn> {
   const ticket = await db.helpDeskTicket.findFirst({
     where: { id: ticketId, shop },
-    select: { id: true, name: true, priority: true, tags: true, humanRequestedAt: true, messages: { where: { kind: { in: ["customer", "reply", "bot"] } }, orderBy: { createdAt: "desc" }, take: 30, select: { kind: true, body: true, createdAt: true } } },
+    select: { id: true, name: true, email: true, details: true, priority: true, tags: true, humanRequestedAt: true, messages: { where: { OR: [{ kind: { in: ["customer", "reply", "bot"] } }, { kind: "event", body: CHAT_CLEARED }] }, orderBy: { createdAt: "desc" }, take: 30, select: { kind: true, body: true, createdAt: true } } },
   });
   const quiet: Turn = { decision: { kind: "silent" }, reply: "", notifyTeam: true, handoff: false };
   if (!ticket) return quiet;
@@ -179,6 +268,10 @@ export async function assistantTurn(db: PrismaClient, admin: AdminClient | undef
   const settings = await db.helpDeskSettings.findUnique({ where: { shop }, select: { assistantEnabled: true, assistantCopy: true } });
   if (settings && !settings.assistantEnabled) return quiet;
   if (!text.trim()) return quiet;
+  // Once a person from the team is on the request (the customer asked for one,
+  // or someone from the team replied), the assistant steps out for good:
+  // it says nothing more, and every message goes to the team.
+  if (ticket.humanRequestedAt || await db.helpDeskMessage.count({ where: { ticketId: ticket.id, kind: "reply" } })) return quiet;
   const firstName = ticket.name.trim().split(/\s+/)[0];
   const copy = readAssistantCopy(settings?.assistantCopy);
   // The customer always hears back, so a message never seems to vanish.
@@ -189,37 +282,41 @@ export async function assistantTurn(db: PrismaClient, admin: AdminClient | undef
     await say(reply);
     return { decision: { kind: "silent" }, reply, notifyTeam: true, handoff: false };
   }
-  // The team has the chat: after a handoff, or a reply from them in the last two hours.
-  const lastReply = ticket.messages.find((message) => message.kind === "reply");
-  const teamHasChat = Boolean(ticket.humanRequestedAt || (lastReply && now.getTime() - lastReply.createdAt.getTime() < 120 * MINUTE));
-  const answered = ticket.messages.filter((message) => message.kind === "bot").map((message) => answeredTitle(message.body));
+  // Since the customer last cleared the chat (newest first): it starts afresh from there.
+  const cleared = ticket.messages.findIndex((message) => message.kind === "event");
+  const since = cleared >= 0 ? ticket.messages.slice(0, cleared) : ticket.messages;
+  const answered = since.filter((message) => message.kind === "bot").map((message) => message.body);
   // The chat so far, oldest first, for the AI. The customer's new message is
   // already saved as the newest one, so it's left out here.
-  const earlier = [...ticket.messages].reverse();
+  const earlier = [...since].reverse();
   if (earlier.at(-1)?.kind === "customer") earlier.pop();
   const history: AiTurn[] = earlier.map((message) => ({ role: message.kind === "customer" ? "customer" : message.kind === "bot" ? "assistant" : "team", text: message.body }));
+  // A request about an order, asked where it is: the order's live status from
+  // Shopify. (The order has to be the customer's: its email must match.)
+  const orderNumber = orderOf(ticket.details);
+  if (orderNumber && admin && asksOrderStatus(text)) {
+    const tracking = await lookupTracking(admin, orderNumber, ticket.email).catch(() => undefined);
+    if (tracking) {
+      const reply = `${orderStatusText(tracking)}\n\n${withFirstName(copy.followUp, firstName)}`;
+      await say(reply);
+      return { decision: { kind: "orderStatus" }, reply, notifyTeam: false, handoff: false };
+    }
+  }
   // If understanding fails (Shopify or the AI down), the customer still hears back.
   let decision = await smartDecide(db, admin, shop, text, answered, history)
     .catch((error): Decision => { console.error(`Help Desk assistant could not read a message on ticket ${ticket.id}:`, error); return { kind: "clarify", reason: "unsure", suggestions: [] }; });
   if (decision.kind === "silent") return quiet;
-  // While the team has the chat, the assistant still answers what it's sure
-  // of (the team sees it too), and otherwise lets the customer know the team
-  // has their message. Asking for a person again flags it again.
-  if (teamHasChat && decision.kind !== "handoff") {
-    const reply = decision.kind === "answer" ? assistantMessage(decision, firstName, copy, text) : withFirstName(copy.teamHasIt, firstName);
-    await say(reply);
-    return { decision: decision.kind === "answer" ? decision : { kind: "silent" }, reply, notifyTeam: true, handoff: false };
-  }
-  if (teamHasChat && ticket.humanRequestedAt) {
-    // Already waiting for a person: say so again rather than flag twice.
-    const reply = withFirstName(copy.teamHasIt, firstName);
+  // On an order request, what the assistant can't answer is the team's: the
+  // customer hears their request is in process, and the team is told.
+  if (orderNumber && decision.kind === "clarify" && decision.reason === "unsure" && !asksHow(text)) {
+    const reply = withFirstName(copy.orderInProcess, firstName);
     await say(reply);
     return { decision, reply, notifyTeam: true, handoff: false };
   }
   let reply = assistantMessage(decision, firstName, copy, text);
   // "What are the steps?" just after an answer: how to do what it said, on the form.
   if (decision.kind === "clarify" && !decision.reply && asksHow(text)) {
-    const previous = await lastAnswerWithSteps(db, admin, shop, answered);
+    const previous = await lastAnswerWithSteps(db, shop, answered);
     if (previous) {
       decision = { kind: "answer", answer: previous };
       reply = `${stepsText(previous.action)}\n\n${withFirstName(copy.followUp, firstName)}`;

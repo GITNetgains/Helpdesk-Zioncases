@@ -7,6 +7,7 @@ import db from "../db.server";
 import { serializeScan } from "../services/image-scan/scan.server";
 import { IconTile, TONES, type Tone } from "../components/HelpDeskUi";
 import { PhotoCheckButton, PhotoReportModal, PhotoThumb } from "../components/PhotoReport";
+import { useLiveRefresh } from "../components/help-desk/shared";
 
 // Every customer photo the AI photo check has looked at, newest first, with a
 // filter per verdict, so the team can review flagged evidence in one place.
@@ -98,6 +99,8 @@ export default function PhotoChecks() {
   const navigate = useNavigate();
   const [reportId, setReportId] = useState<string | null>(null);
   const report = reportId ? photos.find((photo) => photo.id === reportId) ?? null : null;
+  // New photos and finished checks appear by themselves (not while a report is open).
+  useLiveRefresh({ scope: "photos", paused: Boolean(reportId) });
   const [params] = useSearchParams();
   const go = (changes: Record<string, string>) => {
     const next = new URLSearchParams(params);

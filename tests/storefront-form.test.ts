@@ -222,14 +222,14 @@ describe("Storefront Help Desk form", () => {
       tileButton("I have a question about an order").click();
       const cards = [...document.querySelectorAll(".help-desk-order-card")];
       expect(cards.map((card) => card.querySelector("strong")!.textContent)).toEqual(["Order #1018", "Order #1009", "My order isn’t listed"]);
-      expect(cards[0].textContent).toContain("Not shipped yet");
+      expect(cards[0].textContent).toContain("Being prepared");
       expect(cards[0].textContent).toContain("Oct 20, 2026 · 2 items");
       expect(cards[1].textContent).toContain("Shipped");
       // What they need waits for the order.
       expect((document.querySelector(".help-desk-start-need") as HTMLElement).hidden).toBe(true);
       button("Continue with this order").click();
       expect(status()).toBe("Choose the order your question is about.");
-      // The older order, not the newest one.
+      // The older order, shipped (no word from the carrier): anything but what only an unshipped order allows.
       const older = cards[1].querySelector("input") as HTMLInputElement;
       older.checked = true;
       older.dispatchEvent(new Event("change"));
@@ -237,6 +237,7 @@ describe("Storefront Help Desk form", () => {
       expect(details.hidden).toBe(false);
       expect(details.textContent).toContain("Order #1009");
       expect(details.textContent).toContain("Vault");
+      expect(details.querySelector(".help-desk-stage-note")?.textContent).toContain("Shipped");
       // A category, then its sub-categories: only what's about an order (no shipping quotes, wholesale or product questions).
       const need = startField("What would you like to do?");
       expect(need.disabled).toBe(true);
@@ -246,7 +247,7 @@ describe("Storefront Help Desk form", () => {
       const offered = () => [...need.options].slice(1).map((option) => option.textContent);
       pickStart("Category", "Product Issues");
       expect(need.disabled).toBe(false);
-      expect(offered()).toEqual(["Damaged or Defective", "Missing Item or Part", "Received the Wrong Item", "Warranty Claim"]);
+      expect(offered()).toEqual(["Damaged or Defective", "Missing Item or Part", "Received the Wrong Item", "Product Quality Issue", "Warranty Claim"]);
       pickStart("Category", "Other order questions");
       // Several ticket categories: a heading for each.
       expect([...need.querySelectorAll("optgroup")].map((group) => group.label)).toEqual(expect.arrayContaining(["Orders", "Shipping & Delivery"]));
@@ -254,8 +255,16 @@ describe("Storefront Help Desk form", () => {
       expect(offered()).not.toContain("International Shipping");
       expect(offered()).not.toContain("PSA slab fit");
       expect(offered()).not.toContain("Dealer pricing");
+      // Shipped: it can be tracked, but no longer changed or cancelled.
       pickStart("Category", "Orders");
-      expect(offered()).toEqual(["Track Order", "Cancel Order", "Modify Address", "Edit Existing Order", "Lost Package"]);
+      expect(offered()).toEqual(["Track Order", "Lost Package"]);
+      // The newer order, not shipped yet: only what can still be done before it ships, all under Orders (picked for them).
+      const newer = cards[0].querySelector("input") as HTMLInputElement;
+      newer.checked = true;
+      newer.dispatchEvent(new Event("change"));
+      expect([...startField("Category").options].slice(1).map((option) => option.textContent)).toEqual(["Orders"]);
+      expect(startField("Category").value).not.toBe("");
+      expect(offered()).toEqual(["Track Order", "Cancel Order", "Modify Address", "Edit Existing Order", "Add Expedited Shipping"]);
       button("Continue with this order").click();
       expect(status()).toBe("Choose what you need help with.");
       pickStart("What would you like to do?", "Cancel Order");
@@ -263,22 +272,74 @@ describe("Storefront Help Desk form", () => {
       button("Continue with this order").click();
       // The topic's own flow, with the order they picked already chosen.
       expect(shown()).toEqual(["Cancel Order"]);
-      expect((control("Order Number") as HTMLSelectElement).value).toBe("#1009");
+      expect((control("Order Number") as HTMLSelectElement).value).toBe("#1018");
       expect(posts).toHaveLength(0);
     });
 
-    it("about an order that isn't listed: its number is typed on the request", async () => {
+    it("offers what suits where the order is: on its way, delivered or failed", async () => {
+      const item = { id: "gid://shopify/Product/1", title: "Slab Case X", variant: "", quantity: 1, image: "" };
+      const order = (name: string, stage: string) => ({ name, date: "Nov 1, 2026", fulfillment: stage === "cancelled" ? null : "fulfilled", cancelled: stage === "cancelled", stage, items: [item] });
+      await mount(undefined, undefined, undefined, { ...sandy, orders: [order("#2001", "transit"), order("#2002", "delivered"), order("#2003", "failed")] });
+      tileButton("I have a question about an order").click();
+      const cards = [...document.querySelectorAll(".help-desk-order-card")];
+      expect(cards.slice(0, 3).map((card) => card.querySelector("em")!.textContent)).toEqual(["On its way", "Delivered", "Delivery failed"]);
+      const pick = (index: number) => { const radio = cards[index].querySelector("input") as HTMLInputElement; radio.checked = true; radio.dispatchEvent(new Event("change")); };
+      const categories = () => [...startField("Category").options].slice(1).map((option) => option.textContent);
+      const offered = () => [...startField("What would you like to do?").options].slice(1).map((option) => option.textContent);
+      // On its way: where is it, nothing else yet.
+      pick(0);
+      expect(categories()).toEqual(["Orders"]);
+      expect(offered()).toEqual(["Track Order"]);
+      // Delivered: everything but what only an unshipped order allows.
+      pick(1);
+      expect(categories()).toEqual(["Orders", "Product Issues", "Returns, Exchanges & Refunds", "Other order questions"]);
+      pickStart("Category", "Orders");
+      expect(offered()).toEqual(["Lost Package"]);
+      pickStart("Category", "Other order questions");
+      expect(offered()).toEqual(expect.arrayContaining(["Delivered but Not Received", "Delivery Attempted or Failed"]));
+      expect(offered()).not.toContain("Expedited Shipping");
+      // Failed: the same.
+      pick(2);
+      expect(categories()).toContain("Product Issues");
+    });
+
+    it("about an order that isn't listed: its number, date and what it's about go with the request", async () => {
       await mount(undefined, undefined, undefined, sandy);
       tileButton("I have a question about an order").click();
       const other = document.querySelectorAll(".help-desk-order-card input")[2] as HTMLInputElement;
       other.checked = true;
       other.dispatchEvent(new Event("change"));
       expect((document.querySelector(".help-desk-order-details") as HTMLElement).hidden).toBe(true);
+      const box = document.querySelector(".help-desk-unlisted") as HTMLElement;
+      expect(box.hidden).toBe(false);
+      const number = box.querySelector("input:not([name])") as HTMLInputElement;
+      const date = box.querySelector("input[name=orderDate]") as HTMLInputElement;
+      const note = box.querySelector("textarea[name=orderNote]") as HTMLTextAreaElement;
+      expect([number, date, note].every(Boolean)).toBe(true);
+      // Every option, as the order's stage isn't known.
       pickStart("Category", "Orders");
       pickStart("What would you like to do?", "Track Order");
       button("Continue with this order").click();
+      expect(status()).toContain("Enter your order number");
+      number.value = "#2045";
+      // A browser keeps a date past max (and flags it); the form still says why.
+      date.max = "";
+      date.value = "2999-01-01";
+      button("Continue with this order").click();
+      expect(status()).toBe("The order date can’t be in the future.");
+      date.value = "2026-10-05";
+      note.value = "Two slab cases, bought as a guest.";
+      button("Continue with this order").click();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      // The request's own Order Number: "not listed", with the number they typed.
       expect((control("Order Number") as HTMLSelectElement).value).toBe("other");
       expect(labels()).toContain("Enter Order Number");
+      expect((document.querySelector("input[name=orderNumber]") as HTMLInputElement).value).toBe("#2045");
+      // The date and description go with the request.
+      expect(date.disabled || note.disabled).toBe(false);
+      // Not about an order after all: they don't.
+      tileButton("My question isn’t about an order").click();
+      expect(date.disabled && note.disabled).toBe(true);
     });
 
     it("about an order, without an account: asks to sign in, or to type the order on the next step", async () => {
@@ -443,7 +504,7 @@ describe("Storefront Help Desk form", () => {
     expect(labels()).not.toContain("What do you need help with?");
     // Product Issues: a few broad choices, like Shopify's return reasons, without headings.
     choose("How can we help?", "Product Issues");
-    expect(choices("What do you need help with?")).toEqual(["Damaged or Defective", "Missing Item or Part", "Received the Wrong Item", "Warranty Claim"]);
+    expect(choices("What do you need help with?")).toEqual(["Damaged or Defective", "Missing Item or Part", "Received the Wrong Item", "Product Quality Issue", "Warranty Claim"]);
     expect((control("What do you need help with?") as HTMLSelectElement).querySelectorAll("optgroup")).toHaveLength(0);
     expect(document.querySelector(".help-desk-tiles-heading")).toBeNull();
     expect(document.querySelector(".help-desk-category-hint")?.textContent).toBe("Something arrived damaged, defective, missing or wrong, or you need warranty help.");
@@ -453,7 +514,7 @@ describe("Storefront Help Desk form", () => {
     it("opens its options in a dropdown, in order, each with its description", async () => {
       await mount();
       choose("How can we help?", "Orders");
-      expect(choices("What do you need help with?")).toEqual(["Track Order", "Cancel Order", "Modify Address", "Edit Existing Order", "Lost Package"]);
+      expect(choices("What do you need help with?")).toEqual(["Track Order", "Cancel Order", "Modify Address", "Edit Existing Order", "Add Expedited Shipping", "Lost Package"]);
       choose("How can we help?", "Shipping");
       expect(choices("What do you need help with?")).toEqual(["Domestic Shipping", "International Shipping", "Taxes, Customs & Duties"]);
       choose("How can we help?", "Orders");

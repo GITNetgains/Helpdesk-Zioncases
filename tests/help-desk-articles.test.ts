@@ -6,9 +6,10 @@ import { join } from "node:path";
 import { articleActions, articleCollections, correctQuery, htmlText, rankArticles, searchArticles, sectionsFromHtml, starterArticles, storeFacts, validAction } from "../app/services/help-desk-articles";
 import { answerQuestion, deleteArticle, searchAnswers, ensureArticles, productAnswer, recordSearch, restoreStarterArticles, unansweredSearches, voteArticle } from "../app/services/help-desk-articles.server";
 import { assistantMessage, assistantTurn, decide, HUMAN_TAG } from "../app/services/help-desk-assistant.server";
-import { ASSISTANT_COPY, readAssistantCopy } from "../app/services/help-desk-assistant";
+import { ASSISTANT_COPY, CHAT_CLEARED, readAssistantCopy } from "../app/services/help-desk-assistant";
 import { requestSteps, wantsSteps } from "../app/services/help-desk-steps";
-import { addStaffMessage, submitTicket } from "../app/services/help-desk.server";
+import { addStaffMessage, asksToClearChat, clearCustomerChat, submitTicket } from "../app/services/help-desk.server";
+import { renderRequestPage } from "../app/services/help-desk-request-page";
 import { topics } from "../app/services/help-desk";
 
 const articles = starterArticles.map((article, index) => ({ ...article, id: String(index) }));
@@ -111,7 +112,11 @@ describe("Search typos", () => {
     expect(fix("cancle my order")).toBe("cancel my order");
     expect(fix("where is my refnd")).toBe("where is my refund");
     expect(fix("trackin")).toBe("tracking");
-    expect(fix("warrenty claim")).toBeNull();
+    expect(fix("warrenty claim")).toBe("warranty claim");
+    // Everyday words aren't "fixed" into other words.
+    expect(fix("changed my mind")).toBeNull();
+    expect(fix("it came smashed")).toBeNull();
+    expect(fix("i dont want it anymore")).toBeNull();
     expect(fix("where is my order")).toBeNull();
     expect(fix("hi")).toBeNull();
   });
@@ -136,13 +141,33 @@ describe("The request page's assistant", () => {
     expect(decide("thanks so much", [])).toEqual({ kind: "thanks" });
     expect(assistantMessage({ kind: "greet" }, "Sandy")).toMatch(/^Hi Sandy!/);
     expect(assistantMessage({ kind: "answer", answer: { ...sure("Where is my refund?").answer, url: "https://zion.test/policies/refund-policy" } }))
-      .toBe("Where is my refund?\n\nAbout Where is my refund?.\n\nMore details: https://zion.test/policies/refund-policy\n\nDid that answer your question? If not, reply \"talk to a person\" and someone from our team will take over.");
+      .toBe("About Where is my refund?.\n\nMore details: https://zion.test/policies/refund-policy\n\nDid that answer your question? If not, reply \"talk to a person\" and someone from our team will take over.");
+    // Knows what it already said from the words of its answer, as well as from older messages' first line.
+    expect(decide("where is my refund", [sure("Where is my refund?")], ["About Where is my refund?.\n\nDid that answer your question?"])).toMatchObject({ kind: "clarify", reason: "repeat" });
     // The store's own wording, with the customer's name where it asks for it.
     const copy = readAssistantCopy(JSON.stringify({ greeting: "Hey {first_name}, welcome to Zion!", thanks: "  " }));
     expect(assistantMessage({ kind: "greet" }, "Sandy", copy)).toBe("Hey Sandy, welcome to Zion!");
     expect(assistantMessage({ kind: "greet" }, "", copy)).toBe("Hey, welcome to Zion!");
     expect(assistantMessage({ kind: "thanks" }, "Sandy", copy)).toBe(ASSISTANT_COPY.thanks);
     expect(readAssistantCopy("not json")).toEqual(ASSISTANT_COPY);
+  });
+
+  it("chats back to small talk, and still answers a question asked with it", () => {
+    const talk = (text: string) => { const decision = decide(text, []); return decision.kind === "smalltalk" ? decision.topic : decision.kind; };
+    for (const text of ["How are you?", "hi how are you doing today", "Hey, how's it going?", "what's up", "kaise ho bhai", "kya haal hai"]) expect(talk(text), text).toBe("howAreYou");
+    for (const text of ["Who are you?", "are you a bot?", "Are you a real person?", "is this a human", "what's your name", "aap kaun ho"]) expect(talk(text), text).toBe("whoAreYou");
+    for (const text of ["can you help me?", "I need help", "help", "I have a question", "can I ask something"]) expect(talk(text), text).toBe("whatCanYouDo");
+    for (const text of ["are you there?", "anyone there??", "hello anyone there"]) expect(talk(text), text).toBe("stillThere");
+    for (const text of ["bye", "ok bye", "that's all", "have a nice day!", "good night"]) expect(talk(text), text).toBe("goodbye");
+    for (const text of ["sorry", "my bad"]) expect(talk(text), text).toBe("sorry");
+    // Not small talk: a question with it, or asking for a person.
+    expect(talk("Can I talk to a human?")).toBe("handoff");
+    expect(talk("hi")).toBe("greet");
+    expect(talk("thank you so much")).toBe("thanks");
+    expect(talk("hi how are you, where is my order")).not.toBe("howAreYou");
+    expect(talk("I need help with my refund")).not.toBe("whatCanYouDo");
+    expect(assistantMessage({ kind: "smalltalk", topic: "howAreYou" }, "Sandy")).toMatch(/^I'm doing great, thanks for asking Sandy! How can I help/);
+    expect(assistantMessage({ kind: "smalltalk", topic: "stillThere" })).toBe("Yes, I'm here! What can I help you with?");
   });
 
   it("explains how to do it on the form, step by step, when the customer asks how", () => {
@@ -208,7 +233,9 @@ describe("The request page's assistant", () => {
     ["any update on my warranty claim", "What's the status of my warranty claim or request?"], ["how much is shipping", "How long does shipping take, and what does it cost?"],
     ["what is your email", " | How do I contact customer support?"],
     ["is the vault ventilated for the cards", ""], ["my dog chewed the handle", ""], ["can you call me tomorrow at 5", ""], ["I want to complain about the delivery driver being rude", ""],
-    ["what's the weather", ""], ["asdf", ""], ["is the slab case x in stock", ""], ["I need it by saturday", ""], ["my order number is 101170", ""],
+    ["what's the weather", ""], ["asdf", ""], ["is the slab case x in stock", ""], ["my order number is 101170", ""],
+    // Its answer covers an order already placed: send the date it's needed by.
+    ["I need it by saturday", " | Can I get faster or expedited shipping?"],
     // Facts from the store's policies and FAQ.
     ["do you offer free shipping", "Do you offer free shipping?"], ["what is armorship", "What is ARMORSHIP® package protection?"], ["how many slabs fit in the slab case xl", "How many slabs fit in a slab case?"],
     ["is the case waterproof", "Are your cases waterproof?"], ["do gift cards expire", "How do gift cards work?"], ["what is the default lock code", "How do I set or reset the lock combination?"],
@@ -273,6 +300,35 @@ describe("Help articles in the database", () => {
     expect((await db.helpDeskFaq.findUniqueOrThrow({ where: { id: old.id } })).helpful).toBe(1);
   });
 
+  it("clears the chat for the customer on \"clear chat\", and keeps every message for the team", async () => {
+    for (const text of ["clear chat", "Clear the chat please", "reset conversation", "start over", "chat clear karo", "clear"]) expect(asksToClearChat(text), text).toBe(true);
+    for (const text of ["how do I clear the acrylic", "the lid is not clear", "clear chat and also where is my order"]) expect(asksToClearChat(text), text).toBe(false);
+    const { ticketId } = await submitTicket(db, shop, (() => {
+      const body = new FormData();
+      for (const [key, value] of Object.entries({ requestKey: crypto.randomUUID(), name: "Sandy Lee", email: "sandy@example.com", topic: topics[5], query: "General question" })) body.set(key, value);
+      return body;
+    })());
+    const ticket = await db.helpDeskTicket.findUniqueOrThrow({ where: { id: ticketId! } });
+    await assistantTurn(db, undefined, shop, ticketId!, "where is my refund");
+    const before = await db.helpDeskMessage.count({ where: { ticketId } });
+    expect(await clearCustomerChat(db, shop, ticket.accessToken)).toMatchObject({ errors: {}, ticketId });
+    const all = await db.helpDeskMessage.findMany({ where: { ticketId }, orderBy: { createdAt: "asc" } });
+    // Nothing deleted: a note for the team, then the assistant's fresh start.
+    expect(all.length).toBe(before + 2);
+    expect(all.at(-2)).toMatchObject({ kind: "event", body: CHAT_CLEARED });
+    expect(all.at(-1)).toMatchObject({ kind: "bot", body: "Done Sandy, I've cleared the chat. Your request is still saved with our team. What can I help you with?" });
+    // The customer sees only what came after it, without their original request.
+    const visible = all.filter((message) => ["customer", "reply", "bot"].includes(message.kind) || message.body === CHAT_CLEARED);
+    const html = renderRequestPage({ ...ticket, messages: visible }, { imageCounts: new Map(), requestImages: 0, products: [], receivedProducts: [], canReply: true, maxImages: 3, maxLength: 5000 });
+    expect(html).toContain("I&#39;ve cleared the chat");
+    expect(html).not.toContain("General question");
+    expect(html.match(/class="hdt-msg"/g)?.length).toBe(1);
+    // The assistant starts afresh too: the refund answer isn't "already given".
+    const again = await assistantTurn(db, undefined, shop, ticketId!, "where is my refund");
+    expect(again).toMatchObject({ decision: { kind: "answer", answer: { question: "Where is my refund?" } } });
+    expect(await clearCustomerChat(db, shop, "0".repeat(48))).toMatchObject({ errors: { form: expect.any(String) } });
+  });
+
   it("answers in the request page chat, asks back when unsure, and hands over when asked", async () => {
     const { ticketId } = await submitTicket(db, shop, (() => {
       const body = new FormData();
@@ -284,7 +340,9 @@ describe("Help articles in the database", () => {
     expect(hi).toMatchObject({ decision: { kind: "greet" }, notifyTeam: false, handoff: false });
     const refund = await assistantTurn(db, undefined, shop, ticketId!, "how long does a refund take to show up");
     expect(refund).toMatchObject({ decision: { kind: "answer", answer: { question: "Where is my refund?" } }, notifyTeam: false });
-    expect((await bots()).at(-1)?.body).toMatch(/^Where is my refund\?\n\n/);
+    // The answer itself, not the article's question as if the assistant were asking it.
+    expect((await bots()).at(-1)?.body).not.toMatch(/^Where is my refund\?/);
+    expect((await bots()).at(-1)?.body).toMatch(/refund/i);
     // Not sure: it asks back and offers a person, but keeps the chat.
     const unsure = await assistantTurn(db, undefined, shop, ticketId!, "my dog chewed the handle");
     expect(unsure).toMatchObject({ decision: { kind: "clarify" }, notifyTeam: false, handoff: false });
@@ -300,20 +358,19 @@ describe("Help articles in the database", () => {
     expect(ticket.priority).toBe("High");
     expect(ticket.tags.split(",")).toContain(HUMAN_TAG);
     expect((await db.helpDeskMessage.findFirstOrThrow({ where: { ticketId, kind: "event" }, orderBy: { createdAt: "desc" } })).body).toBe("Customer asked to talk to a person. Waiting for a person from the team.");
-    // The team has the chat now: the assistant still answers what it's sure of, and the team hears about it.
-    expect(await assistantTurn(db, undefined, shop, ticketId!, "where is my order")).toMatchObject({ decision: { kind: "answer" }, notifyTeam: true, handoff: false });
-    // ...and anything else gets a word that the team has it, never silence.
-    expect(await assistantTurn(db, undefined, shop, ticketId!, "my dog chewed the handle")).toMatchObject({ decision: { kind: "silent" }, notifyTeam: true, handoff: false });
-    expect((await bots()).at(-1)?.body).toMatch(/^Thanks Sandy! Our team has your message/);
-    // A person replies: the flag comes off.
+    // Waiting for a person: the assistant steps out. Nothing more from it, and the team hears every message.
+    const quietBefore = (await bots()).length;
+    expect(await assistantTurn(db, undefined, shop, ticketId!, "where is my order")).toMatchObject({ decision: { kind: "silent" }, reply: "", notifyTeam: true, handoff: false });
+    expect(await assistantTurn(db, undefined, shop, ticketId!, "how are you?")).toMatchObject({ decision: { kind: "silent" }, notifyTeam: true });
+    // A person replies: the flag comes off...
     await addStaffMessage(db, shop, ticketId!, { kind: "reply", body: "Hi Sandy, Priya here.", author: "Priya" });
     ticket = await db.helpDeskTicket.findUniqueOrThrow({ where: { id: ticketId } });
     expect(ticket.humanRequestedAt).toBeNull();
     expect(ticket.tags.split(",")).not.toContain(HUMAN_TAG);
-    // ...and while they chat, the assistant only answers what it's sure of, and otherwise says the team has it.
-    expect(await assistantTurn(db, undefined, shop, ticketId!, "can you call me tomorrow at 5")).toMatchObject({ decision: { kind: "handoff" } });
-    expect(await assistantTurn(db, undefined, shop, ticketId!, "asdf")).toMatchObject({ decision: { kind: "silent" }, notifyTeam: true });
-    expect((await bots()).at(-1)?.body).toMatch(/Our team has your message/);
+    // ...and the assistant still stays out: the chat is Priya's.
+    expect(await assistantTurn(db, undefined, shop, ticketId!, "where is my refund")).toMatchObject({ decision: { kind: "silent" }, notifyTeam: true });
+    expect(await assistantTurn(db, undefined, shop, ticketId!, "Sent 2 images")).toMatchObject({ decision: { kind: "silent" }, notifyTeam: true });
+    expect((await bots()).length).toBe(quietBefore);
   });
 
   it("always finds something: misspellings fixed, other words for the same thing, else related or popular answers", async () => {

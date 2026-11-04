@@ -4,14 +4,15 @@ import db from "../db.server";
 import { ADDRESS_FIELDS, addressFromValues, cancelReasons, cancelScopes, countries, PROVINCES, deliveryIssues, isReturnClaim, issueResolutions, issues,MAX_MESSAGE_LENGTH, purchasePlaces, orderTypes, productParts, topics, updates } from "../services/help-desk";
 import { liveStamp, renderLookupPage, renderRequestPage } from "../services/help-desk-request-page";
 import { formGroups } from "../services/help-desk-form";
-import { addCustomerMessage, customerCanReply, MAX_REPLY_IMAGES, readHelpDeskForm, submitTicket } from "../services/help-desk.server";
+import { addCustomerMessage, clearCustomerChat, customerCanReply, MAX_REPLY_IMAGES, readHelpDeskForm, submitTicket } from "../services/help-desk.server";
+import { asksToClearChat, CHAT_CLEARED } from "../services/help-desk-assistant";
 import { checkOrderChange, conflictingRequest, customerOrders, issueItems, lookupTracking, productVariants, syncTicketOrder } from "../services/help-desk-orders.server";
 import { returnLabelFile } from "../services/help-desk-return.server";
 import { shipStationBlocksEdit } from "../services/help-desk-edit.server";
 import { memo } from "../services/memo.server";
 import { cachedProducts, loadProducts } from "../services/help-desk-email.server";
 import { ensureWorker, queueEmail } from "../services/help-desk-outbox.server";
-import { loadShippingSetup, lookupShipping } from "../services/help-desk-shipping.server";
+import { liveRatesOn, liveShippingRates, loadShippingSetup, lookupShipping } from "../services/help-desk-shipping.server";
 import { SHIPPING_TIMES_COUNTRIES } from "../services/help-desk-shipping";
 import { queueTicketScans } from "../services/image-scan/scan.server";
 import { blocked, clear, clientKey, hit } from "../services/rate-limit.server";
@@ -28,6 +29,8 @@ const TOKEN = /^[a-f0-9]{48}$/;
 const MINUTE = 60_000;
 // Customer-visible message kinds; internal notes and the activity log stay private.
 const PUBLIC_KINDS = ["customer", "reply", "bot"];
+// What the request page reads: those, and where the customer cleared their chat.
+const PAGE_MESSAGES = { OR: [{ kind: { in: PUBLIC_KINDS } }, { kind: "event", body: CHAT_CLEARED }] };
 
 // Records that the storefront form loaded, at most every 10 minutes, so the
 // admin can tell whether it's live on the store.
@@ -59,7 +62,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
   const customerId = params.get("logged_in_customer_id") || "";
 
   // The search at the top of the form: help articles, then the store's policies, pages and products.
-  // deep: they pressed Enter, so a search nothing matched may also ask the AI.
+  // deep: they pressed Enter or stopped typing, so a search nothing matched may also ask the AI.
   if (params.get("answers") !== null) return answers(shop, admin, params.get("answers") || "", clientKey(request, shop), params.get("deep") === "1");
   // One answer on a page of its own, opened from the search.
   if (params.get("article") !== null) return articlePage(shop, admin, params, clientKey(request, shop));
@@ -67,6 +70,8 @@ export async function loader({ request }: LoaderFunctionArgs) {
   if (params.get("track")) return track(admin, params.get("order") || "", params.get("email") || "", clientKey(request, shop));
   // Shipping Times: rates and delivery times for a destination, and optionally the customer's own order.
   if (params.get("shipping")) return shipping(shop, admin, params, clientKey(request, shop));
+  // International Shipping: live carrier rates from ShipStation for the products' weight and the address.
+  if (params.get("rates")) return rates(shop, admin, params, clientKey(request, shop));
   // Before a cancellation or address change opens: can this order still be changed?
   const check = params.get("check");
   // Product issues: the order's items, to pick the one with the problem.
@@ -87,7 +92,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
   if (token !== null) return trackingPage(shop, admin, token, {}, params.get("live") === "1");
 
   void markSeen(shop, "formLastSeenAt");
-  const [articles, orders, tickets, shippingSetup, placesKey] = await Promise.all([
+  const [articles, orders, tickets, shippingSetup, placesKey, liveRates] = await Promise.all([
     // The store's help articles, to browse by collection before searching.
     ensureArticles(db, shop).then(() => listArticles(db, shop)).catch((error) => { console.error(`Help Desk could not load help articles for ${shop}:`, error); return []; }),
     customerOrders(admin, customerId),
@@ -98,12 +103,15 @@ export async function loader({ request }: LoaderFunctionArgs) {
     // Where the store ships from, so Domestic and International Shipping offer the right countries.
     loadShippingSetup(admin, shop).catch(() => undefined),
     placesKeyFor(shop),
+    // Live ShipStation rates on International Shipping, once the store turns them on.
+    liveRatesOn(db, shop).catch(() => false),
   ]);
   return json({
-    home: shippingSetup?.home || "US", addressSuggestions: true, addressProvider: placesKey ? "google" : "osm", shippingCountries: SHIPPING_TIMES_COUNTRIES, countries, issues, orderTypes, topics, updates, deliveryIssues, productParts, cancelReasons, cancelScopes, issueResolutions, purchasePlaces, provinces: PROVINCES, groups: formGroups, orders,
+    home: shippingSetup?.home || "US", liveRates, addressSuggestions: true, addressProvider: placesKey ? "google" : "osm", shippingCountries: SHIPPING_TIMES_COUNTRIES, countries, issues, orderTypes, topics, updates, deliveryIssues, productParts, cancelReasons, cancelScopes, issueResolutions, purchasePlaces, provinces: PROVINCES, groups: formGroups, orders,
     tickets: tickets && tickets.map(({ accessToken, lastActivityAt, ...ticket }) => ({ ...ticket, updatedAt: lastActivityAt ?? ticket.createdAt, token: accessToken })),
     collections: articleCollections,
-    articles: articles.map(({ id, question, answer, collection, action, helpful }) => ({ id, question, answer, collection, action: validAction(action) ? action : "", helpful, source: "article", url: "", image: "" })),
+    // keywords: so the suggestions shown straight away, before the app's own search answers, find them too.
+    articles: articles.map(({ id, question, answer, keywords, collection, action, helpful }) => ({ id, question, answer, keywords, collection, action: validAction(action) ? action : "", helpful, source: "article", url: "", image: "" })),
   }, 200, privateHeaders);
 }
 
@@ -130,9 +138,11 @@ async function answers(shop: string, admin: Parameters<typeof lookupTracking>[0]
   if (!hit(`answers|${client}`, 90, MINUTE)) return json({ error: "Too many searches. Please wait a minute and try again.", results: [] }, 200, privateHeaders);
   const text = question.trim().slice(0, 500);
   if (text.length < 2) return json({ results: [] }, 200, privateHeaders);
+  // A deep search may ask the AI, so it has a tighter limit of its own.
+  const deeper = deep && hit(`answers-ai|${client}`, 20, MINUTE);
   try {
     // Never empty: misspellings fixed, related answers, or the most helpful ones (see searchAnswers).
-    return json(await searchAnswers(db, admin, shop, text, { deep }), 200, privateHeaders);
+    return json(await searchAnswers(db, admin, shop, text, { deep: deeper }), 200, privateHeaders);
   } catch (error) {
     console.error(`Help Desk search failed for ${shop}:`, error);
     return json({ error: "Search is unavailable right now. Please choose a topic below.", results: [] }, 200, privateHeaders);
@@ -161,6 +171,13 @@ export async function action({ request }: ActionFunctionArgs) {
       try {
         // "Talk to a person" on the request page: the message, or one saying so.
         const body = text("body").trim() || (text("person") ? "I'd like to talk to a person." : "");
+        // "Clear chat": the customer's view starts afresh; the team keeps the whole conversation.
+        if (asksToClearChat(body) && !files(form).length && !files(form, "videos").length) {
+          const cleared = await clearCustomerChat(db, shop, token);
+          if (cleared.ticketId) clearTyping(cleared.ticketId, "customer");
+          if (wantsJson) return json(cleared, cleared.messageId ? 200 : 400);
+          return trackingPage(shop, admin, token, cleared.messageId ? {} : { error: Object.values(cleared.errors)[0], draft: text("body") });
+        }
         const result = await addCustomerMessage(db, shop, token, body, files(form), files(form, "videos"));
         if (result.messageId && result.ticketId) {
           clearTyping(result.ticketId, "customer");
@@ -327,6 +344,29 @@ async function shipping(shop: string, admin: Parameters<typeof lookupTracking>[0
   return json({ shipping: result.answer, order: result.order ?? null, ...(orderError ? { orderError } : {}) }, 200, privateHeaders);
 }
 
+// Live rates: the picked products (up to 10, each with how many) to the address.
+// rates: null when the store hasn't turned them on, so the form shows nothing.
+async function rates(shop: string, admin: Parameters<typeof lookupTracking>[0], params: URLSearchParams, client: string) {
+  if (!hit(`rates|${client}`, 10, MINUTE)) return json({ error: "Too many attempts. Please wait a minute and try again." }, 200, privateHeaders);
+  const country = (params.get("country") || "").toUpperCase();
+  if (!countries.some((entry) => entry.code === country)) return json({ error: "Select the country we're shipping to." }, 200, privateHeaders);
+  const counts = (params.get("quantities") || "").split(",");
+  const picked = (params.get("products") || "").split(",").map((id, index) => ({ id, quantity: Math.min(99, Math.max(1, Math.trunc(Number(counts[index])) || 1)) }))
+    .filter(({ id }) => /^gid:\/\/shopify\/Product\/\d+$/.test(id)).slice(0, 10);
+  if (!picked.length) return json({ error: "Select the products you want shipped first." }, 200, privateHeaders);
+  const part = (key: string) => (params.get(key) || "").trim().slice(0, 100);
+  try {
+    const result = await liveShippingRates(db, admin, shop, {
+      products: picked.map(({ id }) => id), quantities: picked.map(({ quantity }) => quantity),
+      country, province: part("province").toUpperCase().slice(0, 10), city: part("city"), zip: part("zip"),
+    });
+    return json(result.available ? result : { available: false }, 200, privateHeaders);
+  } catch (error) {
+    console.error(`Help Desk live rates failed for ${shop}:`, error);
+    return json({ available: true, rates: [], error: "unavailable" }, 200, privateHeaders);
+  }
+}
+
 // "Continue" on a product issue: the order's items, so the customer picks the
 // one with the problem. Same limits as tracking: number and email must match.
 async function orderItems(admin: Parameters<typeof lookupTracking>[0], order: string, email: string, client: string) {
@@ -418,8 +458,8 @@ async function pulse(shop: string, token: string, client: string) {
   const ticket = TOKEN.test(token) ? await db.helpDeskTicket.findFirst({
     where: { shop, accessToken: token },
     select: {
-      id: true, status: true, allowPhotos: true, allowVideos: true, cancelStatus: true, addressStatus: true, returnStatus: true, editStatus: true, replacementStatus: true, quoteStatus: true, _count: { select: { messages: { where: { kind: { in: PUBLIC_KINDS } } } } },
-      messages: { where: { kind: { in: PUBLIC_KINDS } }, orderBy: { createdAt: "desc" }, take: 1, select: { id: true } },
+      id: true, status: true, allowPhotos: true, allowVideos: true, cancelStatus: true, addressStatus: true, returnStatus: true, editStatus: true, replacementStatus: true, quoteStatus: true, _count: { select: { messages: { where: PAGE_MESSAGES } } },
+      messages: { where: PAGE_MESSAGES, orderBy: { createdAt: "desc" }, take: 1, select: { id: true } },
     },
   }) : null;
   if (!ticket) return json({ error: "Not found." }, 404);
@@ -456,7 +496,7 @@ async function trackingPage(shop: string, admin: AdminClient | undefined, token:
   if (!token) return lookupPage();
   const ticket = TOKEN.test(token) ? await db.helpDeskTicket.findFirst({
     where: { shop, accessToken: token },
-    include: { messages: { where: { kind: { in: PUBLIC_KINDS } }, orderBy: { createdAt: "asc" } }, attachments: { select: { messageId: true, type: true } } },
+    include: { messages: { where: PAGE_MESSAGES, orderBy: { createdAt: "asc" } }, attachments: { select: { messageId: true, type: true } } },
   }) : null;
   if (!ticket) return lookupPage({ error: "This link is not valid or the request no longer exists. You can look it up with its number instead." }, 404);
   const imageCounts = new Map<string, number>();

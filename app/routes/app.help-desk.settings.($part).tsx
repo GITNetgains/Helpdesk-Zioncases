@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import type { LoaderFunctionArgs, ShouldRevalidateFunction } from "react-router";
-import { Link, useFetcher, useLoaderData, useParams } from "react-router";
+import { Link, useFetcher, useFetchers, useLoaderData, useParams } from "react-router";
 import { useAppBridge } from "@shopify/app-bridge-react";
 import { countries, macroPlaceholders, MAX_MESSAGE_LENGTH, PROVINCES } from "../services/help-desk";
 import { describeRate, parseDays, processingDays, rateTransit, shippingAnswer, type TransitSource } from "../services/help-desk-shipping";
@@ -9,8 +9,8 @@ import { articleActions, articleCollections } from "../services/help-desk-articl
 import { ASSISTANT_COPY, ASSISTANT_COPY_FIELDS, MAX_ASSISTANT_COPY } from "../services/help-desk-assistant";
 import { categories, categoryNames, describeCategory, resolutionTypes, rootCauses, rootCauseTeams, subcategoriesOf } from "../services/help-desk-taxonomy";
 import { IconTile, since, type Tone } from "../components/HelpDeskUi";
-import { DAY, HelpDeskNavigation, useResultToast } from "../components/help-desk/shared";
-import { saveThemeMode, THEME_MODES, useThemeMode, type ThemeMode } from "../components/help-desk/theme";
+import { DAY, HelpDeskNavigation, useLiveRefresh, useResultToast } from "../components/help-desk/shared";
+import { switchTheme, THEME_MODES, useThemeMode, type ThemeMode } from "../components/help-desk/theme";
 
 // Help Desk settings: /app/help-desk/settings/:part, with every part and how
 // it stands on the settings home (/app/help-desk/settings).
@@ -407,6 +407,66 @@ function ShipStationSettings({ shipStation }: { shipStation: SettingsData["shipS
   </s-section>;
 }
 
+// Live international shipping rates: on International Shipping, once the
+// customer picks products and enters their address, ShipStation's carriers
+// price the products' weight (from Shopify) plus the packaging to that address.
+function ShipStationRatesSettings({ shipStation }: { shipStation: SettingsData["shipStation"] }) {
+  const fetcher = useFetcher<typeof action>();
+  const shopify = useAppBridge();
+  const saved = shipStation.rates;
+  const initial = () => ({
+    enabled: saved.enabled, carriers: saved.carriers, fromPostalCode: saved.fromPostalCode, fromCountry: saved.fromCountry || shipStation.home,
+    packagingOz: String(saved.packagingOz), markupPercent: String(saved.markupPercent), markupFlat: String(saved.markupFlat), currency: saved.currency,
+  });
+  const [values, setValues] = useState(initial);
+  useEffect(() => {
+    if (fetcher.state !== "idle" || !fetcher.data) return;
+    if (Object.keys(fetcher.data.errors).length) shopify.toast.show(Object.values(fetcher.data.errors)[0], { isError: true });
+    else shopify.toast.show(fetcher.data.notice || "Saved");
+  }, [fetcher.state, fetcher.data, shopify]);
+  const set = <K extends keyof ReturnType<typeof initial>>(key: K, value: ReturnType<typeof initial>[K]) => setValues((current) => ({ ...current, [key]: value }));
+  const errors = fetcher.data?.errors ?? {};
+  const connected = shipStation.hasKeys && shipStation.keysWork;
+  const toggleCarrier = (code: string, on: boolean) => set("carriers", on ? [...new Set([...values.carriers, code])] : values.carriers.filter((entry) => entry !== code));
+  return <s-section heading="International shipping rates">
+    <s-stack gap="base">
+      <s-paragraph color="subdued">
+        On International Shipping, once a customer picks the products and enters their address, they can see what each carrier charges, before they send the
+        request. The weight is each product&apos;s weight in Shopify times the quantity, plus your packaging. A product with no weight in Shopify isn&apos;t priced online.
+      </s-paragraph>
+      {!connected && <s-banner tone="info" heading="Connect ShipStation first">Save your ShipStation API key and secret above. Until then the form works as before: your team replies with shipping costs.</s-banner>}
+      <s-checkbox label="Show live shipping rates on International Shipping" checked={values.enabled} disabled={!connected} error={errors.enabled}
+        onChange={(event) => set("enabled", event.currentTarget.checked)} />
+      {connected && <s-stack gap="small-200">
+        <s-text type="strong">Carriers to quote</s-text>
+        {shipStation.carriers.length
+          ? shipStation.carriers.map((carrier) => <s-checkbox key={carrier.code} label={carrier.name} checked={values.carriers.includes(carrier.code)}
+            onChange={(event) => toggleCarrier(carrier.code, event.currentTarget.checked)} />)
+          : <s-text color="subdued">ShipStation couldn&apos;t be reached to list your carriers. Reload to try again.</s-text>}
+        {errors.carriers && <s-text tone="critical">{errors.carriers}</s-text>}
+      </s-stack>}
+      <s-grid gridTemplateColumns="1fr 1fr" gap="base">
+        <s-text-field label="Warehouse postal code" value={values.fromPostalCode} error={errors.fromPostalCode} placeholder="e.g. 90210"
+          onInput={(event) => set("fromPostalCode", event.currentTarget.value ?? "")} />
+        <s-text-field label="Warehouse country" value={values.fromCountry} error={errors.fromCountry} details="Two-letter code, like US" maxLength={2}
+          onInput={(event) => set("fromCountry", (event.currentTarget.value ?? "").toUpperCase())} />
+        <s-number-field label="Packaging weight (oz)" value={values.packagingOz} error={errors.packagingOz} min={0} max={1600} step={0.5}
+          details="The box and padding, added to every shipment." onInput={(event) => set("packagingOz", event.currentTarget.value ?? "")} />
+        <s-text-field label="Currency" value={values.currency} error={errors.currency} details="Your ShipStation account's currency" maxLength={3}
+          onInput={(event) => set("currency", (event.currentTarget.value ?? "").toUpperCase())} />
+        <s-number-field label="Markup (%)" value={values.markupPercent} error={errors.markupPercent} min={0} max={500} step={1}
+          details="Added to each carrier's price." onInput={(event) => set("markupPercent", event.currentTarget.value ?? "")} />
+        <s-number-field label="Handling fee" value={values.markupFlat} error={errors.markupFlat} min={0} max={10000} step={0.5}
+          details="A flat amount added to every rate." onInput={(event) => set("markupFlat", event.currentTarget.value ?? "")} />
+      </s-grid>
+      <s-stack direction="inline" gap="small-200">
+        <s-button variant="primary" loading={fetcher.state !== "idle"} disabled={fetcher.state !== "idle"}
+          onClick={() => void fetcher.submit({ intent: "shipstation-rates", ...values, enabled: String(values.enabled), carriers: values.carriers.join(",") }, { method: "post" })}>Save</s-button>
+      </s-stack>
+    </s-stack>
+  </s-section>;
+}
+
 // Google Places key: address suggestions on the storefront form, like checkout.
 function AddressSuggestions({ enabled }: { enabled: boolean }) {
   const fetcher = useFetcher<typeof action>();
@@ -508,7 +568,7 @@ function AppearanceSettings() {
       status={dark ? "Dark now" : "Light now"} statusTone="info" />
     <s-section heading="Theme">
       <s-choice-list label="Colour scheme" name="theme" values={[mode]}
-        onChange={(event) => { const next = event.currentTarget.values?.[0]; if (THEME_MODES.includes(next as ThemeMode)) saveThemeMode(next as ThemeMode); }}>
+        onChange={(event) => { const next = event.currentTarget.values?.[0]; if (THEME_MODES.includes(next as ThemeMode)) switchTheme(next as ThemeMode); }}>
         {THEME_MODES.map((value) => <s-choice key={value} value={value} selected={mode === value}>{THEME_LABELS[value].label}<s-text slot="details">{THEME_LABELS[value].details}</s-text></s-choice>)}
       </s-choice-list>
     </s-section>
@@ -933,6 +993,7 @@ function SettingsScreen({ screen }: { screen: SettingsData }) {
       <SettingsIntro icon="order" tone="blue" title="ShipStation" description="Checks for shipping labels before an order's address changes, and keeps ShipStation's address in step."
         status={shipStationConnected ? "Connected" : screen.shipStation.hasKeys ? "Choose a store" : "Not connected"} statusTone={shipStationConnected ? "success" : "warning"} />
       <ShipStationSettings shipStation={screen.shipStation} />
+      <ShipStationRatesSettings shipStation={screen.shipStation} />
     </>}
 
     {part === "storefront" && <>
@@ -970,5 +1031,8 @@ function SettingsScreen({ screen }: { screen: SettingsData }) {
 
 
 export default function HelpDeskSettings() {
+  // A teammate's changes, and what customers search, show up here too; not while something is being saved.
+  const saving = useFetchers().some((fetcher) => fetcher.state !== "idle");
+  useLiveRefresh({ scope: "settings", paused: saving });
   return <SettingsScreen screen={useLoaderData<typeof loader>()} />;
 }

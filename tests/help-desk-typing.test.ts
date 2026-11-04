@@ -48,7 +48,9 @@ describe("Typing on the request page", () => {
     new Function(script)();
 
     await vi.advanceTimersByTimeAsync(1_100);
-    expect(document.querySelector(".hdt-thread .hdt-typing")?.textContent).toBe("Priya is typing");
+    expect(document.querySelector(".hdt-thread .hdt-typing .hdt-typing-name")?.textContent).toBe("Priya is typing");
+    // Her initial, as a capital, in place of a picture.
+    expect(document.querySelector(".hdt-thread .hdt-typing .hdt-ava")?.textContent).toBe("P");
     typing = null;
     await vi.advanceTimersByTimeAsync(1_100);
     expect(document.querySelector(".hdt-thread .hdt-typing")).toBeNull();

@@ -128,6 +128,7 @@ const formOptions: FormOption[] = [
   productIssue("Uneven Base", "Manufacturing Defect", "Bottom not flat or bowing", broken, part(0)),
   productIssue("Squeaking or Noise", "Manufacturing Defect", "Squeaking or noise", broken),
   productIssue("Other Issue", "Product Damage", "Other damage", broken),
+  productIssue("Inside Damaged", "Product Damage", "Inside damaged", broken, "", "For example: the foam inside is torn or an insert is cracked, but the outside looks fine."),
   returnRequest("Return Extra Quantity", "Ordered extra"),
   returnRequest("Ordered Wrong Item", "Ordered the wrong item or colour"),
   returnRequest("Exchange for Another Model", "Exchange for another model", { resolution: "Exchange" }),
@@ -154,11 +155,13 @@ const formOptions: FormOption[] = [
   partner("Wholesale Pricing", "Wholesale Questions", "Dealer pricing", topics[1]),
   partner("Minimum Order (MOQ)", "Wholesale Questions", "Minimum order (MOQ)", topics[1]),
   partner("Wholesale Application Status", "Wholesale Questions", "Application status", topics[1]),
+  partner("Wholesale application rejected", "Wholesale Questions", "Wholesale application rejected", topics[1]),
   partner("Tax Exemption & Resale Certificate", "Wholesale Questions", "Tax exemption or resale certificate", topics[1]),
   partner("Bulk Order Discounts", "Wholesale Questions", "Bulk discount", topics[1]),
   partner("Private Label", "Wholesale Questions", "Private label", topics[1]),
   partner("Other Wholesale Question", "Wholesale Questions", "Other wholesale", topics[1]),
   partner("Join the Affiliate Program", "Affiliates & Partnerships", "Join the program", topics[2]),
+  partner("Affiliate application rejected", "Affiliates & Partnerships", "Affiliate application rejected", topics[2]),
   partner("Affiliate Support", "Affiliates & Partnerships", "Existing partner support", topics[2]),
   partner("Commissions & Payouts", "Affiliates & Partnerships", "Commission or payout", topics[2]),
   question("Discount Code Not Working", "Website & Checkout", "Discount code not working", "Which code did you use, and what message did you see?"),
@@ -195,6 +198,7 @@ const ORDERS_TOPIC: [label: string, category: string, subcategory: string, descr
   ["Cancel Order", ORDERS, "Cancel Order", "Request a cancellation of your whole order before it ships. Our team reviews it, and you can follow it on your request page."],
   ["Modify Address", ORDERS, "Change Shipping Address", "Change where your order is going, before it ships. The new address must be in the same country."],
   ["Edit Existing Order", ORDERS, "Edit Items, Color or Quantity", "Change an item, its color or the quantity, before your order ships."],
+  ["Add Expedited Shipping", SHIPPING, "Expedited Shipping", "Upgrade to faster shipping, before your order ships. We confirm the cost and the new delivery date first."],
   ["Lost Package", SHIPPING, "Lost Package", "Your tracking stopped, or the package never arrived."],
 ];
 // Shipping: what it costs and how long it takes to ship products to an address.
@@ -210,7 +214,13 @@ const PRODUCT_TOPIC: typeof ORDERS_TOPIC = [
   ["Damaged or Defective", "Shipping Damage", "Damaged in transit", "Broken when it arrived, or a part doesn't work as it should."],
   ["Missing Item or Part", "Missing Parts", "Item missing from order", "Something from your order, or a part of it, wasn't in the box."],
   ["Received the Wrong Item", "Wrong Item Received", "Wrong product", "A different product, colour or quantity arrived."],
+  ["Product Quality Issue", "Manufacturing Defect", "Poor quality overall", "A manufacturing defect, or the inside of the product is damaged."],
   ["Warranty Claim", "Warranty", "Replacement request", "A problem that started after using it for a while."],
+];
+// Product Quality Issue: made wrong at the factory, or damaged inside.
+const QUALITY_KINDS: NonNullable<FormOption["kinds"]> = [
+  { label: "Manufacturing defect", hint: "Made wrong: a part doesn't work, fit or line up as it should.", category: "Manufacturing Defect", subcategory: "Poor quality overall" },
+  { label: "Inside of the product is damaged", hint: "The outside looks fine, but the inside (foam, inserts, lining) is damaged.", category: "Product Damage", subcategory: "Inside damaged" },
 ];
 // Damaged and defective ask the same things; one question picks the ticket's
 // category, so the team tells a carrier claim (the box was damaged too) from
@@ -232,7 +242,7 @@ const PRODUCT_CATEGORIES = ["Product Damage", "Shipping Damage", "Manufacturing 
 // delivery is asked about with the order (Track Order, Shipping Times),
 // pre-orders are no longer offered on the form, and every product issue
 // other than the broad choices above.
-export const STAFF_ONLY = [[SHIPPING, "Shipping Times"], [SHIPPING, "Hawaii, Alaska & U.S. Territories"], [SHIPPING, "Expedited Shipping"], [SHIPPING, "Signature Required"], [SHIPPING, "International Pre-Order"],
+export const STAFF_ONLY = [[SHIPPING, "Shipping Times"], [SHIPPING, "Hawaii, Alaska & U.S. Territories"], [SHIPPING, "Signature Required"], [SHIPPING, "International Pre-Order"],
   ...PRODUCT_CATEGORIES.flatMap((name) => categories.find((entry) => entry.name === name)!.subcategories
     .filter((sub) => !PRODUCT_TOPIC.some(([, category, subcategory]) => category === name && subcategory === sub)).map((sub) => [name, sub]))];
 const staffOnly = (category: string, subcategory: string) => STAFF_ONLY.some(([name, sub]) => name === category && sub === subcategory);
@@ -261,7 +271,7 @@ export const formGroups: FormGroup[] = [
     label: "Product Issues", flat: true,
     hint: "Something arrived damaged, defective, missing or wrong, or you need warranty help.",
     options: PRODUCT_TOPIC.map(([label, category, subcategory, description]) => ({ ...flowFor(category, subcategory), label, section: category, description,
-      ...(label === "Damaged or Defective" ? { kinds: DAMAGE_KINDS } : label === "Received the Wrong Item" ? { kinds: WRONG_KINDS } : {}) })),
+      ...(label === "Damaged or Defective" ? { kinds: DAMAGE_KINDS } : label === "Received the Wrong Item" ? { kinds: WRONG_KINDS } : label === "Product Quality Issue" ? { kinds: QUALITY_KINDS } : {}) })),
   },
   ...mainTopics.map(topic => ({
     label: topic.label,

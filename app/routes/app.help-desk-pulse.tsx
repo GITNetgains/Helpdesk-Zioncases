@@ -44,6 +44,43 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     return Response.json({ stamp, customerTyping: typingState(ticketId).customer }, { headers });
   }
 
-  const tickets = await db.helpDeskTicket.aggregate({ where: { shop }, _count: true, _max: { updatedAt: true } });
-  return Response.json({ stamp: `${tickets._count}.${tickets._max.updatedAt?.getTime() ?? 0}` }, { headers });
+  const scope = new URL(request.url).searchParams.get("scope");
+  // Photo Checks: every image scan, and every photo or video customers send.
+  if (scope === "photos") {
+    const [scans, attachments] = await Promise.all([
+      db.helpDeskImageScan.aggregate({ where: { shop }, _count: true, _max: { updatedAt: true } }),
+      db.helpDeskAttachment.count({ where: { ticket: { shop } } }),
+    ]);
+    return Response.json({ stamp: `${scans._count}.${scans._max.updatedAt?.getTime() ?? 0}.${attachments}` }, { headers });
+  }
+  // Settings: what a teammate saves (the settings, articles, saved replies,
+  // team) and what customers search, so every open Settings screen keeps up.
+  if (scope === "settings") {
+    const [settings, articles, searches, staff, macros] = await Promise.all([
+      db.helpDeskSettings.findUnique({ where: { shop } }),
+      db.helpDeskFaq.aggregate({ where: { shop }, _count: true, _max: { updatedAt: true } }),
+      db.helpDeskBotQuestion.count({ where: { shop } }),
+      db.helpDeskStaff.findMany({ where: { shop }, select: { id: true }, orderBy: { id: "asc" } }),
+      db.helpDeskMacro.findMany({ where: { shop }, select: { id: true, title: true, body: true }, orderBy: { id: "asc" } }),
+    ]);
+    // The settings row has no updated time: its saved values are the fingerprint
+    // (not when the storefront form was last seen, which changes on its own).
+    const { formLastSeenAt: _seen, ...saved } = settings ?? {};
+    void _seen;
+    const stamp = fingerprint(JSON.stringify([saved, articles._count, articles._max.updatedAt, searches, staff.map((member) => member.id), macros]));
+    return Response.json({ stamp }, { headers });
+  }
+  // The inbox and Overview: tickets, and every message on them.
+  const [tickets, messages] = await Promise.all([
+    db.helpDeskTicket.aggregate({ where: { shop }, _count: true, _max: { updatedAt: true } }),
+    db.helpDeskMessage.aggregate({ where: { ticket: { shop } }, _count: true, _max: { createdAt: true } }),
+  ]);
+  return Response.json({ stamp: `${tickets._count}.${tickets._max.updatedAt?.getTime() ?? 0}.${messages._count}.${messages._max.createdAt?.getTime() ?? 0}` }, { headers });
 };
+
+// A short, stable fingerprint of some text.
+function fingerprint(text: string) {
+  let hash = 0;
+  for (let index = 0; index < text.length; index++) hash = (Math.imul(hash, 31) + text.charCodeAt(index)) | 0;
+  return `${(hash >>> 0).toString(36)}.${text.length}`;
+}

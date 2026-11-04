@@ -10,8 +10,10 @@ import { updateTickets } from "./help-desk.server";
 import { queueEmail } from "./help-desk-outbox.server";
 
 type AdminClient = { graphql: (query: string, options?: { variables?: Record<string, unknown> }) => Promise<Response> };
+// stage: where the order is, for what the form offers with it (orderStage).
+export type OrderStage = "processing" | "partial" | "transit" | "shipped" | "delivered" | "failed" | "cancelled";
 export type CustomerOrder = {
-  name: string; date: string; fulfillment: "fulfilled" | "partial" | null; cancelled: boolean;
+  name: string; date: string; fulfillment: "fulfilled" | "partial" | null; cancelled: boolean; stage: OrderStage;
   items: { id: string; title: string; variant: string; quantity: number; image: string }[];
 };
 
@@ -20,6 +22,7 @@ const ORDERS_QUERY = `#graphql
     orders(first: 20, sortKey: CREATED_AT, reverse: true, query: $query) {
       nodes {
         name createdAt displayFulfillmentStatus cancelledAt
+        fulfillments(first: 10) { displayStatus }
         lineItems(first: 30) {
           nodes { id title variantTitle quantity product { id title } image { url(transform: { maxWidth: 120 }) } }
         }
@@ -30,8 +33,30 @@ const ORDERS_QUERY = `#graphql
 
 type OrderNode = {
   name: string; createdAt: string; displayFulfillmentStatus: string; cancelledAt: string | null;
+  fulfillments?: { displayStatus: string | null }[] | null;
   lineItems: { nodes: { id?: string; title: string; variantTitle: string | null; quantity: number; product: { id: string; title: string } | null; image: { url: string } | null }[] };
 };
+
+// Where an order is, from Shopify (its fulfillments' carrier statuses): still
+// being prepared (nothing shipped, so it can still be changed or cancelled),
+// on its way (the carrier says so), delivered, a delivery that failed, or
+// shipped with no word from the carrier, which is often all Shopify knows:
+// then nothing is ruled out but what only an unshipped order allows.
+const ON_THE_WAY = ["IN_TRANSIT", "OUT_FOR_DELIVERY", "CONFIRMED", "LABEL_PRINTED", "LABEL_PURCHASED", "SUBMITTED"];
+const ARRIVED = ["DELIVERED", "PICKED_UP"];
+const NOT_ARRIVED = ["ATTEMPTED_DELIVERY", "FAILURE", "NOT_DELIVERED"];
+export function orderStage(fulfillmentStatus: string, cancelled: boolean, shipments: string[]): OrderStage {
+  if (cancelled) return "cancelled";
+  const live = shipments.filter((status) => status && status !== "CANCELED" && status !== "LABEL_VOIDED");
+  if (live.some((status) => NOT_ARRIVED.includes(status))) return "failed";
+  const shipped = live.length > 0 || fulfillmentStatus === "FULFILLED" || fulfillmentStatus === "PARTIALLY_FULFILLED";
+  if (!shipped) return "processing";
+  // Partly shipped: the rest can still be cancelled, so nothing is ruled out.
+  if (fulfillmentStatus === "PARTIALLY_FULFILLED") return "partial";
+  if (fulfillmentStatus === "FULFILLED" && live.length && live.every((status) => ARRIVED.includes(status))) return "delivered";
+  if (fulfillmentStatus === "FULFILLED" && live.length && live.every((status) => ON_THE_WAY.includes(status))) return "transit";
+  return "shipped";
+}
 
 export async function customerOrders(admin: AdminClient | undefined, customerId: string | null): Promise<CustomerOrder[] | null> {
   if (!admin || !customerId || !/^\d+$/.test(customerId)) return null;
@@ -45,6 +70,7 @@ export async function customerOrders(admin: AdminClient | undefined, customerId:
       date: date.format(new Date(order.createdAt)),
       fulfillment: order.displayFulfillmentStatus === "FULFILLED" ? "fulfilled" : order.displayFulfillmentStatus === "PARTIALLY_FULFILLED" ? "partial" : null,
       cancelled: Boolean(order.cancelledAt),
+      stage: orderStage(order.displayFulfillmentStatus, Boolean(order.cancelledAt), (order.fulfillments ?? []).map((entry) => entry.displayStatus ?? "")),
       items: order.lineItems.nodes.map(item => ({
         // A deleted product's item keeps its order line's gid, so it can still be picked.
         id: item.product?.id || item.id || "",

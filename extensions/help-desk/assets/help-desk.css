@@ -547,6 +547,11 @@
 .help-desk .help-desk-order-card-top em { padding: 2px 9px; border-radius: 999px; background: #eef1f6; color: #3d4a66; font-size: 12px; font-style: normal; font-weight: 600; white-space: nowrap; }
 .help-desk .help-desk-order-card-top em[data-state=fulfilled] { background: #e3f5ea; color: #0c5132; }
 .help-desk .help-desk-order-card-top em[data-state=partial] { background: #fff4d6; color: #7a5600; }
+/* Where the order is, from Shopify. */
+.help-desk .help-desk-order-card-top em[data-state=transit] { background: #e6efff; color: #1d4ed8; }
+.help-desk .help-desk-order-card-top em[data-state=delivered] { background: #e3f5ea; color: #0c5132; }
+.help-desk .help-desk-order-card-top em[data-state=failed] { background: #fde8e6; color: #8f1f12; }
+.help-desk .help-desk-order-card-top em[data-state=cancelled] { background: #eef1f6; color: #667085; text-decoration: line-through; }
 .help-desk .help-desk-order-card-thumbs { grid-column: 2; display: flex; gap: 6px; margin-top: 8px; }
 .help-desk .help-desk-order-card-thumbs .help-desk-thumb { width: 36px; height: 36px; }
 .help-desk span.help-desk-thumb-more { display: grid; place-items: center; color: var(--hd-muted); font-size: 12px; font-weight: 600; }
@@ -1183,3 +1188,16 @@
   .help-desk .help-desk-suggest-option { grid-template-columns: 24px minmax(0, 1fr); }
   .help-desk .help-desk-suggest-option small { display: none; }
 }
+/* Live shipping rates on International Shipping (ShipStation). */
+.help-desk .help-desk-rates { display: grid; gap: 12px; margin-top: 18px; padding: 16px; border: 1px solid var(--hd-border, #e3e6ee); border-radius: 12px; background: #fff; }
+.help-desk .help-desk-rates h4 { margin: 0; font-size: 15px; }
+.help-desk .help-desk-rates-list { display: grid; gap: 0; margin: 0; padding: 0; list-style: none; }
+.help-desk .help-desk-rates-list li { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; padding: 10px 0; border-top: 1px solid var(--hd-border, #eceef3); font-size: 14px; }
+.help-desk .help-desk-rates-list li:first-child { border-top: 0; }
+.help-desk .help-desk-rates-list strong { flex: none; font-variant-numeric: tabular-nums; }
+.help-desk .help-desk-rates-note { margin: 0; color: var(--hd-muted); font-size: 13px; }
+/* "My order isn't listed": its number, date and what it's about. */
+.help-desk .help-desk-unlisted { display: grid; gap: 12px; margin-top: 14px; padding: 16px; border: 1px solid var(--hd-border); border-radius: 12px; background: #fafbfc; }
+.help-desk .help-desk-unlisted h4 { margin: 0; font-size: 15px; }
+.help-desk .help-desk-stage-note { margin: 4px 0 0; padding: 10px 12px; border-radius: 10px; background: #f3f6fb; }
+.help-desk .help-desk-order-card-top em[data-state=shipped] { background: #e3f5ea; color: #0c5132; }

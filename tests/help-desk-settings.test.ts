@@ -73,7 +73,7 @@ describe("Help Desk settings", () => {
     expect(saved.assistantEnabled).toBe(false);
     expect(JSON.parse(saved.assistantCopy)).toEqual({ greeting: "Hey {first_name}, welcome!" });
     // Every message, the new ones included, reads back with defaults filled in.
-    expect(readAssistantCopy(saved.assistantCopy)).toMatchObject({ greeting: "Hey {first_name}, welcome!", teamHasIt: ASSISTANT_COPY.teamHasIt, personHint: ASSISTANT_COPY.personHint });
+    expect(readAssistantCopy(saved.assistantCopy)).toMatchObject({ greeting: "Hey {first_name}, welcome!", handoffAsked: ASSISTANT_COPY.handoffAsked, personHint: ASSISTANT_COPY.personHint });
     expect(await act({ intent: "assistant-settings", enabled: "true", greeting: "x".repeat(601) })).toMatchObject({ status: 400, errors: { greeting: expect.any(String) } });
     expect((await settings()).assistantEnabled).toBe(false);
     await act({ intent: "assistant-settings", enabled: "true" });
@@ -151,7 +151,7 @@ describe("Help Desk settings", () => {
     const screen = ((loaded as { data?: unknown }).data ?? loaded) as { articles: unknown[]; macros: unknown[]; team: unknown[]; staff: unknown[] };
     expect(screen).toMatchObject({
       settings: expect.objectContaining({ notify: expect.any(Boolean), signature: expect.any(String) }),
-      assistant: { enabled: expect.any(Boolean), ai: false, copy: expect.objectContaining({ greeting: expect.any(String), teamHasIt: expect.any(String) }) },
+      assistant: { enabled: expect.any(Boolean), ai: false, copy: expect.objectContaining({ greeting: expect.any(String), handoffAsked: expect.any(String) }) },
       ai: expect.objectContaining({ enabled: expect.any(Boolean) }),
       shipStation: expect.objectContaining({ hasKeys: expect.any(Boolean) }),
       storefront: expect.objectContaining({ hasPlacesKey: expect.any(Boolean) }),

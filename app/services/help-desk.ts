@@ -401,6 +401,14 @@ export function validateHelpDesk(values: HelpDeskValues, products: string[], fil
     if (values.part && !productParts.includes(values.part)) errors.part = "Select which part has the problem."; choice("resolution", ["Return", "Exchange", "Refund"], "a preferred resolution");
   }
   if (values.topic === topics[5]) required("query", "Your question");
+  // An order the customer's account didn't list: when they placed it (a real
+  // date, not in the future) and what it's about, in their words.
+  if (values.orderDate) {
+    const date = /^\d{4}-\d{2}-\d{2}$/.test(values.orderDate) ? new Date(`${values.orderDate}T00:00:00Z`) : null;
+    if (!date || Number.isNaN(date.getTime()) || date.toISOString().slice(0, 10) !== values.orderDate) errors.orderDate = "Enter the date you placed the order.";
+    else if (date.getTime() > Date.now() + 24 * 60 * 60 * 1000) errors.orderDate = "The order date can't be in the future.";
+  }
+  if ((values.orderNote?.length ?? 0) > 2000) errors.orderNote = "Use no more than 2000 characters.";
   const allowsImages = values.topic === topics[4] || values.topic === topics[5] || (values.topic === topics[3] && (values.orderType === orderTypes[1] || values.orderType === orderTypes[2]));
   if (allowsImages) {
     if (imagesRequired(values) && !files.length) errors.images = "Upload at least one image for this issue.";
@@ -483,7 +491,7 @@ export const defaultMacros = [
 // Labels for submitted fields, in display order. Name, email and topic are
 // shown separately in the admin ticket header and the notification email.
 export const fieldLabels: Record<string, string> = {
-  phone: "Phone", orderNumber: "Order number", orderType: "Order query", update: "Order update", cancelReason: "Cancellation reason",
+  phone: "Phone", orderNumber: "Order number", orderDate: "Order date", orderNote: "About the order", orderType: "Order query", update: "Order update", cancelReason: "Cancellation reason",
   shipName: "New address: recipient", shipAddress1: "New address: street", shipAddress2: "New address: apartment, suite", shipCity: "New address: city",
   shipProvince: "New address: state or province", shipZip: "New address: ZIP or postal code", shipCountry: "New address: country", shipPhone: "New address: phone", delivery: "Delivery problem",
   lostPreference: "Would like", shippingMethod: "Shipping method", addedProducts: "Products to add", chargesAccepted: "Price difference confirmed first", issue: "Issue", part: "Part with the problem", returnCondition: "Unused, in original packaging", resolution: "Requested resolution", replacement: "Replacement wanted", purchasedFrom: "Bought from", purchaseDate: "Bought in (month)",

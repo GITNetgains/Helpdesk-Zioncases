@@ -1,4 +1,5 @@
 import { addressFromValues, addressLines, cancelScopes, countryName, fieldLabels, VIDEO_EXTENSIONS, type ShippingAddress, parseEditRequest } from "./help-desk";
+import { ASSISTANT_AVATAR, nameInitial } from "./help-desk-avatar";
 
 // The customer-facing pages served through the app proxy: the private request
 // page and the lookup page. They are returned as Liquid so the store's theme
@@ -24,8 +25,8 @@ const STEPS = [
   { label: "Resolved", status: "Resolved" },
 ];
 // Short facts go in the summary; what the customer wrote goes in their message.
-const SUMMARY_FIELDS = ["orderNumber", "orderType", "update", "cancelReason", "issue", "resolution", "existing", "registeredEmail", "country"];
-const MESSAGE_FIELDS = ["details", "query", "orderDetails", "productDetails", "quantities", "address", "otherDetails"];
+const SUMMARY_FIELDS = ["orderNumber", "orderDate", "orderType", "update", "cancelReason", "issue", "resolution", "existing", "registeredEmail", "country"];
+const MESSAGE_FIELDS = ["orderNote", "details", "query", "orderDetails", "productDetails", "quantities", "address", "otherDetails"];
 
 const STYLES = `<style>
 .hdt{--ink:#172351;--muted:#5b6275;--line:#e6e8ee;--soft:#f3f3f3;--accent:#ef3a24;--accent-dark:#d22d18;--blue:#334fb4;--ok:#0c7a43;max-width:1040px;margin:clamp(24px,4vw,48px) auto clamp(48px,6vw,80px);padding:0 16px;color:var(--ink);font-size:15px;line-height:1.55;-webkit-font-smoothing:antialiased}
@@ -65,6 +66,71 @@ const STYLES = `<style>
 .hdt-chat-brand>div{min-width:0}
 .hdt-chat-avatar{display:grid;place-items:center;width:46px;height:46px;border-radius:50%;background:var(--accent);color:#fff;box-shadow:0 0 0 3px rgba(239,58,36,.22)}
 .hdt-chat-avatar svg{width:22px;height:22px}
+.hdt{--hdt-bot-face:url(${ASSISTANT_AVATAR})}
+.hdt-chat-avatar[data-bot]{background:#000 var(--hdt-bot-face) center/cover no-repeat;box-shadow:0 0 0 2px rgba(255,255,255,.22),0 2px 10px rgba(0,0,0,.35)}
+.hdt-chat-avatar[data-person]{font-size:19px;font-weight:800}
+.hdt-ava{display:grid;place-items:center;flex:0 0 30px;width:30px;height:30px;margin:0 8px 0 0;align-self:flex-start;border-radius:50%;background:var(--accent);color:#fff;font-size:13px;font-weight:800;line-height:1;box-shadow:0 0 0 2px rgba(255,255,255,.12)}
+.hdt-ava[data-bot]{width:34px;height:34px;flex-basis:34px;background:#000 var(--hdt-bot-face) center/cover no-repeat;box-shadow:0 0 0 1.5px rgba(255,255,255,.25)}
+.hdt-msg[data-grouped] .hdt-ava{visibility:hidden;height:0}
+.hdt .hdt-typing .hdt-ava{flex-basis:24px;width:24px;height:24px;margin:0;font-size:11px}
+.hdt .hdt-theme{flex:none;display:grid;place-items:center;width:36px!important;min-width:36px!important;height:36px;margin:0;padding:7px;border:1px solid rgba(255,255,255,.2);border-radius:9px;background:rgba(255,255,255,.08);color:#fff;box-shadow:none}
+.hdt .hdt-theme:hover{background:rgba(255,255,255,.18);transform:none;box-shadow:none}
+.hdt .hdt-theme svg{width:18px;height:18px}
+.hdt .hdt-theme-dark,.hdt[data-chat-theme="light"] .hdt-theme-light{display:none}
+.hdt[data-chat-theme="light"] .hdt-theme-dark{display:block}
+/* Until the request is resolved the chat stays open: beside the page on wide screens, in it on narrow ones. */
+@media(min-width:1100px){.hdt[data-chat-locked][data-chat-open]:not([data-chat-expanded]){max-width:1530px;padding-right:486px}}
+@media(max-width:1099px){.hdt[data-chat-locked][data-chat-open]:not([data-chat-expanded]) .hdt-chatbox{position:relative;right:auto;bottom:auto;z-index:auto;width:100%;height:min(600px,78dvh);min-height:420px;margin:16px 0;box-shadow:0 12px 34px rgba(7,13,31,.2)}}
+/* The chat's own background, so its rounded corners never show the page behind. */
+.hdt .hdt-chatbox{background:#141e3d}
+.hdt-chatbox .hdt-foot{border-radius:0}
+/* The assistant is online: a dot on its picture. */
+.hdt-chat-avatar{position:relative}
+.hdt-chat-head:not([data-closed]) .hdt-chat-avatar::after{content:"";position:absolute;right:0;bottom:1px;width:11px;height:11px;border-radius:50%;background:#3ddc84;box-shadow:0 0 0 2.5px #172351}
+.hdt[data-chat-theme="light"] .hdt-chat-head:not([data-closed]) .hdt-chat-avatar::after{box-shadow:0 0 0 2.5px #fff}
+/* Suggested questions in an answer, and quick replies under the latest one. */
+.hdt-chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.hdt-quick{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:6px;margin:10px 0 2px}
+.hdt button.hdt-chip{display:inline-flex;align-items:center;width:auto;min-width:0;max-width:100%;height:auto;margin:0;padding:7px 13px;border:1px solid rgba(157,176,255,.42);border-radius:999px;background:rgba(157,176,255,.1);color:#dbe3ff;font:inherit;font-size:13px;font-weight:600;line-height:1.3;text-align:left;white-space:normal;box-shadow:none;cursor:pointer;transition:background .15s ease,border-color .15s ease}
+.hdt button.hdt-chip:hover{background:rgba(157,176,255,.22);border-color:rgba(157,176,255,.7);transform:none;box-shadow:none}
+.hdt button.hdt-chip:focus-visible{outline:2px solid #9db0ff;outline-offset:2px}
+.hdt button.hdt-chip[disabled]{opacity:.5;cursor:default}
+.hdt[data-chat-theme="light"] button.hdt-chip{border-color:#c9d3f5;background:#eef2ff;color:#334fb4}
+.hdt[data-chat-theme="light"] button.hdt-chip:hover{background:#e0e7ff;border-color:#9fb1ec}
+.hdt[data-chat-theme="light"] .hdt-chatbox{background:#fff}
+/* Light chat: chosen in the chat's header, or the device's light setting. */
+.hdt[data-chat-theme="light"] .hdt-chatbox{border-color:#dfe3ee;background:#fff;box-shadow:0 22px 70px rgba(23,35,81,.18)}
+.hdt[data-chat-theme="light"] .hdt-chat-head{background:#fff;color:var(--ink);border-bottom-color:#e8ebf2}
+.hdt[data-chat-theme="light"] .hdt-chat-head h2{color:var(--ink)}
+.hdt[data-chat-theme="light"] .hdt-chat-head h2 small,.hdt[data-chat-theme="light"] .hdt-chat-head p{color:var(--muted)}
+.hdt[data-chat-theme="light"] .hdt-count{background:#f1f3f8;color:var(--ink)}
+.hdt[data-chat-theme="light"] .hdt-expand,.hdt[data-chat-theme="light"] .hdt-theme,.hdt[data-chat-theme="light"] .hdt-chat-close{border-color:#dfe3ee;background:#f6f7fb;color:var(--ink)}
+.hdt[data-chat-theme="light"] .hdt-expand:hover,.hdt[data-chat-theme="light"] .hdt-theme:hover,.hdt[data-chat-theme="light"] .hdt-chat-close:hover{background:#eceff6}
+.hdt[data-chat-theme="light"] .hdt-chat-avatar[data-bot]{box-shadow:0 0 0 2px #fff,0 0 0 3.5px #e3e6ee,0 2px 8px rgba(23,35,81,.15)}
+.hdt[data-chat-theme="light"] .hdt-thread{background:#f4f6fa radial-gradient(rgba(23,35,81,.06) 1px,transparent 1px);background-size:16px 16px;scrollbar-color:#c5cbdb transparent}
+.hdt[data-chat-theme="light"] .hdt-thread::-webkit-scrollbar-thumb{background:#c5cbdb}
+.hdt[data-chat-theme="light"] .hdt-body{background:#fff;border-color:#e3e7f0;color:#1d2433;box-shadow:0 1px 3px rgba(23,35,81,.08)}
+.hdt[data-chat-theme="light"] .hdt-msg[data-kind="customer"] .hdt-body{background:#334fb4;border-color:#334fb4;color:#fff}
+.hdt[data-chat-theme="light"] .hdt-msg[data-kind="bot"] .hdt-body{border:1px dashed #c9d0e0}
+.hdt[data-chat-theme="light"] .hdt-who{color:#334fb4}
+.hdt[data-chat-theme="light"] .hdt-msg[data-kind="customer"] .hdt-who{color:#dce3ff}
+.hdt[data-chat-theme="light"] .hdt-tag{background:#eef1f8;color:#334fb4}
+.hdt[data-chat-theme="light"] .hdt-meta{color:#8a92a6}
+.hdt[data-chat-theme="light"] .hdt-msg[data-kind="customer"] .hdt-meta{color:rgba(255,255,255,.8)}
+.hdt[data-chat-theme="light"] .hdt-ava{box-shadow:0 0 0 2px #fff}
+.hdt[data-chat-theme="light"] .hdt-day{background:#e8ebf3;color:#4a5370}
+.hdt[data-chat-theme="light"] .hdt-system{color:#6b7389}
+.hdt[data-chat-theme="light"] .hdt-system::before,.hdt[data-chat-theme="light"] .hdt-system::after{background:#dfe3ee}
+.hdt[data-chat-theme="light"] .hdt-typing{background:#fff;border-color:#e3e7f0;color:#6b7389;box-shadow:0 1px 3px rgba(23,35,81,.08)}
+.hdt[data-chat-theme="light"] .hdt-connecting{background:#eef2ff;border-color:#c9d3f5;color:var(--ink)}
+.hdt[data-chat-theme="light"] .hdt-connecting strong{color:var(--ink)!important}
+.hdt[data-chat-theme="light"] .hdt-connecting div>span{color:#4a5370!important}
+.hdt[data-chat-theme="light"] .hdt-connecting .hdt-dots{background:#fff;border-color:#d7ddf0}
+.hdt[data-chat-theme="light"] .hdt-dots i{background:#334fb4;box-shadow:none}
+.hdt[data-chat-theme="light"] .hdt-foot{background:#fff;border-top-color:#e8ebf2;color:var(--muted)}
+.hdt[data-chat-theme="light"] .hdt-foot label{color:var(--ink)}
+.hdt[data-chat-theme="light"] .hdt-foot textarea{border-color:#d9deea;background:#f6f7fb}
+.hdt[data-chat-theme="light"] .hdt-foot .hdt-drop{background:#f6f7fb;border-color:#d9deea}
 .hdt .hdt-chat-head h2{display:grid;gap:1px;min-width:0;color:#fff;font-size:16px;line-height:1.25;letter-spacing:-.01em}
 .hdt .hdt-chat-head h2 small{color:#c9d1ea;font-size:11.5px;font-weight:500;letter-spacing:0}
 .hdt .hdt-chat-head h2 span,.hdt .hdt-chat-head h2{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -110,6 +176,8 @@ const STYLES = `<style>
 .hdt-meta{display:block;margin-top:2px;text-align:right;color:rgba(242,244,250,.6);font-size:11px;line-height:1.2}
 .hdt-day{align-self:center;margin:10px 0 2px;padding:4px 12px;border-radius:8px;background:rgba(255,255,255,.1);color:#e8ebf5;font-size:12px;font-weight:600}
 .hdt-body p+p{margin-top:10px}
+/* The store's theme may colour paragraphs or their lines: never inside a bubble. */
+.hdt .hdt-body p{background:transparent;box-shadow:none;color:inherit}
 .hdt-facts{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px}
 .hdt-facts span{padding:3px 10px;border-radius:999px;background:#fff;border:1px solid var(--line);font-size:12px;font-weight:600}
 .hdt-products{display:grid;gap:8px}
@@ -154,14 +222,20 @@ const STYLES = `<style>
 .hdt-chatbox{display:none;position:fixed;right:24px;bottom:24px;z-index:10001;width:min(420px,calc(100vw - 32px));height:min(620px,calc(100dvh - 48px));min-height:360px;max-height:none;margin:0;border:1px solid #2a3965;border-radius:18px;box-shadow:0 22px 70px rgba(7,13,31,.42);flex-direction:column;overflow:hidden}
 .hdt[data-chat-open] .hdt-chatbox{display:flex;animation:hdt-chat-in .18s ease-out}
 .hdt[data-chat-open] .hdt-chat-launcher{display:none}
-.hdt button.hdt-chat-launcher{position:fixed;right:24px;bottom:24px;z-index:10000;display:grid;place-items:center;width:64px;height:64px;min-width:64px;max-width:64px;padding:0;border:0;border-radius:50%;background:var(--accent);color:#fff;box-shadow:0 8px 24px rgba(23,35,81,.32),0 0 0 5px rgba(239,58,36,.12);cursor:pointer;font:inherit;transition:transform .18s ease,box-shadow .18s ease;animation:hdt-launcher-pulse 2.8s ease-in-out infinite}
-.hdt button.hdt-chat-launcher:hover{background:var(--accent-dark);transform:translateY(-3px) scale(1.03);box-shadow:0 12px 30px rgba(23,35,81,.38),0 0 0 7px rgba(239,58,36,.14);animation-play-state:paused}
+.hdt button.hdt-chat-launcher{position:fixed;right:24px;bottom:24px;z-index:10000;display:grid;place-items:center;width:64px;height:64px;min-width:64px;max-width:64px;padding:0;border:0;border-radius:50%;background:var(--accent);color:#fff;box-shadow:0 8px 24px rgba(23,35,81,.32),0 0 0 5px rgba(239,58,36,.12);cursor:pointer;font:inherit;transition:transform .18s ease,box-shadow .18s ease;animation:hdt-launcher-pulse 2.8s ease-in-out infinite,hdt-launcher-beat 3s ease-in-out infinite;overflow:visible}
+.hdt button.hdt-chat-launcher::before,.hdt button.hdt-chat-launcher::after{content:"";position:absolute;inset:0;border-radius:50%;border:3px solid var(--accent);pointer-events:none;animation:hdt-launcher-ring 2s cubic-bezier(.2,.6,.35,1) infinite}
+.hdt button.hdt-chat-launcher::after{animation-delay:1s}
+@keyframes hdt-launcher-ring{0%{transform:scale(1);opacity:.85}100%{transform:scale(1.8);opacity:0}}
+@keyframes hdt-launcher-beat{0%,40%,100%{transform:scale(1)}8%{transform:scale(1.12)}16%{transform:scale(.97)}24%{transform:scale(1.06)}32%{transform:scale(1)}}
+.hdt button.hdt-chat-launcher:hover{background:var(--accent-dark);transform:translateY(-3px) scale(1.03);box-shadow:0 12px 30px rgba(23,35,81,.38),0 0 0 7px rgba(239,58,36,.14);animation:none}
+.hdt button.hdt-chat-launcher:hover::before,.hdt button.hdt-chat-launcher:hover::after{animation-play-state:paused;opacity:0}
 @keyframes hdt-launcher-pulse{0%,100%{box-shadow:0 8px 24px rgba(23,35,81,.32),0 0 0 5px rgba(239,58,36,.12)}50%{box-shadow:0 10px 28px rgba(23,35,81,.36),0 0 0 9px rgba(239,58,36,.06)}}
 .hdt-chat-launcher:focus-visible{outline:3px solid #7e9cff;outline-offset:3px}
 .hdt-chat-launcher-icon{display:grid;place-items:center;width:64px;height:64px;border-radius:50%}
 .hdt-chat-launcher-icon svg{width:29px;height:29px}
 .hdt-chat-launcher-copy{display:none}
-.hdt .hdt-chat-close{flex:none;display:grid;place-items:center;width:36px!important;min-width:36px!important;height:36px!important;max-width:36px;padding:0;border:1px solid rgba(255,255,255,.2);border-radius:9px;background:rgba(255,255,255,.08);color:white;cursor:pointer}
+.hdt .hdt-chat-close{flex:none;display:grid;place-items:center;width:36px!important;min-width:36px!important;height:36px!important;max-width:36px;padding:0;border:1px solid rgba(255,255,255,.2);border-radius:9px;background:rgba(255,255,255,.08);color:white;cursor:pointer;margin:0;box-shadow:none}
+.hdt .hdt-chat-close:hover{background:rgba(255,255,255,.18);transform:none;box-shadow:none}
 .hdt-chat-close svg{width:17px;height:17px}
 @keyframes hdt-chat-in{from{opacity:0;transform:translateY(10px) scale(.985)}to{opacity:1;transform:none}}
 .hdt-chatbox .hdt-thread{flex:1;min-height:0;max-height:none}
@@ -216,7 +290,7 @@ const STYLES = `<style>
 .hdt-msg[data-fresh] .hdt-body{animation:hdt-fresh 2.4s ease}
 .hdt-msg[data-pending] .hdt-body{opacity:.75}
 @keyframes hdt-fresh{0%{box-shadow:0 0 0 4px rgba(239,58,36,.35)}100%{box-shadow:0 0 0 0 rgba(239,58,36,0)}}
-@media (prefers-reduced-motion:reduce){.hdt button,.hdt-toast{transition:none}.hdt button.hdt-chat-launcher{animation:none}.hdt[data-chat-open] .hdt-chatbox{animation:none}.hdt-msg[data-fresh] .hdt-body,.hdt-dots i,.hdt .hdt-typing{animation:none}}
+@media (prefers-reduced-motion:reduce){.hdt button,.hdt-toast{transition:none}.hdt button.hdt-chat-launcher,.hdt button.hdt-chat-launcher::before,.hdt button.hdt-chat-launcher::after{animation:none}.hdt button.hdt-chat-launcher::before,.hdt button.hdt-chat-launcher::after{display:none}.hdt[data-chat-open] .hdt-chatbox{animation:none}.hdt-msg[data-fresh] .hdt-body,.hdt-dots i,.hdt .hdt-typing{animation:none}}
 </style>`;
 
 // Live like a chat: local times, photo counts, replies sent without a reload,
@@ -323,6 +397,8 @@ const SCRIPT = `<script>
       .then(function (html) {
         var next = new DOMParser().parseFromString(html, 'text/html').querySelector('.hdt[data-hdt-stamp]');
         if (!next) return;
+        // The app was updated since this page opened: load it afresh, styles and all.
+        if (next.getAttribute('data-hdt-version') !== root.getAttribute('data-hdt-version') && !typing()) { location.reload(); return; }
         var stick = !fromTeam || atBottom();
         var thread = root.querySelector('.hdt-thread');
         var keep = thread ? thread.scrollTop : 0;
@@ -337,6 +413,7 @@ const SCRIPT = `<script>
         stamp = next.getAttribute('data-hdt-stamp');
         root.setAttribute('data-hdt-stamp', stamp);
         enhance(root);
+        themeButton(root.getAttribute('data-chat-theme'));
         renderTyping();
         if (stick) toBottom(true);
         else if (root.querySelector('.hdt-thread')) root.querySelector('.hdt-thread').scrollTop = keep;
@@ -371,7 +448,22 @@ const SCRIPT = `<script>
       dots.append(document.createElement('i'), document.createElement('i'), document.createElement('i'));
       var label = document.createElement('span');
       label.className = 'hdt-typing-name';
-      bubble.append(dots, label);
+      var face = document.createElement('span');
+      face.className = 'hdt-ava';
+      face.setAttribute('aria-hidden', 'true');
+      bubble.append(face, dots, label);
+    }
+    // The assistant's logo, or the first letter of the person's name, as a capital.
+    var ava = bubble.querySelector('.hdt-ava');
+    if (name === 'Assistant') { ava.setAttribute('data-bot', ''); ava.textContent = ''; }
+    else {
+      ava.removeAttribute('data-bot');
+      var first = '?';
+      for (var i = 0; i < name.length; i++) {
+        var ch = name.charAt(i);
+        if (ch.toUpperCase() !== ch.toLowerCase() || (ch >= '0' && ch <= '9')) { first = ch.toUpperCase(); break; }
+      }
+      ava.textContent = first;
     }
     bubble.querySelector('.hdt-typing-name').textContent = name + ' is typing';
     var stick = atBottom();
@@ -481,8 +573,40 @@ const SCRIPT = `<script>
     box.style.height = height + 'px';
     box.style.overflowY = box.scrollHeight > 160 ? 'auto' : 'hidden';
   }
+  // The chat's light or dark look: the customer's choice, else their device's.
+  function themeButton(theme) {
+    var button = root.querySelector('.hdt-theme');
+    if (!button) return;
+    var label = theme === 'light' ? 'Switch to dark mode' : 'Switch to light mode';
+    button.setAttribute('aria-label', label);
+    button.setAttribute('title', label);
+  }
+  function setTheme(theme, save) {
+    root.setAttribute('data-chat-theme', theme);
+    themeButton(theme);
+    if (save) { try { localStorage.setItem('hdt-chat-theme', theme); } catch (error) { /* private mode */ } }
+  }
   if (root) {
+    var savedTheme = null;
+    try { savedTheme = localStorage.getItem('hdt-chat-theme'); } catch (error) { /* private mode */ }
+    setTheme(savedTheme === 'light' || savedTheme === 'dark' ? savedTheme
+      : window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark', false);
     root.addEventListener('click', function (event) {
+      if (event.target.closest && event.target.closest('.hdt-theme')) {
+        setTheme(root.getAttribute('data-chat-theme') === 'light' ? 'dark' : 'light', true);
+        return;
+      }
+      // A suggested question or quick reply: sent as the customer's message.
+      var chip = event.target.closest && event.target.closest('.hdt-chip');
+      if (chip) {
+        var box = root.querySelector('.hdt-foot textarea');
+        var replyForm = box && box.form;
+        if (!replyForm || chip.disabled) return;
+        box.value = chip.getAttribute('data-ask') || chip.textContent;
+        root.querySelectorAll('.hdt-chip').forEach(function (other) { other.disabled = true; });
+        if (replyForm.requestSubmit) replyForm.requestSubmit(); else replyForm.submit();
+        return;
+      }
       var closeChat = event.target.closest && event.target.closest('.hdt-chat-close');
       if (closeChat) {
         root.removeAttribute('data-chat-open');
@@ -520,10 +644,11 @@ const SCRIPT = `<script>
       if (event.key !== 'Escape' || (!root.hasAttribute('data-chat-expanded') && !root.hasAttribute('data-chat-open'))) return;
       var wasExpanded = root.hasAttribute('data-chat-expanded');
       root.removeAttribute('data-chat-expanded');
-      root.removeAttribute('data-chat-open');
+      var closable = Boolean(root.querySelector('.hdt-chat-close'));
+      if (closable) root.removeAttribute('data-chat-open');
       document.body.style.overflow = '';
       var launcher = root.querySelector('.hdt-chat-launcher');
-      if (launcher) { launcher.setAttribute('aria-expanded', 'false'); launcher.focus(); }
+      if (launcher && closable) { launcher.setAttribute('aria-expanded', 'false'); launcher.focus(); }
       if (!wasExpanded) return;
       var button = root.querySelector('.hdt-expand');
       if (button) {
@@ -574,8 +699,15 @@ const SCRIPT = `<script>
 })();
 </script>`;
 
+// The page's look and script, as a short fingerprint: an open page whose live
+// refresh brings a different one reloads, so new markup never meets old styles.
+const PAGE_VERSION = (() => {
+  let hash = 0;
+  for (const char of STYLES + SCRIPT) hash = (Math.imul(hash, 31) + char.charCodeAt(0)) | 0;
+  return (hash >>> 0).toString(36);
+})();
 const page = (title: string, body: string, attributes = "") => `{% layout 'theme' %}${STYLES}
-<section class="hdt" aria-label="${escape(title)}"${attributes}>${body}</section>${SCRIPT}`;
+<section class="hdt" aria-label="${escape(title)}" data-hdt-version="${PAGE_VERSION}"${attributes}>${body}</section>${SCRIPT}`;
 
 // What the live check compares: the status, how many public messages there are and the newest one.
 // photos: staff allowed photo uploads, so the reply box changes too; decisions: cancellation|address decisions.
@@ -586,6 +718,36 @@ const note = (state: { sent?: boolean; error?: string }) => state.sent ? `<div c
   : state.error ? `<div class="hdt-note" data-tone="error" role="alert">${escape(state.error)}</div>` : "";
 
 // Finding a request without its link: ticket number plus email.
+// Buttons that send their words as the customer's message (the page script).
+const chips = (asks: string[], className: string, label: string) => asks.length
+  ? `<div class="${className}" role="group" aria-label="${escape(label)}">${asks.map((ask) => `<button type="button" class="hdt-chip" data-ask="${escape(ask)}">${escape(ask)}</button>`).join("")}</div>` : "";
+// Ways to start a chat, and to answer the assistant's answer.
+const STARTERS = ["Where is my order?", "Cancel my order", "Return or exchange", "Talk to a person"];
+const FOLLOW_UPS = ["That helped, thanks", "Talk to a person"];
+
+// The assistant's message: its paragraphs, and the questions it offers ("It
+// might be one of these:", "for example:" and a "- " list) as buttons to ask them.
+const SUGGESTIONS_LEAD = /(one of these|for example)[^:\n]*:\s*$/i;
+function botBody(text: string) {
+  const lines = text.split(/\r?\n/);
+  const out: string[] = [];
+  let paragraph: string[] = [];
+  const flush = () => { if (paragraph.length) out.push(`<p>${paragraph.map(escape).join("<br>")}</p>`); paragraph = []; };
+  for (let index = 0; index < lines.length; index++) {
+    const line = lines[index];
+    if (SUGGESTIONS_LEAD.test(line) && lines[index + 1]?.startsWith("- ")) {
+      paragraph.push(line);
+      flush();
+      const asks: string[] = [];
+      while (lines[index + 1]?.startsWith("- ")) asks.push(lines[++index].slice(2).trim());
+      out.push(chips(asks.filter(Boolean).slice(0, 6), "hdt-chips", "Suggested questions"));
+    } else if (!line.trim()) flush();
+    else paragraph.push(line);
+  }
+  flush();
+  return out.join("");
+}
+
 export function renderLookupPage(state: { error?: string; number?: string; email?: string } = {}) {
   return page("Find your request", `
 <div class="hdt-card hdt-hero hdt-lookup">
@@ -820,15 +982,20 @@ export function renderRequestPage(ticket: RequestPageTicket, extras: RequestPage
     return `<li${done ? " data-done" : ""}${index === current && !resolved ? " data-current" : ""}><b>${done ? "✓" : index + 1}</b>${step.label}</li>`;
   }).join("");
 
-  // WhatsApp-style bubbles: the customer's own on the right (green), the team's on the left (white).
+  // WhatsApp-style bubbles: the customer's own on the right, the team's and the assistant's on the left.
   // Consecutive messages from the same person are grouped; the page script adds day dividers in local time.
+  // The customer's own carry no name: they know who they are.
   let previous = "";
   const message = (kind: string, author: string, at: Date, body: string) => {
-    const who = kind === "customer" ? "You" : kind === "bot" ? "Assistant" : author;
+    const who = kind === "bot" ? "Assistant" : author;
     const tag = kind === "reply" ? `<span class="hdt-tag">Support team</span>` : kind === "bot" ? `<span class="hdt-tag">Automated</span>` : "";
     const grouped = previous === `${kind}:${author}`;
     previous = `${kind}:${author}`;
-    return `<div class="hdt-msg" data-kind="${kind}" data-at="${at.toISOString()}"${grouped ? " data-grouped" : ""}><div class="hdt-body">${grouped ? "" : `<div class="hdt-who">${escape(who)}${tag}</div>`}${body}<span class="hdt-meta">${time(at, "clock")}</span></div></div>`;
+    // The assistant's logo, or the first letter of the team member's name.
+    const avatar = kind === "bot" ? `<span class="hdt-ava" data-bot aria-hidden="true"></span>`
+      : kind === "reply" ? `<span class="hdt-ava" aria-hidden="true">${escape(nameInitial(author))}</span>` : "";
+    const name = grouped || kind === "customer" ? "" : `<div class="hdt-who">${escape(who)}${tag}</div>`;
+    return `<div class="hdt-msg" data-kind="${kind}" data-at="${at.toISOString()}"${grouped ? " data-grouped" : ""}>${avatar}<div class="hdt-body">${name}${body}<span class="hdt-meta">${time(at, "clock")}</span></div></div>`;
   };
 
   // The customer's original request, as the first message of the conversation.
@@ -838,16 +1005,32 @@ export function renderRequestPage(ticket: RequestPageTicket, extras: RequestPage
   const requestBody = `${facts ? `<div class="hdt-facts">${facts}</div>` : ""}${written || (facts ? "" : `<p>${escape(ticket.topic)}</p>`)}
 ${productList("Received", extras.receivedProducts)}${productList(wrongItem ? "Wanted instead" : "Products", extras.products)}${files(extras.requestImages)}`;
 
+  // "Clear chat": the customer sees only what came after they last cleared it
+  // (the team still sees everything). The page loads that note as an event.
+  let clearedAt = -1;
+  ticket.messages.forEach((entry, index) => { if (entry.kind === "event") clearedAt = index; });
+  const cleared = clearedAt >= 0;
+  const shown = ticket.messages.slice(clearedAt + 1).filter((entry) => entry.kind !== "event");
+
   // Handed to the team: "Connecting you to a person" until someone joins; then who's chatting.
   const connecting = Boolean(ticket.humanRequestedAt) && !resolved;
   const lastReply = [...ticket.messages].reverse().find((entry) => entry.kind === "reply");
   const agent = !connecting && !resolved && lastReply && Date.now() - lastReply.createdAt.getTime() < 2 * 60 * 60_000 ? lastReply.author : "";
   const advisorStatus = agent
-    ? `<p class="hdt-advisor-status" role="status"><i class="hdt-live" aria-hidden="true"></i>Online now</p>`
-    : connecting ? `<p class="hdt-connecting-status" role="status">Connecting you to a person...</p>` : "";
+    ? `<p class="hdt-advisor-status" role="status"><i class="hdt-live" aria-hidden="true"></i>Online</p>`
+    : connecting ? `<p class="hdt-connecting-status" role="status">Connecting you to a person...</p>`
+      : resolved ? `<p class="hdt-advisor-status">Request resolved</p>`
+        : `<p class="hdt-advisor-status"><i class="hdt-live" aria-hidden="true"></i>Online</p>`;
+  // Quick replies under the assistant's latest message, while it has the chat
+  // (never once a person from the team is on the request): ways to start, or
+  // to say whether its answer helped.
+  const human = Boolean(ticket.humanRequestedAt) || ticket.messages.some((entry) => entry.kind === "reply");
+  const quick = extras.canReply && !resolved && !human && shown.at(-1)?.kind === "bot"
+    ? chips(shown.some((entry) => entry.kind === "customer") || !chat ? FOLLOW_UPS : STARTERS, "hdt-quick", "Quick replies") : "";
   const thread = [
-    ...(chat ? [] : [message("customer", "", ticket.createdAt, requestBody)]),
-    ...ticket.messages.map((entry) => message(entry.kind, entry.author, entry.createdAt, `<p>${multiline(entry.body)}</p>${files(extras.imageCounts.get(entry.id) ?? 0)}`)),
+    ...(chat || cleared ? [] : [message("customer", "", ticket.createdAt, requestBody)]),
+    ...shown.map((entry) => message(entry.kind, entry.author, entry.createdAt, `${entry.kind === "bot" ? botBody(entry.body) : `<p>${multiline(entry.body)}</p>`}${files(extras.imageCounts.get(entry.id) ?? 0)}`)),
+    quick,
     ...(connecting ? [`<div class="hdt-connecting" role="status"><span class="hdt-dots" aria-hidden="true"><i></i><i></i><i></i></span><div><strong>Connecting you to a person...</strong><span>Someone from our team will join this chat shortly. Keep writing here if you like: they'll see everything, and we'll email you when they reply.</span></div></div>`] : []),
     ...(resolved ? [`<p class="hdt-system">Request resolved</p>`] : []),
   ].join("");
@@ -872,7 +1055,7 @@ ${ticket.allowVideos ? `<label class="hdt-drop"><i aria-hidden="true">🎥</i><s
     `<div><dt>Submitted</dt><dd>${time(ticket.createdAt, "date")}</dd></div>`,
     ...SUMMARY_FIELDS.filter((key) => values[key]).map((key) => `<div><dt>${escape(fieldLabels[key] ?? key)}</dt><dd>${escape(fieldValue(key, values[key]))}</dd></div>`),
   ].join("");
-  const count = ticket.messages.length + (chat ? 0 : 1);
+  const count = shown.length + (chat || cleared ? 0 : 1);
 
   const stamp = liveStamp(ticket.status, ticket.messages.length, ticket.messages.at(-1)?.id, ticket.allowPhotos, `${ticket.cancelStatus ?? ""}${ticket.addressStatus ? `|${ticket.addressStatus}` : ""}${ticket.returnStatus ? `|${ticket.returnStatus}` : ""}${ticket.editStatus ? `|e:${ticket.editStatus}` : ""}${ticket.replacementStatus ? `|r:${ticket.replacementStatus}` : ""}${ticket.quoteStatus ? `|q:${ticket.quoteStatus}` : ""}`, ticket.allowVideos);
   return page(`Request #${ticket.number}`, `
@@ -886,11 +1069,12 @@ ${ticket.allowVideos ? `<label class="hdt-drop"><i aria-hidden="true">🎥</i><s
 </div>
 <div class="hdt-layout">
 <div class="hdt-card hdt-chatbox" id="hdt-chatbox">
-<div class="hdt-chat-head"${resolved ? " data-closed" : ""}${connecting ? " data-connecting" : ""}><div class="hdt-chat-brand"><span class="hdt-chat-avatar" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></span>
-<div><h2>${agent ? `<small>You're chatting with</small><span title="${escape(agent)}">${escape(agent)}</span>` : "Chat with our support team"}</h2>${advisorStatus}</div>
+<div class="hdt-chat-head"${resolved ? " data-closed" : ""}${connecting ? " data-connecting" : ""}><div class="hdt-chat-brand">${agent ? `<span class="hdt-chat-avatar" data-person aria-hidden="true">${escape(nameInitial(agent))}</span>` : `<span class="hdt-chat-avatar" data-bot aria-hidden="true"></span>`}
+<div><h2>${agent ? `<small>You're chatting with</small><span title="${escape(agent)}">${escape(agent)}</span>` : "Customer Support"}</h2>${advisorStatus}</div>
  </div><div class="hdt-chat-actions"><span class="hdt-count">${count} message${count === 1 ? "" : "s"}</span>
-<button type="button" class="hdt-chat-close" aria-label="Close chat" title="Close chat"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg></button>
-<button type="button" class="hdt-expand" aria-label="Full screen" title="Full screen" aria-pressed="false"><svg class="hdt-expand-open" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg><svg class="hdt-expand-close" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 14h6v6M20 10h-6V4M14 10l7-7M3 21l7-7"/></svg></button></div></div>
+<button type="button" class="hdt-theme" aria-label="Switch to light mode" title="Switch to light mode"><svg class="hdt-theme-light" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4.2"/><path d="M12 2.5v2.2M12 19.3v2.2M4.6 4.6l1.6 1.6M17.8 17.8l1.6 1.6M2.5 12h2.2M19.3 12h2.2M4.6 19.4l1.6-1.6M17.8 6.2l1.6-1.6"/></svg><svg class="hdt-theme-dark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.5 14.2A8.5 8.5 0 0 1 9.8 3.5a8.5 8.5 0 1 0 10.7 10.7z"/></svg></button>
+<button type="button" class="hdt-expand" aria-label="Full screen" title="Full screen" aria-pressed="false"><svg class="hdt-expand-open" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg><svg class="hdt-expand-close" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 14h6v6M20 10h-6V4M14 10l7-7M3 21l7-7"/></svg></button>
+<button type="button" class="hdt-chat-close" aria-label="Close chat window" title="${resolved ? "Close chat" : "Close chat window (the chat stays open: reopen it any time)"}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg></button></div></div>
 <div class="hdt-thread">${thread}</div>
 ${foot}
 </div>
@@ -903,5 +1087,5 @@ ${shipmentCard(extras.shipment)}
 <p>This page is private to you. Keep the link to yourself: anyone with it can see this request.</p>
 <p>Looking for another request? <a href="?ticket=">Find it with its number</a>.</p></div>
 </aside>
-</div>`, ` data-hdt-stamp="${escape(stamp)}" data-hdt-token="${escape(ticket.accessToken)}"`);
+</div>`, ` data-hdt-stamp="${escape(stamp)}" data-hdt-token="${escape(ticket.accessToken)}"${resolved ? "" : " data-chat-open data-chat-locked"}`);
 }

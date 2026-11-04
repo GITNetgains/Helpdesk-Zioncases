@@ -10,7 +10,7 @@ import { CHAT_TOPIC, deliveryIssues, issues, orderTypes, productParts, topics, u
 // locks, wheels and handles, inserts and the free sling bag come up most.
 export const categories = [
   { name: "Product Damage", description: "Arrived broken, but the shipping box was fine. Cracks, dents and broken parts.",
-    subcategories: ["Cracked acrylic or guard", "Dented or bent case", "Broken risers", "Broken lid", "Broken lock or latch", "Broken wheels or handle", "Other damage"] },
+    subcategories: ["Cracked acrylic or guard", "Dented or bent case", "Broken risers", "Broken lid", "Broken lock or latch", "Broken wheels or handle", "Inside damaged", "Other damage"] },
   { name: "Shipping Damage", description: "Damaged on the way: the shipping box was crushed, dented, wet or opened.",
     subcategories: ["Box crushed or dented", "Damaged in transit", "Package opened or wet"] },
   { name: "Missing Parts", description: "Something wasn't in the box: risers, lids, inserts, the free gift or an accessory.",
@@ -39,9 +39,9 @@ export const categories = [
   { name: "Warranty", description: "A replacement or spare part under warranty, or buying a spare part.",
     subcategories: ["Replacement request", "Buy a replacement part", "Claim status"] },
   { name: "Wholesale Questions", description: "Dealers and stores: pricing, MOQ, applications and tax certificates.",
-    subcategories: ["Dealer pricing", "Minimum order (MOQ)", "Application status", "Tax exemption or resale certificate", "Bulk discount", "Private label", "Other wholesale"] },
+    subcategories: ["Dealer pricing", "Minimum order (MOQ)", "Application status", "Wholesale application rejected", "Tax exemption or resale certificate", "Bulk discount", "Private label", "Other wholesale"] },
   { name: "Affiliates & Partnerships", description: "Affiliates and creators: joining, support and payouts.",
-    subcategories: ["Join the program", "Existing partner support", "Commission or payout"] },
+    subcategories: ["Join the program", "Affiliate application rejected", "Existing partner support", "Commission or payout"] },
   { name: "Website & Checkout", description: "The website, checkout or a discount code isn't working.",
     subcategories: ["Discount code not working", "Checkout not working", "Website error", "Account or login"] },
   { name: "Feedback & Ideas", description: "Complaints, reviews and ideas: what customers wish was different.",
@@ -100,7 +100,7 @@ const DEFECT_BY_PART: Record<number, string> = { 1: "Lid shifts or won't close",
 
 // Sub-categories from the customer's words, most specific first.
 const SUBCATEGORY_WORDS: Record<string, [RegExp, string][]> = {
-  "Product Damage": [[/\briser/i, "Broken risers"], [/\b(acrylic|guard|crack|shatter)/i, "Cracked acrylic or guard"], [/\b(wheel|handle)/i, "Broken wheels or handle"],
+  "Product Damage": [[/\binside\b[^.]*\b(damag|broken|torn|crack)|\b(damag|broken|torn)[^.]*\binside\b/i, "Inside damaged"], [/\briser/i, "Broken risers"], [/\b(acrylic|guard|crack|shatter)/i, "Cracked acrylic or guard"], [/\b(wheel|handle)/i, "Broken wheels or handle"],
     [/\b(lock|latch|clasp|hinge)/i, "Broken lock or latch"], [/\blid\b/i, "Broken lid"], [/\b(dent|bent|gouge|bow)/i, "Dented or bent case"]],
   "Shipping Damage": [[/\b(box|package|parcel)\b[^.]*\b(crush|damag|dent)/i, "Box crushed or dented"], [/\b(wet|opened|tampered)/i, "Package opened or wet"]],
   "Missing Parts": [[/\briser/i, "Risers missing"], [/\bonly \d+ (out (of )?|of )\d+ lids?\b/i, "Lids or panels missing"], [/\b(sling|free gift|gift)/i, "Free gift missing"], [/\b(lid|panel)s?\b/i, "Lids or panels missing"],
@@ -120,9 +120,9 @@ const SUBCATEGORY_WORDS: Record<string, [RegExp, string][]> = {
     [/\b(fit|accommodate|graded)/i, "Doesn't fit my cards"], [/wrong (colou?r|item|size)/i, "Ordered the wrong item or colour"], [/\brefund/i, "Refund status"],
     [/disappoint|quality|not (great|good|working)|expect/i, "Doesn't meet expectations"]],
   Warranty: [[/\b(buy|purchase|order)\b[^.]*\b(part|wheel|lid|riser|replaceable)/i, "Buy a replacement part"], [/status|update/i, "Claim status"]],
-  "Wholesale Questions": [[/pric/i, "Dealer pricing"], [/\bmoq\b|minimum/i, "Minimum order (MOQ)"], [/applica|approv|status/i, "Application status"],
+  "Wholesale Questions": [[/pric/i, "Dealer pricing"], [/\bmoq\b|minimum/i, "Minimum order (MOQ)"], [/reject|denied|declin|not approved/i, "Wholesale application rejected"], [/applica|approv|status/i, "Application status"],
     [/tax|resale|certificate|exempt/i, "Tax exemption or resale certificate"], [/bulk|volume|discount/i, "Bulk discount"], [/private label|custom logo|branding/i, "Private label"]],
-  "Affiliates & Partnerships": [[/commission|payout|paid|payment/i, "Commission or payout"]],
+  "Affiliates & Partnerships": [[/reject|denied|declin|not approved/i, "Affiliate application rejected"], [/commission|payout|paid|payment/i, "Commission or payout"]],
   "Website & Checkout": [[/discount|promo|coupon|code/i, "Discount code not working"], [/checkout|payment/i, "Checkout not working"], [/login|account|password/i, "Account or login"]],
   "Feedback & Ideas": [[/not (a )?(great|good)|\bbad\b|disappoint|terrible|review/i, "Bad review or complaint"], [/colou?r/i, "New colour"], [/size|bigger|smaller/i, "New size"], [/packag/i, "Packaging suggestion"]],
 };
@@ -215,7 +215,7 @@ const DEFECT_FALLBACK: Record<string, string> = { "Product Damage": "Other damag
 
 // Classifies a ticket from what the customer chose on the form and wrote.
 export function classifyTicket(topic: string, details: Record<string, string>): Classification {
-  const text = [details.details, details.query, details.productDetails, details.otherDetails, details.transcript].filter(Boolean).join(" \n");
+  const text = [details.details, details.query, details.orderNote, details.productDetails, details.otherDetails, details.transcript].filter(Boolean).join(" \n");
   const result = (category: string, fallback?: string) => ({ category, subcategory: subcategoryFor(category, text, fallback) });
   const part = details.part in PART ? PART[details.part] : -1;
   const issue = details.issue;

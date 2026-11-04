@@ -112,3 +112,40 @@ export async function cancelShipStationOrders(account: ShipStationAccount, order
   for (const found of open) await call(account, "/orders/createorder", { method: "POST", body: { ...found, orderStatus: "cancelled" } });
   return open.length;
 }
+
+// ---------- Shipping rates ----------
+
+export type ShipStationCarrier = { code: string; name: string };
+// The carriers connected to the ShipStation account, to choose which to quote. null: the keys are wrong.
+export async function listShipStationCarriers(key: string, secret: string): Promise<ShipStationCarrier[] | null> {
+  try {
+    const carriers = await call<{ code: string; name: string }[]>({ key, secret }, "/carriers");
+    return carriers.map((carrier) => ({ code: carrier.code, name: carrier.name })).sort((a, b) => a.name.localeCompare(b.name));
+  } catch (error) {
+    if (error instanceof ShipStationError && (error.status === 401 || error.status === 403)) return null;
+    throw error;
+  }
+}
+
+export type RateRequest = {
+  carriers: string[]; fromPostalCode: string; fromCountry: string;
+  toCountry: string; toState: string; toCity: string; toPostalCode: string; weightOz: number;
+};
+export type CarrierRate = { carrier: string; service: string; cost: number };
+// What each carrier charges to send this weight from the warehouse to the
+// address (ShipStation's /shipments/getrates, one call per carrier, together).
+// A carrier that can't quote (no service there, an error) is left out.
+export async function shipStationRates(account: Pick<ShipStationAccount, "key" | "secret">, request: RateRequest, carrierNames: Record<string, string> = {}): Promise<CarrierRate[]> {
+  const answers = await Promise.allSettled(request.carriers.map((carrierCode) => call<{ serviceName: string; serviceCode: string; shipmentCost: number; otherCost: number }[]>(account, "/shipments/getrates", {
+    method: "POST",
+    body: {
+      carrierCode, serviceCode: null, packageCode: null,
+      fromPostalCode: request.fromPostalCode, fromCountry: request.fromCountry,
+      toCountry: request.toCountry, toState: request.toState || null, toCity: request.toCity || null, toPostalCode: request.toPostalCode || null,
+      weight: { value: Math.max(1, Math.ceil(request.weightOz)), units: "ounces" },
+      confirmation: "none", residential: true,
+    },
+  }).then((rates) => rates.map((rate) => ({ carrier: carrierNames[carrierCode] ?? carrierCode, service: rate.serviceName, cost: Number(rate.shipmentCost) + Number(rate.otherCost || 0) })))));
+  for (const answer of answers) if (answer.status === "rejected") console.error("ShipStation couldn't quote a carrier:", answer.reason instanceof Error ? answer.reason.message : answer.reason);
+  return answers.flatMap((answer) => answer.status === "fulfilled" ? answer.value : []).filter((rate) => Number.isFinite(rate.cost) && rate.cost > 0);
+}

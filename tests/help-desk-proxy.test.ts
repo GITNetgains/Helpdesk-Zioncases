@@ -6,11 +6,11 @@ const mocks = vi.hoisted(() => ({
 vi.mock("../app/shopify.server", () => ({ authenticate: { public: { appProxy: mocks.authenticate } } }));
 vi.mock("../app/db.server", () => ({ default: mocks.db }));
 vi.mock("../app/services/help-desk.server", () => ({
-  readHelpDeskForm: mocks.read, submitTicket: mocks.submit, addCustomerMessage: mocks.reply, MAX_REPLY_IMAGES: 3,
+  readHelpDeskForm: mocks.read, submitTicket: mocks.submit, addCustomerMessage: mocks.reply, clearCustomerChat: vi.fn(), MAX_REPLY_IMAGES: 3,
   customerCanReply: (ticket: { channel: string; status: string }) => ticket.channel === "chat" || ticket.status === "Waiting on customer",
 }));
 vi.mock("../app/services/help-desk-outbox.server", () => ({ queueEmail: mocks.queue, ensureWorker: vi.fn() }));
-vi.mock("../app/services/help-desk-shipping.server", () => ({ lookupShipping: mocks.shipping, loadShippingSetup: async () => undefined }));
+vi.mock("../app/services/help-desk-shipping.server", () => ({ lookupShipping: mocks.shipping, loadShippingSetup: async () => undefined, liveRatesOn: async () => false, liveShippingRates: async () => ({ available: false }) }));
 vi.mock("../app/services/image-scan/scan.server", () => ({ queueTicketScans: vi.fn() }));
 import { action, loader } from "../app/routes/help-desk";
 import { resetRateLimits } from "../app/services/rate-limit.server";
@@ -78,7 +78,9 @@ describe("Storefront help desk endpoint", () => {
   it("exposes only form choices to logged-out shoppers, never tickets", async () => {
     const data = await (await loader(args("GET"))).json();
     expect(data.topics).toHaveLength(6);
-    expect(Object.keys(data).sort()).toEqual(["addressProvider", "addressSuggestions", "articles", "cancelReasons", "cancelScopes", "collections", "countries", "deliveryIssues", "groups", "home", "issueResolutions", "issues", "orderTypes", "orders", "productParts", "provinces", "purchasePlaces", "shippingCountries", "tickets", "topics", "updates"]);
+    expect(Object.keys(data).sort()).toEqual(["addressProvider", "addressSuggestions", "articles", "cancelReasons", "cancelScopes", "collections", "countries", "deliveryIssues", "groups", "home", "issueResolutions", "issues", "liveRates", "orderTypes", "orders", "productParts", "provinces", "purchasePlaces", "shippingCountries", "tickets", "topics", "updates"]);
+    // Live shipping rates: only whether they're on, never the store's ShipStation details.
+    expect(data.liveRates).toBe(false);
     // Orders and tickets are only looked up for a signed-in shopper (logged_in_customer_id).
     expect(data.orders).toBeNull();
     expect(data.tickets).toBeNull();
@@ -171,7 +173,8 @@ describe("Live request page", () => {
     expect(await response.json()).toEqual({ stamp: "Waiting on customer:2:m2:0:", typing: null });
     const query = mocks.db.helpDeskTicket.findFirst.mock.calls[0][0];
     expect(query.where).toEqual({ shop: "verified.myshopify.com", accessToken: token });
-    expect(query.select.messages.where).toEqual({ kind: { in: ["customer", "reply", "bot"] } });
+    // The customer's own messages and replies, and where they cleared the chat (so an open page clears too); never internal notes.
+    expect(query.select.messages.where).toEqual({ OR: [{ kind: { in: ["customer", "reply", "bot"] } }, { kind: "event", body: "Customer cleared their chat." }] });
   });
   it("rejects malformed tokens and unknown tickets", async () => {
     expect((await get("ticket=not-a-token&pulse=1")).status).toBe(404);

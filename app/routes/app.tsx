@@ -80,6 +80,44 @@ html.hd-theme-dark,html.hd-theme-dark body{background:#0a0a0a;color-scheme:dark}
 .hd-theme-dark .hd-inbox-kpi:hover .hd-admin-card{border-color:#444}
 .hd-theme-dark .hd-inbox-toolbar [role="tab"]:hover{box-shadow:0 3px 10px rgba(0,0,0,.5)}
 @media(prefers-reduced-motion:reduce){.hd-admin-shell{transition:none}}
+/* Live: a beating dot while the screen keeps itself up to date, a flash of "Updated" when a change comes in. */
+.hd-live{display:inline-flex;align-items:center;gap:7px;flex:none;height:32px;padding:0 12px;border:1px solid var(--hd-border);border-radius:999px;background:var(--hd-surface);color:var(--hd-ink);font-size:12px;font-weight:650;letter-spacing:.01em;white-space:nowrap}
+.hd-live i{position:relative;width:8px;height:8px;border-radius:50%;background:#12b76a}
+.hd-live i::after{content:"";position:absolute;inset:0;border-radius:50%;background:#12b76a;animation:hd-live-beat 1.8s cubic-bezier(.2,.6,.3,1) infinite}
+.hd-live[data-state="offline"]{color:var(--hd-muted)}
+.hd-live[data-state="offline"] i,.hd-live[data-state="offline"] i::after{background:#98a2b3;animation:none}
+.hd-live-flash{animation:hd-live-flash 1.2s ease}
+@keyframes hd-live-beat{0%{transform:scale(1);opacity:.7}100%{transform:scale(2.8);opacity:0}}
+@keyframes hd-live-flash{0%{color:#12b76a}100%{color:inherit}}
+/* Switching light and dark: the new look spreads in a circle from the button. */
+::view-transition-old(root),::view-transition-new(root){animation:none;mix-blend-mode:normal}
+html.hd-theme-switching::view-transition-new(root){animation:hd-theme-reveal .65s cubic-bezier(.65,0,.35,1) both}
+@keyframes hd-theme-reveal{from{clip-path:circle(0 at var(--hd-vt-x) var(--hd-vt-y))}to{clip-path:circle(var(--hd-vt-r) at var(--hd-vt-x) var(--hd-vt-y))}}
+/* Screens open with their parts rising in, one after another. */
+.hd-admin-page>*:not(.hd-admin-nav),.hd-settings-body>*{animation:hd-rise .42s cubic-bezier(.2,.7,.25,1) backwards}
+.hd-admin-page>*:nth-child(2),.hd-settings-body>*:nth-child(2){animation-delay:.04s}
+.hd-admin-page>*:nth-child(3),.hd-settings-body>*:nth-child(3){animation-delay:.08s}
+.hd-admin-page>*:nth-child(4),.hd-settings-body>*:nth-child(4){animation-delay:.12s}
+.hd-admin-page>*:nth-child(n+5),.hd-settings-body>*:nth-child(n+5){animation-delay:.16s}
+.hd-inbox-kpi:nth-child(1) .hd-admin-card{animation:hd-pop .45s .05s cubic-bezier(.2,.7,.25,1) backwards}
+.hd-inbox-kpi:nth-child(2) .hd-admin-card{animation:hd-pop .45s .1s cubic-bezier(.2,.7,.25,1) backwards}
+.hd-inbox-kpi:nth-child(3) .hd-admin-card{animation:hd-pop .45s .15s cubic-bezier(.2,.7,.25,1) backwards}
+.hd-inbox-kpi:nth-child(4) .hd-admin-card{animation:hd-pop .45s .2s cubic-bezier(.2,.7,.25,1) backwards}
+.hd-inbox-kpi:active .hd-admin-card,.hd-settings-card:active{transform:scale(.985)}
+@keyframes hd-rise{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+@keyframes hd-pop{from{opacity:0;transform:translateY(8px) scale(.97)}to{opacity:1;transform:none}}
+/* Dark, furnished: a soft glow on the canvas, cards lit at the edge, glowing focus and the brand's blue on what's active. */
+.hd-admin-shell.hd-theme-dark{background:radial-gradient(1200px 520px at 50% -180px,rgba(59,91,219,.16),transparent 70%),radial-gradient(800px 400px at 100% 0,rgba(239,58,36,.06),transparent 70%),var(--hd-canvas)}
+.hd-theme-dark .hd-admin-card,.hd-theme-dark .hd-inbox-workspace,.hd-theme-dark .hd-settings-nav,.hd-theme-dark .hd-settings-card{border-color:#2c2f36;background-image:linear-gradient(180deg,rgba(255,255,255,.025),transparent 60%)}
+.hd-theme-dark .hd-inbox-kpi:hover .hd-admin-card,.hd-theme-dark .hd-settings-card:hover{border-color:#4a5cb8;box-shadow:0 0 0 1px rgba(142,162,255,.18),0 14px 34px rgba(0,0,0,.55),0 0 28px rgba(59,91,219,.14)}
+.hd-theme-dark .hd-inbox-kpi.is-active .hd-admin-card{box-shadow:0 0 0 2px var(--hd-accent-line),0 0 30px rgba(142,162,255,.2)}
+.hd-theme-dark .hd-settings-link[aria-current="page"]{background:linear-gradient(90deg,rgba(142,162,255,.18),rgba(142,162,255,.04))}
+.hd-theme-dark .hd-live{background:#17191d;border-color:#2c2f36}
+.hd-theme-dark .hd-live:not([data-state="offline"]){box-shadow:0 0 14px rgba(18,183,106,.16)}
+.hd-theme-dark *:focus-visible{outline-color:#8ea2ff}
+.hd-theme-dark{scrollbar-color:#3a3f4a transparent}
+.hd-theme-dark ::-webkit-scrollbar{width:10px;height:10px}.hd-theme-dark ::-webkit-scrollbar-thumb{background:#3a3f4a;border-radius:10px;border:2px solid transparent;background-clip:padding-box}.hd-theme-dark ::-webkit-scrollbar-track{background:transparent}
+@media(prefers-reduced-motion:reduce){.hd-admin-page>*,.hd-settings-body>*,.hd-inbox-kpi .hd-admin-card,.hd-live i::after,.hd-live-flash{animation:none!important}html.hd-theme-switching::view-transition-new(root){animation:none}.hd-inbox-kpi:active .hd-admin-card,.hd-settings-card:active{transform:none}}
 `;
 
 function AdminThemeShell() {

@@ -23,8 +23,8 @@ import { DASHBOARD_RANGES, type DashboardRange } from "./help-desk-dashboard";
 import { PAGE_SIZE, PERIODS, SORTS, TOPICS, VIEWS, type View } from "./help-desk-views";
 import { forget, memo } from "./memo.server";
 import { forgetShippingSetup, loadShippingSetup } from "./help-desk-shipping.server";
-import { parseDays, readShippingSettings } from "./help-desk-shipping";
-import { listShipStationStores, shipStationAccount, shipStationStatus } from "./help-desk-shipstation.server";
+import { parseDays, readShipStationRates, readShippingSettings } from "./help-desk-shipping";
+import { listShipStationCarriers, listShipStationStores, shipStationAccount, shipStationStatus } from "./help-desk-shipstation.server";
 import { checkPlacesKey } from "./help-desk-places.server";
 import type { ShipStationStatus } from "./help-desk";
 import { deleteArticle, ensureArticles, forgetShopifyAnswers, listArticles, restoreStarterArticles, shopifySourcesStatus, unansweredSearches } from "./help-desk-articles.server";
@@ -79,13 +79,17 @@ function setupStatus(settings: Context["settings"]) {
 }
 
 export async function loadSettings({ admin, shop, settings, staff, base }: Context) {
-  const [macros, store, shippingSetup, shipStationStores, articles, unanswered, answerSources] = await Promise.all([
+  const [macros, store, shippingSetup, shipStationStores, shipStationCarriers, articles, unanswered, answerSources] = await Promise.all([
     db.helpDeskMacro.findMany({ where: { shop }, orderBy: { createdAt: "asc" } }),
     loadShop(admin).catch(() => ({ name: "", email: "", url: "" })),
     loadShippingSetup(admin, shop),
     // The account's stores, to choose from (null: the saved keys stopped working; undefined: not asked).
     settings.shipstationKey && settings.shipstationSecret
       ? memo(shipStationStoresKey(shop), 10 * MINUTE, () => listShipStationStores(settings.shipstationKey, settings.shipstationSecret).catch(() => undefined))
+      : Promise.resolve(undefined),
+    // Its carriers, to choose which quote live international rates.
+    settings.shipstationKey && settings.shipstationSecret
+      ? memo(`ship-carriers|${shop}`, 60 * MINUTE, () => listShipStationCarriers(settings.shipstationKey, settings.shipstationSecret)).catch(() => undefined)
       : Promise.resolve(undefined),
     // Help articles customers search on the storefront form, what they searched
     // that nothing answered, and what's read from the store's policies, pages and products.
@@ -109,6 +113,8 @@ export async function loadSettings({ admin, shop, settings, staff, base }: Conte
     shipStation: {
       hasKeys: Boolean(settings.shipstationKey && settings.shipstationSecret), storeId: settings.shipstationStoreId,
       stores: shipStationStores ?? [], keysWork: shipStationStores !== null, reachable: shipStationStores !== undefined,
+      // Live international rates: the store's choices, and the carriers on the account.
+      rates: readShipStationRates(settings.shippingTimes), carriers: shipStationCarriers ?? [], home: shippingSetup?.home ?? "US",
     },
     // Shipping Times: the store's zones and rates from Shopify (null: read_shipping
     // not granted yet; undefined: Shopify couldn't be asked) and what the store set.
@@ -302,7 +308,9 @@ export const helpDeskAction = async ({ request }: ActionFunctionArgs) => {
           rates[name.trim().slice(0, 120)] = days.trim().slice(0, 10);
         }
         if (text("note").length > 500) return fail("Use no more than 500 characters.", 400, "note");
-        const shippingTimes = JSON.stringify({ processing, rates, note: text("note").trim() });
+        // The ShipStation rate settings live in the same JSON: kept as they are.
+        const before = await db.helpDeskSettings.findUnique({ where: { shop }, select: { shippingTimes: true } });
+        const shippingTimes = JSON.stringify({ processing, rates, note: text("note").trim(), shipstationRates: readShipStationRates(before?.shippingTimes) });
         await db.helpDeskSettings.upsert({ where: { shop }, update: { shippingTimes }, create: { shop, shippingTimes } });
         forgetShippingSetup(shop);
         return data<ActionResult>({ errors: {} });
@@ -487,6 +495,36 @@ export const helpDeskAction = async ({ request }: ActionFunctionArgs) => {
         await db.helpDeskSettings.upsert({ where: { shop }, update: next, create: { shop, ...next } });
         return data<ActionResult>({ errors: {}, notice: storeId ? "ShipStation connected" : "Keys saved. Now choose the ShipStation store that holds this shop's orders." });
       }
+      // Live international shipping rates from ShipStation: on or off, the
+      // carriers to quote, the warehouse it ships from, packaging and markup.
+      // Saved next to the shipping times, which stay as they are.
+      case "shipstation-rates": {
+        const row = await db.helpDeskSettings.findUnique({ where: { shop }, select: { shippingTimes: true, shipstationKey: true, shipstationSecret: true } });
+        const enabled = text("enabled") === "true";
+        const carriers = text("carriers").split(",").map((code) => code.trim()).filter((code) => /^[\w-]{1,60}$/.test(code)).slice(0, 10);
+        const fromPostalCode = text("fromPostalCode").trim().toUpperCase().slice(0, 20);
+        const fromCountry = text("fromCountry").trim().toUpperCase();
+        const currency = text("currency").trim().toUpperCase() || "USD";
+        const amount = (key: string) => { const value = text(key).trim(); return value === "" ? 0 : Number(value); };
+        const packagingOz = amount("packagingOz");
+        const markupPercent = amount("markupPercent");
+        const markupFlat = amount("markupFlat");
+        if (!/^[A-Z]{2}$/.test(fromCountry)) return fail("Choose the country the warehouse ships from.", 400, "fromCountry");
+        if (!/^[A-Z]{3}$/.test(currency)) return fail("Enter a 3-letter currency code, like USD.", 400, "currency");
+        for (const [key, value, max] of [["packagingOz", packagingOz, 1600], ["markupPercent", markupPercent, 500], ["markupFlat", markupFlat, 10000]] as const) {
+          if (!Number.isFinite(value) || value < 0 || value > max) return fail(`Enter a number from 0 to ${max}.`, 400, key);
+        }
+        if (enabled) {
+          if (!row?.shipstationKey || !row.shipstationSecret) return fail("Connect ShipStation above first.", 400, "enabled");
+          if (!fromPostalCode) return fail("Enter the postal code the warehouse ships from.", 400, "fromPostalCode");
+          if (!carriers.length) return fail("Choose at least one carrier to quote.", 400, "carriers");
+        }
+        let saved: Record<string, unknown> = {};
+        try { saved = JSON.parse(row?.shippingTimes || "{}") ?? {}; } catch { saved = {}; }
+        const shippingTimes = JSON.stringify({ ...saved, shipstationRates: { enabled, carriers, fromPostalCode, fromCountry, packagingOz, markupPercent, markupFlat, currency } });
+        await db.helpDeskSettings.upsert({ where: { shop }, update: { shippingTimes }, create: { shop, shippingTimes } });
+        return data<ActionResult>({ errors: {}, notice: enabled ? "Live shipping rates are on" : "Shipping rate settings saved" });
+      }
       // Google Places key for address suggestions (checked with Google first), or removing it.
       case "places-settings": {
         forget(`places-key|${shop}`);
@@ -561,7 +599,8 @@ export const helpDeskAction = async ({ request }: ActionFunctionArgs) => {
       case "assistant-settings": {
         const copy: Partial<Record<AssistantCopyKey, string>> = {};
         for (const key of Object.keys(ASSISTANT_COPY) as AssistantCopyKey[]) {
-          const value = text(key).trim();
+          // Forms send line breaks as \r\n: the default's \n is still the default.
+          const value = text(key).replace(/\r\n?/g, "\n").trim();
           if (value.length > MAX_ASSISTANT_COPY) return fail(`Use no more than ${MAX_ASSISTANT_COPY} characters.`, 400, key);
           if (value && value !== ASSISTANT_COPY[key]) copy[key] = value;
         }

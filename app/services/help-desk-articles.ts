@@ -38,45 +38,92 @@ const STOP = new Set(("a an the i im i'm me my mine we our you your it its is ar
   + "to of in on at for from with by as and or but if so this that these those there here what which who whom how when why can could would "
   + "should will just about any some please thanks thank hi hello hey get got one also very really still yet want wanted need needed "
   + "like would'nt dont don't didnt didn't im ive i've isnt isn't wasnt wasn't zion guys y'all yall recently today yesterday "
-  + "last week weeks ago time came come just now able know let tell help issue problem question thing").split(/\s+/));
+  + "last week weeks ago time came come just now able know let tell help issue problem question thing "
+  // Every question is about a case: the word says nothing about which one.
+  + "case cases under "
+  // How people talk in a chat, around what they're asking: "honestly", "is that
+  // normal", "this is ridiculous, again". (Not feelings that are the question:
+  // "frustrated" and "disappointed" stay.)
+  + "honestly seriously literally actually basically totally absolutely ridiculous unbelievable again already normal "
+  + "all over took take taking out wondering hoping guess check checking "
+  + "monday tuesday wednesday thursday friday saturday sunday "
+  // Hinglish fillers: "address galat daal diya, change kar do".
+  + "daal dala daala diya diye kar kardo de dena do lo raha rahe "
+  // Hinglish: "mera order kab aayega", "return kaise kare".
+  + "mera meri mere mujhe muje hai hain tha thi karna karni karo kare karu kaise kaisa kya kyu kyun ka ki ke ko se mein aur bhi kab abhi tak hua hui ho gaya gayi raha rahi bhai yaar ji").split(/\s+/));
 
 // Common misspellings in customer emails.
 const TYPOS: Record<string, string> = {
-  brok: "broken", gaurd: "guard", gaurds: "guards", hawai: "hawaii", recieved: "received", recieve: "receive", exhange: "exchange", exhcange: "exchange",
-  delievered: "delivered", deliverd: "delivered", shippement: "shipment", shipement: "shipment", defected: "defective", defetced: "defective",
-  warrnaty: "warranty", warrenty: "warranty", repalcement: "replacement", replacment: "replacement", uodates: "updates", colur: "colour",
+  brok: "broken", gaurd: "guard", gaurds: "guards", hawai: "hawaii", recieved: "received", recieve: "receive", recived: "received", exhange: "exchange", exhcange: "exchange", exchnage: "exchange",
+  delievered: "delivered", deliverd: "delivered", shippement: "shipment", shipement: "shipment", shiping: "shipping", shippng: "shipping", defected: "defective", defetced: "defective",
+  warrnaty: "warranty", warrenty: "warranty", waranty: "warranty", repalcement: "replacement", replacment: "replacement", uodates: "updates", colur: "colour",
+  adress: "address", addres: "address", adres: "address", intl: "international", retrun: "return", retun: "return", rfund: "refund", damged: "damaged", damaeged: "damaged",
+  wholsale: "wholesale", contct: "contact", mising: "missing", packge: "package", pakage: "package", ordr: "order", oder: "order", trackng: "tracking", cancell: "cancel",
 };
 
+// Everyday words that look like a misspelling of an article's word ("mind"
+// and "find"): left as typed.
+const COMMON = new Set(("mind kind mine fine line item items nice glad sure okay well good great soon late many much more less same other else ever never "
+  + "once twice hand home house work works worked room told said says sent bought paid gave give make made took take used open opened free full part shown showing "
+  + "wife husband son daughter friend kid kids birthday christmas show shows event store shop online box boxes card cards case cases").split(/\s+/));
+
 // Words customers use for the same thing, folded to one.
+// Hinglish words customers write ("toota hua aaya", "refund kab milega") are
+// folded with the English ones.
 const SAME: [RegExp, string][] = [
-  [/^(broke|broken|snap|snapped|crack|cracked|cracking|chip|chipped|shatter|shattered|damag|damaged|dent|dented|gouge|gouged|bent)$/, "damage"],
-  [/^(miss|missing|without|wihout|absent|lacking)$/, "missing"],
-  [/^(track|tracking|where|status|update|updates)$/, "track"],
-  [/^(refund|refunds|refunded|money|reimburse)$/, "refund"],
-  [/^(return|returns|returning|returned|send)$/, "return"],
-  [/^(exchange|swap|switch|replace)$/, "exchange"],
-  [/^(scratch|scratches|scratched|scuff|scuffs|marks|lines)$/, "scratch"],
-  [/^(cloudy|hazy|foggy|clear|transparent|film|wrapper|wrappers|peel)$/, "film"],
-  [/^(colour|color|colours|colors|variant|variants|black|white|blue|red|green|grey|gray|pink|purple|orange|yellow|navy|silver|gold|gunmetal|carbon)$/, "colour"],
-  [/^(lid|lids|top|tops|cover|covers)$/, "lid"],
+  [/^(broke|broken|snap|snapped|crack|cracked|cracking|chip|chipped|shatter|shattered|damag|damaged|dent|dented|gouge|gouged|bent|smash|smashed|crush|crushed|destroy|destroyed|bust|busted|ruin|ruined|toota|tuta|tooti|tuti|toot|kharab)$/, "damage"],
+  // A missed delivery isn't a missing item.
+  [/^(missed)$/, "missed"],
+  [/^(miss|missing|without|wihout|absent|lacking|gayab|ghayab)$/, "missing"],
+  [/^(track|tracking|where|status|update|updates|whereabouts|eta|kahan|kaha|kidhar)$/, "track"],
+  [/^(refund|refunds|refunded|money|reimburse|reimbursed|reimbursement|paisa|paise|paisay)$/, "refund"],
+  [/^(return|returns|returning|returned|wapas|wapis|vapas|vapis)$/, "return"],
+  [/^(exchange|exchanges|exchanged|swap|swapped|switch|replace|badal|badalna|badlo|badli)$/, "exchange"],
+  [/^(scratch|scratches|scratched|scuff|scuffs|scuffed|marks|lines)$/, "scratch"],
+  [/^(cloudy|hazy|foggy|milky|clear|transparent)$/, "cloudy"],
+  [/^(film|wrapper|wrappers|peel|peeling)$/, "film"],
+  [/^(colour|color|colours|colors|colorway|colourway|variant|variants|black|white|blue|red|green|grey|gray|pink|purple|orange|yellow|navy|silver|gold|gunmetal|carbon)$/, "colour"],
+  // Not "cover" (a warranty covers it) or "top" (top loaders).
+  [/^(lid|lids)$/, "lid"],
   [/^(riser|risers|stand|stands)$/, "riser"],
-  [/^(lock|locks|combination|code|latch|latches)$/, "lock"],
-  [/^(ship|shipping|shipped|shipment|deliver|delivery|delivered|arrive|arrived)$/, "ship"],
-  [/^(fast|faster|expedite|expedited|rush|express|overnight)$/, "expedite"],
-  [/^(cancel|cancelled|canceled|cancellation|stop)$/, "cancel"],
+  // Not "code": a discount code or a sign in code isn't a lock. Nor a lid's latches.
+  [/^(lock|locks|locked|unlock|unlocked|combination|combo)$/, "lock"],
+  [/^(latch|latches|clasp|clasps|buckle|buckles)$/, "latch"],
+  [/^(package|packages|parcel|parcels|pkg)$/, "package"],
+  [/^(door|doorstep|porch|mailbox|doorbell|lobby)$/, "door"],
+  [/^(wholesale|wholesaler|dealer|dealers|dealership|reseller|resellers|resell|retailer|retailers|distributor|distributors|stockist)$/, "wholesale"],
+  [/^(change|changes|changed|changing|modify|modified|modification|edit|edits|edited|alter|amend|amended)$/, "change"],
+  // Shipping (sending it) and delivery (getting it) are kept apart: "shipping
+  // cost" isn't about a package that says delivered.
+  [/^(ship|ships|shipping|shipped|shipment|shipments|dispatch|dispatched|send|sent|sending|post|posted|mail|mailed)$/, "ship"],
+  [/^(deliver|delivers|delivery|deliveries|delivered|arrive|arrives|arrived|arriving|arrival|coming|aaya|aya|aayi|ayi|aayega|ayega|aaega|mila|mili|milega|milegi)$/, "deliver"],
+  // "How much", "shipping charges"; but "charged twice" is a payment.
+  [/^(cost|costs|price|prices|priced|pricing|fee|fees|rate|rates|charge|charges|much|expensive)$/, "cost"],
+  [/^(customs|duty|duties|tariff|tariffs|vat|gst|import)$/, "customs"],
+  [/^(fast|faster|fastest|expedite|expedited|rush|express|overnight|asap|urgent|urgently|quick|quicker|quickly|sooner|jaldi)$/, "expedite"],
+  [/^(cancel|cancelled|canceled|cancellation|cancelation|stop)$/, "cancel"],
+  [/^(delay|delays|delayed|late|slow|slowly|behind)$/, "delay"],
+  // A date it's needed by ("by friday", "for christmas": see DEADLINES below).
+  [/^(deadline|christmas|xmas|birthday)$/, "deadline"],
+  [/^(transit|intransit)$/, "transit"],
   [/^(fit|fits|fitting|accommodate)$/, "fit"],
   [/^(wheel|wheels|handle|handles)$/, "wheel"],
-  [/^(wrong|incorrect|instead)$/, "wrong"],
+  [/^(wrong|incorrect|instead|galat|glt|galt)$/, "wrong"],
+  [/^(weight|weigh|weighs|heavy|heaviness|lbs|pounds|kg|kgs)$/, "weight"],
+  [/^(dimension|dimensions|dimentions|measurement|measurements|measure|measures)$/, "dimension"],
+  [/^(quality|cheap|cheaply|flimsy|poorly)$/, "quality"],
+  [/^(described|description|picture|pictures|photo|photos|advertised|listing|listed)$/, "described"],
+  [/^(military|apo|fpo|dpo)$/, "apo"],
   // Places outside the U.S. customers name instead of saying "international".
   [/^(international|overseas|worldwide|abroad|uk|england|london|ireland|canada|toronto|vancouver|australia|sydney|zealand|europe|france|paris|spain|espana|germany|italy|netherlands|belgium|sweden|norway|denmark|switzerland|austria|portugal|poland|japan|singapore|india|dubai|uae|mexico|brazil|philippines|korea|hong|kong|malaysia|israel)$/, "international"],
   [/^(discount|promo|coupon)$/, "discount"],
   [/^(defect|defective|faulty|malfunction)$/, "defect"],
   [/^(guard|guards|acrylic|glass|plastic|panel|panels)$/, "acrylic"],
   [/^(warranty|guarantee)$/, "warranty"],
-  [/^(lost|stuck|moving|moved)$/, "lost"],
+  [/^(lost|stuck|moving|moved|frozen|froze|stalled|stagnant)$/, "lost"],
   [/^(bowing|bow|warp|warped|uneven|flat)$/, "bowing"],
   // Reaching a person: "agent", "talk to someone", "phone number".
-  [/^(agent|agents|human|representative|rep|operator|support|contact|contacting|reach|talk|speak|call|calling|phone|helpline|hotline|whatsapp|chat)$/, "contact"],
+  [/^(agent|agents|human|person|representative|rep|operator|support|contact|contacting|reach|talk|speak|call|calling|phone|helpline|hotline|whatsapp|chat)$/, "contact"],
 ];
 
 const stem = (typed: string) => {
@@ -91,6 +138,16 @@ const stem = (typed: string) => {
 // question about slabs; "scratch-resistant" and "scratch-less" lids aren't scratched.
 const PRODUCT_NAMES: [RegExp, string][] = [
   [/\bslab\s+cases?\b/g, "case"], [/\b(horizontal\s+|vertical\s+)?display\s+cases?\b/g, "case"], [/\bscratch[\s-]*(resistant|less|proof)\b/g, ""], [/\bsr\b/g, ""], [/\bsling\s+bags?\b/g, "sling"],
+  // One word however it's written: "pre-order", "pre order", "preorder".
+  [/\bpre[\s-]+orders?\b/g, "preorder"], [/\bpre[\s-]+ordered\b/g, "preordered"],
+  // Bought "in person" isn't asking for a person.
+  [/\bin[\s-]+person\b/g, "inperson"],
+  // A day it's needed by is a deadline ("can it arrive by friday", "it's a
+  // birthday gift"); a day on its own isn't ("I ordered on monday").
+  [/\b(by|before|until|till|for)\s+(this\s+|next\s+|the\s+)?(monday|tuesday|wednesday|thursday|friday|saturday|sunday|tomorrow|weekend|the weekend|christmas|xmas|my birthday|a birthday)\b/g, "deadline"],
+  [/\b(it'?s|its|it is)\s+a\s+(birthday\s+|christmas\s+)?(gift|present)\b/g, "deadline"],
+  // "Custom fees" are customs, not a custom order.
+  [/\bcustom\s+(fees?|dut(y|ies)|charges?|tax|taxes|clearance)\b/g, "customs $1"],
 ];
 
 export function searchWords(text: string) {
@@ -122,6 +179,13 @@ function editDistance(a: string, b: string, most: number) {
   return previous[b.length];
 }
 
+// Whether every letter of part is in word, in order ("noify" in "notify").
+function within(part: string, word: string) {
+  let at = 0;
+  for (const char of word) if (char === part[at]) at++;
+  return at === part.length;
+}
+
 // What the customer meant, when a word isn't one any article uses: "cancle"
 // is "cancel", "refnd" is "refund", "trackin" is "tracking". Words the
 // articles already know, and short or stop words, are left alone. corrected
@@ -133,15 +197,24 @@ export function correctQuery(query: string, articles: { question: string; keywor
   const words = [...vocabulary];
   let changed = false;
   const corrected = query.toLowerCase().replace(/[a-z]+/g, (word) => {
-    if (word.length < 4 || STOP.has(word) || vocabulary.has(word) || known.has(stem(word)) || TYPOS[word]) return word;
+    // A misspelling the search already knows, written as meant.
+    if (TYPOS[word]) { changed = true; return TYPOS[word]; }
+    if (word.length < 4 || STOP.has(word) || COMMON.has(word) || vocabulary.has(word) || known.has(stem(word))) return word;
+    // A word the search already understands ("smashed" is damage) isn't a misspelling.
+    if (SAME.some(([pattern]) => pattern.test(word) || pattern.test(stem(word)))) return word;
     const most = word.length <= 5 ? 1 : 2;
     let best = "";
     let bestDistance = most + 1;
     for (const candidate of words) {
-      // A word typed partly ("trackin"): the article's word it starts.
-      const distance = candidate.startsWith(word) && candidate.length - word.length <= 3 ? 0.5 : editDistance(word, candidate, most);
-      // Ties go to the word that starts the same way.
-      if (distance < bestDistance || (distance === bestDistance && best[0] !== word[0] && candidate[0] === word[0])) { best = candidate; bestDistance = distance; }
+      // A misspelling nearly always starts right: "parcel" isn't "cancel", nor "door" "poor".
+      if (candidate[0] !== word[0]) continue;
+      // A word typed partly ("trackin"): the article's word it starts. A letter
+      // left out is the commonest slip, so "noify" is "notify" before "noisy",
+      // and "cary" "carry" before "card".
+      const distance = candidate.startsWith(word) && candidate.length - word.length <= 3 ? 0.5
+        : editDistance(word, candidate, most) - (candidate.length > word.length && within(word, candidate) ? 0.25 : 0);
+      // Between two as close, the word that says something: "witdh" is "width", not "with".
+      if (distance < bestDistance || (distance === bestDistance && STOP.has(best) && !STOP.has(candidate))) { best = candidate; bestDistance = distance; }
     }
     if (!best) return word;
     changed = true;
@@ -155,7 +228,8 @@ export function correctQuery(query: string, articles: { question: string; keywor
 type Searchable = { id: string; question: string; keywords: string; answer: string; bodyWeight?: number };
 
 const phrasesOf = (keywords: string) => keywords.split(",").map((phrase) => phrase.trim().toLowerCase()).filter(Boolean);
-const plain = (text: string) => ` ${text.toLowerCase().replace(/[’‘]/g, "'").replace(/[^a-z0-9' ]+/g, " ").replace(/\s+/g, " ").trim()} `;
+// For matching keyword phrases: "havent recieved" is "haven't received".
+const plain = (text: string) => ` ${text.toLowerCase().replace(/[’‘']/g, "").replace(/[^a-z0-9 ]+/g, " ").replace(/[a-z]+/g, (word) => TYPOS[word] ?? word).replace(/\s+/g, " ").trim()} `;
 
 // The articles that best answer a question, best first. A word counts for more
 // the fewer articles use it ("riser" says more than "case"), and for more in
@@ -175,10 +249,29 @@ export function searchArticles<T extends Searchable>(articles: T[], query: strin
 // word, so the customer still sees what's related.
 export function rankArticles<T extends Searchable>(articles: T[], query: string, limit = 6, { loose = false } = {}): { article: T; score: number; share: number; coverage: number }[] {
   const asked = [...new Set(searchWords(query))];
-  if (!asked.length || !articles.length) return [];
+  if (!articles.length) return [];
+  // Only everyday words ("when will i get it", "don't want it"): the articles
+  // with that very phrase as a keyword. Too little for the assistant to be
+  // sure (share and coverage 0), so it asks back with them as suggestions.
+  if (!asked.length) {
+    const whole = plain(query);
+    if (whole.trim().length < 4) return [];
+    return articles.filter((article) => phrasesOf(article.keywords).some((phrase) => plain(phrase) === whole)).slice(0, limit)
+      .map((article) => ({ article, score: 1, share: 0, coverage: 0 }));
+  }
+  // The words of what was asked, in any order: "handle broken" is the keyword "broken handle".
+  const wordsKey = (words: string[]) => [...new Set(words)].sort().join(" ");
+  const askedKey = wordsKey(asked);
   const indexed = articles.map((article) => {
     const phrases = phrasesOf(article.keywords);
-    return { article, phrases, question: new Set(searchWords(article.question)), keywords: new Set(phrases.flatMap(searchWords)), answer: new Set(searchWords(article.answer)) };
+    const question = new Set(searchWords(article.question));
+    const whole = new Set([wordsKey([...question]), ...phrases.map((phrase) => wordsKey(searchWords(phrase)))]);
+    const spans = phrases.filter((phrase) => phrase.includes(" ")).map(plain);
+    // A keyword on its own ("refund") says more than a word that's only part
+    // of a phrase ("down" in "site down").
+    const single = new Set(phrases.filter((phrase) => !phrase.includes(" ")).flatMap(searchWords));
+    const keywords = new Set(phrases.flatMap(searchWords));
+    return { article, spans, question, whole, single, keywords, answer: new Set(searchWords(article.answer)) };
   });
   const uses = new Map<string, number>();
   for (const entry of indexed) {
@@ -190,17 +283,23 @@ export function rankArticles<T extends Searchable>(articles: T[], query: string,
   const rarity = (word: string) => Math.log(1 + articles.length / (1 + (uses.get(word) ?? articles.length)));
   const total = known.reduce((sum, word) => sum + rarity(word), 0);
   const lower = plain(query);
-  const scored = indexed.map(({ article, phrases, question, keywords, answer }) => {
+  const scored = indexed.map(({ article, spans, question, whole, single, keywords, answer }) => {
     let score = 0;
     let matched = 0;
+    let inQuestion = 0;
     for (const word of known) {
-      const weight = question.has(word) ? 1 : keywords.has(word) ? 0.85 : answer.has(word) ? article.bodyWeight ?? 0.2 : 0;
+      const weight = question.has(word) ? 1 : single.has(word) ? 0.85 : keywords.has(word) ? 0.65 : answer.has(word) ? article.bodyWeight ?? 0.2 : 0;
       score += rarity(word) * weight;
       // An answer-only word barely says the article is about it.
       if (weight >= 0.5) matched++;
+      if (question.has(word)) inQuestion++;
     }
-    for (const phrase of phrases) if (phrase.includes(" ") && lower.includes(` ${phrase} `)) score += 1.5;
-    return { article, score, share: score / total, coverage: matched / asked.length };
+    for (const span of spans) if (lower.includes(span)) score += 1.5;
+    // Everything asked is one of its keywords (or its question), word for word.
+    if (score > 0 && whole.has(askedKey)) score += 1;
+    // Between equal matches, the article whose question is most about what was asked.
+    const tie = question.size ? inQuestion / question.size / 4 : 0;
+    return { article, score, tie, share: score / total, coverage: matched / asked.length };
   });
   const best = Math.max(...scored.map((entry) => entry.score));
   // A short question must be mostly answered; a long email only in its key words.
@@ -209,8 +308,9 @@ export function rankArticles<T extends Searchable>(articles: T[], query: string,
   return scored
     // (With only a few articles every word is "common", so the floor scales down.)
     .filter((entry) => entry.score > 0 && entry.score >= floor && entry.share >= needed && entry.score >= best * (loose ? 0.4 : 0.55))
-    .sort((x, y) => y.score - x.score)
-    .slice(0, limit);
+    .sort((x, y) => y.score + y.tie - (x.score + x.tie))
+    .slice(0, limit)
+    .map(({ article, score, share, coverage }) => ({ article, score, share, coverage }));
 }
 
 // ---------- The store's own policies and pages ----------

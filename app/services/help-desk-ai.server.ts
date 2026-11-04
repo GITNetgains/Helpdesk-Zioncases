@@ -38,6 +38,7 @@ Answer ONLY from the store's sources below. They are the only facts you know abo
 - Things only the team can see or change (this customer's own order status, a refund that should have arrived, a replacement for a damaged item): "clarify", telling them the steps the sources give for it, such as which request to send with which details or photos. Don't promise that anything will happen, and don't say a person will reply.
 - "human" ONLY when the customer asks to talk to a person, agent, the team or customer service, in any wording or language. Never choose it for any other reason, even when they are upset: then acknowledge it in one sentence and help.
 - "greet" for a greeting with no question. "thanks" for thanks or "ok, got it" with no new question.
+- Small talk with no question about the store ("how's your day going?", "are you a bot?", "sorry", "bye", "lol"): "clarify", with a warm, natural one or two sentence reply in kind (you're the store's virtual assistant), then offer to help. Never "human" for it: asking whether you're a person isn't asking for one.
 
 Writing the reply (for "answer" and "clarify"):
 - Plain text, no Markdown, no headings. Short: 1-4 sentences, a short "- " list for options, or a numbered list for steps.
@@ -106,7 +107,10 @@ export async function aiDecide(input: { message: string; history: AiTurn[]; know
   }
 }
 
-const RELATED_RULES = `You help customers search an online store's help center. Given what a customer searched for and the help center's sources, pick the sources most likely to help them: the ones about the same thing, even in other words (a search for "agent" wants how to contact support; "money back" wants refunds). Best first, at most 5. If none is about what they searched, return an empty list. Never pick a source just because it's popular.`;
+const RELATED_RULES = `You help customers search an online store's help center. Given what a customer searched for and the help center's sources, pick the sources most likely to help them: the ones about the same thing, even in other words (a search for "agent" wants how to contact support; "money back" wants refunds).
+- Searches are short and messy: typos ("recieved", "cancle"), half-typed words ("refu"), slang, no punctuation, or another language or Hinglish ("order kab aayega" is where is my order, "toota hua aaya" is it arrived broken). Work out what they mean.
+- Best first, at most 5. Put the one that answers it first, then ones about closely related problems the customer may also have (a search about a cracked lid: damaged on arrival first, then warranty or replacement parts).
+- If none is about what they searched, return an empty list. Never pick a source just because it's popular.`;
 const RELATED_SCHEMA = {
   type: "object",
   properties: { ids: { type: "array", items: { type: "string" } } },

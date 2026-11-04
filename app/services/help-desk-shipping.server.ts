@@ -1,9 +1,11 @@
 import type { PrismaClient } from "@prisma/client";
 import { forget, memo } from "./memo.server";
 import { findOrder } from "./help-desk-orders.server";
-import { orderShipping, quotedAnswer, readShippingSettings, shippingAnswer, type OrderShipping, type ShippingAnswer, type ShippingSetup, type ShippingZone } from "./help-desk-shipping";
+import { markedUp, orderShipping, quotedAnswer, readShippingSettings, readShipStationRates, shippingAnswer, shipStationRatesReady, toOunces, type OrderShipping, type ShippingAnswer, type ShippingSetup, type ShippingZone } from "./help-desk-shipping";
+import { listShipStationCarriers, shipStationRates } from "./help-desk-shipstation.server";
 
 type AdminClient = { graphql: (query: string, options?: { variables?: Record<string, unknown> }) => Promise<Response> };
+const MINUTE = 60_000;
 
 // The store's shipping zones and rates (Settings › Shipping and delivery) and
 // its processing time. Needs the read_shipping scope. Up to 3 profiles, 20
@@ -135,6 +137,85 @@ export async function quoteRates(admin: AdminClient | undefined, productIds: str
     console.error("Help Desk could not quote shipping:", error instanceof Error ? error.message : error);
     return null;
   }
+}
+
+// ---------- Live international rates (ShipStation) ----------
+
+const WEIGHTS_QUERY = `#graphql
+  query HelpDeskQuoteWeights($ids: [ID!]!) {
+    nodes(ids: $ids) { ... on Product { id variants(first: 1) { nodes { inventoryItem { measurement { weight { value unit } } } } } } }
+  }
+`;
+// The products' weight in ounces, each times how many: from the first variant,
+// as Shopify has it. null when Shopify can't be read; products with no weight count 0.
+export async function productsWeightOz(admin: AdminClient, productIds: string[], quantities: number[]) {
+  try {
+    const json = await (await admin.graphql(WEIGHTS_QUERY, { variables: { ids: productIds } })).json();
+    if (json.errors?.length) throw new Error(JSON.stringify(json.errors).slice(0, 300));
+    type Node = { variants?: { nodes: { inventoryItem?: { measurement?: { weight?: { value: number; unit: string } | null } | null } | null }[] } } | null;
+    let total = 0;
+    let missing = 0;
+    (json.data?.nodes as Node[] ?? []).forEach((product, index) => {
+      const weight = product?.variants?.nodes[0]?.inventoryItem?.measurement?.weight;
+      const ounces = weight ? toOunces(Number(weight.value), weight.unit) : 0;
+      if (!ounces) missing++;
+      total += ounces * (quantities[index] || 1);
+    });
+    return { ounces: total, missing };
+  } catch (error) {
+    console.error("Help Desk could not read product weights:", error instanceof Error ? error.message : error);
+    return null;
+  }
+}
+
+export type LiveRate = { carrier: string; service: string; price: number };
+export type LiveRates =
+  | { available: false }
+  | { available: true; rates: LiveRate[]; currency: string; weightOz: number; error?: "noWeight" | "noRates" | "unavailable" };
+
+// The live rates the International Shipping form shows once the products and
+// address are in: ShipStation's carriers, for the products' weight plus the
+// packaging, with the store's markup, cheapest first. available: false when
+// it's off or ShipStation isn't connected, so the form works as before.
+export async function liveShippingRates(
+  db: PrismaClient, admin: AdminClient | undefined, shop: string,
+  request: { products: string[]; quantities: number[]; country: string; province: string; city: string; zip: string },
+): Promise<LiveRates> {
+  const row = await db.helpDeskSettings.findUnique({ where: { shop }, select: { shippingTimes: true, shipstationKey: true, shipstationSecret: true } });
+  const settings = readShipStationRates(row?.shippingTimes);
+  if (!admin || !row?.shipstationKey || !row.shipstationSecret || !shipStationRatesReady(settings)) return { available: false };
+  const none = (error: "noWeight" | "noRates" | "unavailable", weightOz = 0): LiveRates => ({ available: true, rates: [], currency: settings.currency, weightOz, error });
+  if (!request.products.length) return none("noWeight");
+  const weight = await productsWeightOz(admin, request.products, request.quantities);
+  if (!weight) return none("unavailable");
+  // A product with no weight in Shopify would quote too low: none is better than a wrong one.
+  if (weight.missing) return none("noWeight");
+  const weightOz = Math.round((weight.ounces + settings.packagingOz) * 10) / 10;
+  // Asked again with the same weight, address and setup: the same answer, for 10 minutes.
+  const key = `ship-rates|${shop}|${weightOz}|${request.country}|${request.province}|${request.zip.toUpperCase()}|${settings.carriers.join("+")}|${settings.fromCountry}|${settings.fromPostalCode}`;
+  const account = { key: row.shipstationKey, secret: row.shipstationSecret };
+  try {
+    const rates = await memo(key, 10 * MINUTE, async () => {
+      const names = Object.fromEntries((await memo(`ship-carriers|${shop}`, 60 * MINUTE, () => listShipStationCarriers(account.key, account.secret)) ?? []).map((carrier) => [carrier.code, carrier.name]));
+      return shipStationRates(account, {
+        carriers: settings.carriers, fromPostalCode: settings.fromPostalCode, fromCountry: settings.fromCountry,
+        toCountry: request.country, toState: request.province, toCity: request.city, toPostalCode: request.zip, weightOz,
+      }, names);
+    });
+    const priced = rates.map((rate) => ({ carrier: rate.carrier, service: rate.service, price: markedUp(rate.cost, settings) }))
+      .sort((a, b) => a.price - b.price).slice(0, 8);
+    return priced.length ? { available: true, rates: priced, currency: settings.currency, weightOz } : none("noRates", weightOz);
+  } catch (error) {
+    console.error(`Help Desk could not get ShipStation rates for ${shop}:`, error instanceof Error ? error.message : error);
+    forget(key);
+    return none("unavailable", weightOz);
+  }
+}
+
+// Whether the storefront form should offer live rates (checked on its load).
+export async function liveRatesOn(db: PrismaClient, shop: string) {
+  const row = await db.helpDeskSettings.findUnique({ where: { shop }, select: { shippingTimes: true, shipstationKey: true, shipstationSecret: true } });
+  return Boolean(row?.shipstationKey && row.shipstationSecret && shipStationRatesReady(readShipStationRates(row.shippingTimes)));
 }
 
 export async function shippingSettings(db: PrismaClient, shop: string) {

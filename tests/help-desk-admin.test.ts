@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { buildChecks, type PhotoScan } from "../app/components/PhotoReport";
 import { issues, orderTypes, suggestTags, topics } from "../app/services/help-desk";
 import { renderRequestPage } from "../app/services/help-desk-request-page";
+import { nameInitial } from "../app/services/help-desk-avatar";
 
 const links = { ticket: (id: string) => `/ticket/${id}`, settings: "/settings" };
 const scan = (layers: Partial<PhotoScan["layers"]>, verdict = "uncertain"): PhotoScan => ({
@@ -66,6 +67,19 @@ describe("Customer request page", () => {
     expect(html).toContain("Wrong case &lt;script&gt;");
     expect(html).not.toContain("<script>Wrong");
     expect(html).toContain('name="body"');
+  });
+  it("pictures the assistant with the store's logo, and a team member by their initial", () => {
+    const html = renderRequestPage({ ...ticket, messages: [
+      { id: "b1", kind: "bot", author: "Assistant", body: "Here's how.", createdAt: new Date("2026-10-20T10:30:00Z") },
+      { id: "r1", kind: "reply", author: "rahul sharma", body: "Hi, I'm here.", createdAt: new Date(Date.now() - 60_000) },
+    ] }, extras);
+    expect(html).toContain('<span class="hdt-ava" data-bot aria-hidden="true"></span>');
+    expect(html).toContain('<span class="hdt-ava" aria-hidden="true">R</span>');
+    // Chatting with Rahul: his initial at the top of the chat.
+    expect(html).toContain('<span class="hdt-chat-avatar" data-person aria-hidden="true">R</span>');
+    expect(html).toContain("data:image/webp;base64,");
+    expect(nameInitial("@priya")).toBe("P");
+    expect(nameInitial("  ")).toBe("?");
   });
   it("hides the reply box until the team has replied", () => {
     const html = renderRequestPage({ ...ticket, status: "Open" }, { ...extras, canReply: false });

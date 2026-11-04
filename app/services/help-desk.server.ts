@@ -1,9 +1,10 @@
 import { randomBytes } from "node:crypto";
 import type { Prisma, PrismaClient } from "@prisma/client";
 import { categoryNames, classifyTicket, classifyWithChoice, resolutionTypes, rootCauses, subcategoriesOf } from "./help-desk-taxonomy";
+import { asksToClearChat, CHAT_CLEARED, readAssistantCopy, withFirstName } from "./help-desk-assistant";
 import { ADDRESS_FIELDS, cancelScopes, CHAT_TOPIC, editActions, deliveryIssues, imagesRequired, shippingMethods, isLostClaim, isMissingClaim, isReturnClaim, isWarrantyClaim, lostPreferences, returnResolutions, ticketStatuses, countries, MAX_IMAGES, MAX_IMAGE_BYTES, MAX_MESSAGE_LENGTH, MAX_VIDEO_BYTES, VIDEO_FORMATS_LABEL, looksLikeVideo, videoFormat, issueResolutions, orderTypes, priorities, productParts, topics, updates, validateHelpDesk, type HelpDeskValues } from "./help-desk";
 
-const fields = ["name", "email", "phone", "topic", "country", "address", "otherDetails", "existing", "registeredEmail", "query", "orderNumber", "orderType", "update", "cancelReason", "cancelScope", ...ADDRESS_FIELDS, "delivery", "issue", "part", "returnCondition", "lostPreference", "shippingMethod", "addedProducts", "chargesAccepted", "details", "orderDetails", "productDetails", "resolution", "replacement", "purchasedFrom", "purchaseDate"];
+const fields = ["name", "email", "phone", "topic", "country", "address", "otherDetails", "existing", "registeredEmail", "query", "orderNumber", "orderType", "update", "cancelReason", "cancelScope", ...ADDRESS_FIELDS, "delivery", "issue", "part", "returnCondition", "lostPreference", "shippingMethod", "addedProducts", "chargesAccepted", "details", "orderDetails", "productDetails", "resolution", "replacement", "purchasedFrom", "purchaseDate", "orderDate", "orderNote"];
 // created is false when a retried submission returns the ticket saved earlier.
 export type TicketResult = { errors: Record<string, string>; ticketId?: string; number?: number; token?: string; created?: boolean };
 
@@ -41,6 +42,8 @@ export async function submitTicket(db: PrismaClient, shop: string, form: FormDat
     ...(shipping ? ["country", "address", "otherDetails", "shippingMethod"] : []),
     ...(partner ? ["existing", "query", ...(values.existing === "Yes" ? ["registeredEmail"] : [])] : []),
     ...(order || returns ? ["orderNumber", "details"] : []),
+    // An order their account didn't list: when it was placed, and what it's about.
+    ...(order || returns || question ? ["orderDate", "orderNote"] : []),
     ...(order ? ["orderType", ...(values.orderType === orderTypes[0] ? ["update", ...(values.update === updates[0] ? ["addedProducts", "chargesAccepted"] : []), ...(values.update === updates[2] ? ["cancelReason", "cancelScope"] : []), ...(values.update === updates[1] ? ADDRESS_FIELDS : [])] : []), ...(values.orderType === orderTypes[1] ? ["issue", "part", "returnCondition", "resolution", "replacement", "purchasedFrom", "purchaseDate"] : []), ...(values.orderType === orderTypes[2] ? ["returnCondition", "resolution", "replacement"] : []), ...(values.orderType === orderTypes[3] ? ["delivery", ...(values.delivery === deliveryIssues[8] ? ["lostPreference"] : [])] : [])] : []),
     ...(returns ? ["orderDetails", "productDetails", "issue", "part", "resolution"] : []),
     // country: where it ships to, for a customs or tax question.
@@ -420,6 +423,25 @@ export async function addCustomerMessage(db: PrismaClient, shop: string, token: 
   }
   await db.helpDeskTicket.update({ where: { id: ticket.id }, data: { lastActivityAt: new Date(), unread: true } });
   if (ticket.status === "Waiting on customer" || ticket.status === "Resolved") await updateTickets(db, shop, [ticket.id], { status: "Open" }, ticket.name);
+  return { errors: {}, messageId: message.id, ticketId: ticket.id };
+}
+
+// "Clear chat" on the request page: the customer starts the chat afresh. Only
+// their view is cleared. Nothing is deleted: the team still sees the whole
+// conversation, with a note where it was cleared, and the request page shows
+// what came after the note (CHAT_CLEARED).
+export { asksToClearChat, CHAT_CLEARED };
+
+export async function clearCustomerChat(db: PrismaClient, shop: string, token: string, now = new Date()): Promise<MessageResult> {
+  if (!/^[a-f0-9]{48}$/.test(token)) return { errors: { form: "This link is not valid." } };
+  const ticket = await db.helpDeskTicket.findFirst({ where: { shop, accessToken: token }, select: { id: true, name: true, status: true, channel: true } });
+  if (!ticket) return { errors: { form: "This request could not be found." } };
+  if (!customerCanReply(ticket)) return { errors: { form: "This request is closed. If you still need help, please send us a new request." } };
+  // The assistant says so, in the store's wording (Settings › Help articles).
+  const settings = await db.helpDeskSettings.findUnique({ where: { shop }, select: { assistantCopy: true } });
+  const reply = withFirstName(readAssistantCopy(settings?.assistantCopy).chatCleared, ticket.name.trim().split(/\s+/)[0] ?? "");
+  await db.helpDeskMessage.create({ data: { ticketId: ticket.id, kind: "event", author: ticket.name, body: CHAT_CLEARED, createdAt: now } });
+  const message = await db.helpDeskMessage.create({ data: { ticketId: ticket.id, kind: "bot", author: "Assistant", body: reply, createdAt: new Date(now.getTime() + 1) } });
   return { errors: {}, messageId: message.id, ticketId: ticket.id };
 }
 

@@ -3,7 +3,7 @@ import { useLocation, useNavigate, useRevalidator, useSearchParams } from "react
 import { useAppBridge } from "@shopify/app-bridge-react";
 import SectionNavigation from "../SectionNavigation";
 import { since, type ChecklistItem } from "../HelpDeskUi";
-import { saveThemeMode, useThemeMode } from "./theme";
+import { switchTheme, useThemeMode } from "./theme";
 import type { ActionResult } from "../../services/help-desk-admin.server";
 
 // Pieces every Help Desk admin screen uses.
@@ -21,6 +21,7 @@ export function HelpDeskNavigation({ current }: { current: "tickets" | "overview
         { id: "settings", label: "Settings", href: href("/app/help-desk/settings") },
       ]} />
     </div>
+    <LiveIndicator />
     <WaitingBell />
     <ThemeToggle />
     {!full && <FullScreenButton />}
@@ -32,7 +33,11 @@ function ThemeToggle() {
   const { dark } = useThemeMode();
   return <>
     <s-button icon={dark ? "sun" : "moon"} variant="secondary" accessibilityLabel={dark ? "Switch to light mode" : "Switch to dark mode"}
-      interestFor="hd-theme-tip" onClick={() => saveThemeMode(dark ? "light" : "dark")}></s-button>
+      interestFor="hd-theme-tip" onClick={(event) => {
+        // The new look spreads from the button.
+        const box = (event.currentTarget as HTMLElement).getBoundingClientRect();
+        switchTheme(dark ? "light" : "dark", { x: box.left + box.width / 2, y: box.top + box.height / 2 });
+      }}></s-button>
     <s-tooltip id="hd-theme-tip">{dark ? "Light mode" : "Dark mode"}</s-tooltip>
   </>;
 }
@@ -245,14 +250,22 @@ export function useInboxLink() {
 // dropped, and a failed check (a deploy, a dropped connection) is ignored.
 // Typed text is kept. `paused` holds off while the user is mid-action.
 // onPulse: each answer, for what changes without a reload (the customer typing).
-export function useLiveRefresh({ ticketId = "", paused = false, intervalMs = ticketId ? 1_000 : 4_000, onPulse }: { ticketId?: string; paused?: boolean; intervalMs?: number; onPulse?: (data: Record<string, unknown>) => void } = {}) {
+// How the live updates are doing, for the Live sign in the navigation:
+// live (checking), updated (just brought in a change) or offline.
+export const LIVE_EVENT = "hd-live";
+export type LiveState = "live" | "updated" | "offline";
+const announce = (state: LiveState) => window.dispatchEvent(new CustomEvent<LiveState>(LIVE_EVENT, { detail: state }));
+
+// scope: what the screen shows, so it reloads only for its own changes:
+// tickets (the inbox and Overview), photos (Photo Checks) or settings.
+export function useLiveRefresh({ ticketId = "", scope = "", paused = false, intervalMs = ticketId ? 1_000 : 3_000, onPulse }: { ticketId?: string; scope?: "" | "photos" | "settings"; paused?: boolean; intervalMs?: number; onPulse?: (data: Record<string, unknown>) => void } = {}) {
   const revalidator = useRevalidator();
   const live = useRef({ revalidator, paused, onPulse });
   live.current = { revalidator, paused, onPulse };
 
   useEffect(() => {
     // App Bridge adds the session token to fetches to the app's own server.
-    const url = `/app/help-desk-pulse${ticketId ? `?ticket=${encodeURIComponent(ticketId)}` : ""}`;
+    const url = `/app/help-desk-pulse${ticketId ? `?ticket=${encodeURIComponent(ticketId)}` : scope ? `?scope=${scope}` : ""}`;
     let last: string | null = null;
     let checking = false;
     let stopped = false;
@@ -261,7 +274,7 @@ export function useLiveRefresh({ ticketId = "", paused = false, intervalMs = tic
       checking = true;
       try {
         const response = await fetch(url, { headers: { Accept: "application/json" }, cache: "no-store" });
-        if (!response.ok) return;
+        if (!response.ok) { announce("offline"); return; }
         const pulse = await response.json() as Record<string, unknown> & { stamp?: string };
         const { stamp } = pulse;
         if (!stamp || stopped) return;
@@ -270,10 +283,12 @@ export function useLiveRefresh({ ticketId = "", paused = false, intervalMs = tic
           // Still loading the previous change: leave `last` alone so the next tick picks this one up.
           if (live.current.revalidator.state !== "idle") return;
           await live.current.revalidator.revalidate();
-        }
+          announce("updated");
+        } else announce("live");
         last = stamp;
       } catch {
         // Offline, restarting or signed out: try again on the next tick.
+        announce("offline");
       } finally {
         checking = false;
       }
@@ -284,7 +299,30 @@ export function useLiveRefresh({ ticketId = "", paused = false, intervalMs = tic
     document.addEventListener("visibilitychange", onVisible);
     window.addEventListener("focus", onVisible);
     return () => { stopped = true; clearInterval(timer); document.removeEventListener("visibilitychange", onVisible); window.removeEventListener("focus", onVisible); };
-  }, [ticketId, intervalMs]);
+  }, [ticketId, scope, intervalMs]);
+}
+
+// The Live sign: a beating dot while the screen keeps itself up to date, a
+// flash of "Updated" when a change comes in, grey "Offline" when it can't.
+export function LiveIndicator() {
+  const [state, setState] = useState<LiveState | null>(null);
+  const [flash, setFlash] = useState(0);
+  useEffect(() => {
+    const on = (event: Event) => {
+      const next = (event as CustomEvent<LiveState>).detail;
+      setState(next);
+      if (next === "updated") setFlash((count) => count + 1);
+    };
+    window.addEventListener(LIVE_EVENT, on);
+    return () => window.removeEventListener(LIVE_EVENT, on);
+  }, []);
+  if (!state) return null;
+  const offline = state === "offline";
+  return <span className="hd-live" data-state={offline ? "offline" : "live"} role="status" aria-live="polite"
+    title={offline ? "Can't reach the server. Retrying..." : "This screen updates by itself"}>
+    <i aria-hidden="true" />
+    {offline ? "Offline" : <span key={flash} className={flash ? "hd-live-flash" : undefined}>{flash && state === "updated" ? "Updated" : "Live"}</span>}
+  </span>;
 }
 
 

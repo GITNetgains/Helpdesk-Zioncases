@@ -34,6 +34,45 @@ export function readShippingSettings(json: string | null | undefined): ShippingT
   }
 }
 
+// Live international shipping rates from ShipStation (Settings › ShipStation):
+// the products' weight to the customer's address, priced by the carriers the
+// store picked. Off until it's turned on with the warehouse's postal code.
+// packagingOz: the box and padding, added to the products' weight. markup:
+// what's added to the carrier's price, as a percent and a flat amount.
+export type ShipStationRateSettings = {
+  enabled: boolean; carriers: string[]; fromPostalCode: string; fromCountry: string;
+  packagingOz: number; markupPercent: number; markupFlat: number; currency: string;
+};
+export const SHIPSTATION_RATE_DEFAULTS: ShipStationRateSettings = {
+  enabled: false, carriers: [], fromPostalCode: "", fromCountry: "US", packagingOz: 8, markupPercent: 0, markupFlat: 0, currency: "USD",
+};
+// Saved in the same JSON as the shipping times (HelpDeskSettings.shippingTimes).
+export function readShipStationRates(json: string | null | undefined): ShipStationRateSettings {
+  let saved: Record<string, unknown> = {};
+  try { saved = (JSON.parse(json || "{}") ?? {}).shipstationRates ?? {}; } catch { saved = {}; }
+  const number = (value: unknown, fallback: number, max: number) => typeof value === "number" && Number.isFinite(value) && value >= 0 ? Math.min(value, max) : fallback;
+  const text = (value: unknown, fallback: string) => typeof value === "string" ? value.trim() : fallback;
+  return {
+    enabled: saved.enabled === true,
+    carriers: Array.isArray(saved.carriers) ? saved.carriers.filter((code): code is string => typeof code === "string" && /^[\w-]{1,60}$/.test(code)).slice(0, 10) : [],
+    fromPostalCode: text(saved.fromPostalCode, "").slice(0, 20),
+    fromCountry: /^[A-Z]{2}$/.test(text(saved.fromCountry, "")) ? text(saved.fromCountry, "") : SHIPSTATION_RATE_DEFAULTS.fromCountry,
+    packagingOz: number(saved.packagingOz, SHIPSTATION_RATE_DEFAULTS.packagingOz, 1600),
+    markupPercent: number(saved.markupPercent, 0, 500),
+    markupFlat: number(saved.markupFlat, 0, 10000),
+    currency: /^[A-Z]{3}$/.test(text(saved.currency, "")) ? text(saved.currency, "") : SHIPSTATION_RATE_DEFAULTS.currency,
+  };
+}
+// Ready to quote: turned on, a warehouse postal code and at least one carrier.
+export const shipStationRatesReady = (settings: ShipStationRateSettings) => settings.enabled && Boolean(settings.fromPostalCode) && settings.carriers.length > 0;
+
+// A product's weight in ounces, from Shopify's unit.
+const OUNCES: Record<string, number> = { OUNCES: 1, POUNDS: 16, GRAMS: 1 / 28.349523125, KILOGRAMS: 1000 / 28.349523125 };
+export const toOunces = (value: number, unit: string) => value > 0 && OUNCES[unit] ? value * OUNCES[unit] : 0;
+// The price the customer sees: the carrier's, with the store's markup, to the cent.
+export const markedUp = (cost: number, settings: Pick<ShipStationRateSettings, "markupPercent" | "markupFlat">) =>
+  Math.round((cost * (1 + settings.markupPercent / 100) + settings.markupFlat) * 100) / 100;
+
 const MAX_DAYS = 90;
 
 // "3-5", "3 to 5", "3–5 business days", "2": a range of whole days, or null.

@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { flushSync } from "react-dom";
 
 // Admin colour scheme: Auto follows the computer's setting, Light and Dark
 // force one. Saved in this browser, so everyone on the team picks their own.
@@ -30,6 +31,28 @@ export function saveThemeMode(mode: ThemeMode) {
     // Private mode: the choice still applies until the page reloads.
   }
   window.dispatchEvent(new CustomEvent(CHANGE_EVENT, { detail: mode }));
+}
+
+// Switching with a flourish: the new look spreads in a circle from where it
+// was chosen (the button), with the browser's view transitions. Without them,
+// or with reduced motion, it simply switches.
+export function switchTheme(mode: ThemeMode, from?: { x: number; y: number }) {
+  const doc = document as Document & { startViewTransition?: (update: () => void) => { finished: Promise<void> } };
+  if (!doc.startViewTransition || window.matchMedia("(prefers-reduced-motion: reduce)").matches) { saveThemeMode(mode); return; }
+  const x = from?.x ?? window.innerWidth / 2;
+  const y = from?.y ?? 0;
+  const root = document.documentElement;
+  root.style.setProperty("--hd-vt-x", `${x}px`);
+  root.style.setProperty("--hd-vt-y", `${y}px`);
+  root.style.setProperty("--hd-vt-r", `${Math.hypot(Math.max(x, window.innerWidth - x), Math.max(y, window.innerHeight - y))}px`);
+  root.classList.add("hd-theme-switching");
+  const dark = mode === "dark" || (mode === "auto" && window.matchMedia("(prefers-color-scheme: dark)").matches);
+  const transition = doc.startViewTransition(() => {
+    // The new look has to be on the page before the browser takes its picture.
+    flushSync(() => saveThemeMode(mode));
+    root.classList.toggle(DARK_CLASS, dark);
+  });
+  void transition.finished.finally(() => root.classList.remove("hd-theme-switching"));
 }
 
 // The chosen mode and whether the page is dark right now. Stays in step with

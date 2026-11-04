@@ -48,6 +48,8 @@
     let controller = null;
     let timer = 0;
     let idle = 0;
+    // Stopped typing on a search with no exact match: look by meaning too.
+    let deeper = 0;
     const logged = new Set();
 
     function post(fields) {
@@ -207,6 +209,9 @@
         found = [...answers, ...(exact ? found.filter(answer => !ids.has(answer.id)) : [])].slice(0, 8);
         settled = true;
         if (document.activeElement === input) renderSuggest();
+        // The app's AI could find more by meaning: ask once they've paused.
+        clearTimeout(deeper);
+        if (!deep && result.deeper) deeper = setTimeout(() => { if (text === query) search(text, true); }, 700);
         if (!exact) {
           // A search that settled with nothing found, for the team to write an answer.
           clearTimeout(idle);
@@ -222,6 +227,7 @@
       query = input.value.trim();
       clear.hidden = !input.value;
       clearTimeout(timer);
+      clearTimeout(deeper);
       if (query.length < 2) { controller?.abort(); delete bar.dataset.loading; found = []; closeSuggest(); return; }
       found = quickMatches(query);
       settled = false;
@@ -238,6 +244,7 @@
         event.preventDefault();
         if (active >= 0 && options[active]) { options[active].click(); return; }
         clearTimeout(timer);
+        clearTimeout(deeper);
         // An exact answer is shown as it is; otherwise look harder first.
         if (query.length >= 2) { if (settled && exact) showAll(); else search(query, true).then(showAll); }
       } else if (event.key === 'Escape') {
@@ -721,8 +728,11 @@
       otherPane.hidden = which !== 'other';
       allTopics.hidden = true;
       allTopicsToggle.setAttribute('aria-expanded', 'false');
-      // Not about an order: the flows ask for one only if they need it.
-      if (which === 'other') preferredOrder = null;
+      // Not about an order: the flows ask for one only if they need it, and an
+      // unlisted order's date and description don't go with the request.
+      if (which === 'other') { preferredOrder = null; showUnlisted(false); }
+      // Back to the order: as it was left.
+      if (which === 'order') orderPane.querySelector('input[name=help-desk-start-order]:checked')?.onchange?.();
       message('', false, false);
     }
     aboutOrderTile.onclick = () => showPane('order');
@@ -743,10 +753,55 @@
     const ORDER_FLOWS = ['delivery', 'lost', 'orderUpdate', 'edit', 'cancel', 'address', 'productIssue', 'wrongItem', 'return'];
     const ORDER_SECTIONS = ['Orders', 'Shipping & Delivery', 'Returns', 'Warranty'];
     const aboutAnOrder = entry => ORDER_FLOWS.includes(entry.flow) || (entry.flow === 'question' && ORDER_SECTIONS.includes(entry.section));
-    const shipState = order => order.fulfillment === 'fulfilled' ? 'Shipped' : order.fulfillment === 'partial' ? 'Partly shipped' : 'Not shipped yet';
+    // Where the order is (from Shopify), and what can be done with it there:
+    // being prepared, it can still be tracked, changed, cancelled or sped up;
+    // on its way (the carrier says so), tracked; delivered or failed,
+    // everything else (a problem with an item, a return, a delivery issue);
+    // shipped with no word from the carrier, tracked or anything else;
+    // cancelled, a question. Partly shipped, or unknown: everything.
+    const stageOf = order => order?.stage || (order?.cancelled ? 'cancelled' : order?.fulfillment === 'partial' ? 'partial' : order?.fulfillment ? 'shipped' : order ? 'processing' : null);
+    const STAGE_WORDS = { processing: 'Being prepared', partial: 'Partly shipped', transit: 'On its way', shipped: 'Shipped', delivered: 'Delivered', failed: 'Delivery failed', cancelled: 'Cancelled' };
+    const TRACK = 'Shipping & Delivery|Track My Order';
+    const BEFORE_SHIPPING = [TRACK, 'Orders|Edit Items, Color or Quantity', 'Orders|Change Shipping Address', 'Shipping & Delivery|Expedited Shipping', 'Orders|Cancel Order'];
+    const offeredFor = (stage, option) => {
+      const key = `${option.category}|${option.subcategory}`;
+      if (stage === 'processing') return BEFORE_SHIPPING.includes(key);
+      if (stage === 'transit') return key === TRACK;
+      if (stage === 'delivered' || stage === 'failed') return !BEFORE_SHIPPING.includes(key);
+      if (stage === 'shipped') return key === TRACK || !BEFORE_SHIPPING.includes(key);
+      if (stage === 'cancelled') return option.flow === 'question';
+      return true;
+    };
+    const STAGE_NOTES = {
+      processing: 'Not shipped yet: you can still change it, change the address, add expedited shipping or cancel it.',
+      transit: 'On its way: see where it is now. Once it’s delivered, you can report a problem or return something here.',
+      shipped: 'Shipped: see where it is, report a problem with an item, start a return, or ask about the delivery.',
+      delivered: 'Delivered: report a problem with an item, start a return, or ask about the delivery.',
+      failed: 'The carrier couldn’t deliver it: tell us about the delivery, or anything else about the order.',
+      cancelled: 'This order was cancelled: ask about its refund, payment or invoice.',
+    };
+    let orderStage = null;
+    const shipState = order => STAGE_WORDS[stageOf(order)] || (order.fulfillment === 'fulfilled' ? 'Shipped' : order.fulfillment === 'partial' ? 'Partly shipped' : 'Not shipped yet');
     const itemCount = order => items(order).reduce((sum, item) => sum + (Number(item.quantity) || 1), 0);
     let orderChosen = false;
     const orderDetails = node('div', '', { class: 'help-desk-order-details', hidden: '' });
+    // "My order isn't listed": its number, when it was placed and what it's
+    // about. The date and description go with the request (orderDate,
+    // orderNote; off while hidden); the number fills the request's own Order Number.
+    const unlisted = node('div', '', { 'data-fields': '', class: 'help-desk-unlisted', hidden: '' });
+    unlisted.append(node('h4', 'Tell us about the order'));
+    const unlistedNumber = field(unlisted, 'unlistedNumber', 'Order Number', { placeholder: 'e.g. #1001', optional: true });
+    unlistedNumber.removeAttribute('name');
+    unlistedNumber.parentElement.querySelector('span').append(' ', node('span', '*', { class: 'help-desk-required', 'aria-hidden': 'true' }));
+    const unlistedDate = field(unlisted, 'orderDate', 'Order Date', { type: 'date', optional: true });
+    unlistedDate.max = new Date().toISOString().slice(0, 10);
+    const unlistedNote = field(unlisted, 'orderNote', 'Description', { multiline: true, optional: true, placeholder: 'What is the order, and what do you need help with? For example: two slab cases, ordered from the website as a guest.' });
+    unlistedNote.maxLength = 2000;
+    const showUnlisted = on => {
+      unlisted.hidden = !on;
+      for (const input of [unlistedDate, unlistedNote]) input.disabled = !on;
+    };
+    showUnlisted(false);
     if (orders.length) {
       const list = node('fieldset', '', { class: 'help-desk-order-list' });
       list.append(node('legend', 'Which order is it about?'));
@@ -758,19 +813,22 @@
         const text = node('span', '', { class: 'help-desk-order-card-text' });
         if (order) {
           const top = node('span', '', { class: 'help-desk-order-card-top' });
-          top.append(node('strong', `Order ${order.name}`), node('em', shipState(order), { 'data-state': order.fulfillment || 'unfulfilled' }));
+          top.append(node('strong', `Order ${order.name}`), node('em', shipState(order), { 'data-state': stageOf(order) || order.fulfillment || 'unfulfilled' }));
           text.append(top, node('small', `${order.date} · ${itemCount(order)} item${itemCount(order) === 1 ? '' : 's'}`));
           const pictures = node('span', '', { class: 'help-desk-order-card-thumbs', 'aria-hidden': 'true' });
           for (const item of items(order).slice(0, 4)) pictures.append(thumb(item.image));
           if (items(order).length > 4) pictures.append(node('span', `+${items(order).length - 4}`, { class: 'help-desk-thumb help-desk-thumb-more' }));
           card.append(radio, text, pictures);
         } else {
-          text.append(node('strong', 'My order isn’t listed'), node('small', 'You’ll enter its order number on the next step.'));
+          text.append(node('strong', 'My order isn’t listed'), node('small', 'Enter its order number, date and what it’s about.'));
           card.append(radio, text);
         }
         radio.onchange = () => {
           orderChosen = true;
           preferredOrder = order || 'other';
+          orderStage = stageOf(order);
+          showUnlisted(!order);
+          if (!order) setTimeout(() => unlistedNumber.focus(), 0);
           orderDetails.replaceChildren();
           orderDetails.hidden = !order;
           if (order) {
@@ -785,12 +843,16 @@
               lines.append(row);
             }
             orderDetails.append(head, lines);
+            // What can be done with it now, in a word.
+            const note = STAGE_NOTES[orderStage];
+            if (note) orderDetails.append(node('p', note, { class: 'help-desk-hint help-desk-stage-note' }));
           }
           needWrap.hidden = false;
+          fillCategories();
         };
         list.append(card);
       }
-      orderPane.append(list, orderDetails);
+      orderPane.append(list, orderDetails, unlisted);
     } else {
       const hint = node('div', '', { class: 'help-desk-start-note' });
       if (!signedIn) {
@@ -805,18 +867,31 @@
     if (orders.length) needWrap.hidden = true;
     const orderTopics = groups.map((entry, groupIndex) => ({ entry, groupIndex, offered: entry.options.map((option, index) => ({ option, index })).filter(({ option }) => aboutAnOrder(option)) }))
       .filter(topic => topic.offered.length);
+    // Only what suits the chosen order's stage (all of it for an order that isn't listed).
+    const topicsNow = () => orderTopics.map(topic => ({ ...topic, offered: topic.offered.filter(({ option }) => offeredFor(orderStage, option)) }))
+      .filter(topic => topic.offered.length);
+    const topicName = topic => topic.entry.label === 'Other Queries' ? 'Other order questions' : topic.entry.label;
     const category = field(needWrap, 'startCategory', 'Category', {
-      choices: orderTopics.map(topic => [String(topic.groupIndex), topic.entry.label === 'Other Queries' ? 'Other order questions' : topic.entry.label]),
+      choices: orderTopics.map(topic => [String(topic.groupIndex), topicName(topic)]),
       placeholder: 'Select a category', optional: true,
     });
     category.removeAttribute('name');
+    // The categories for this order, keeping the one picked if it still applies;
+    // a single one is picked straight away.
+    function fillCategories() {
+      const now = topicsNow();
+      const kept = now.some(topic => String(topic.groupIndex) === category.value) ? category.value : '';
+      category.replaceChildren(node('option', 'Select a category', { value: '' }), ...now.map(topic => node('option', topicName(topic), { value: String(topic.groupIndex) })));
+      category.value = kept || (now.length === 1 ? String(now[0].groupIndex) : '');
+      category.onchange();
+    }
     const need = field(needWrap, 'startNeed', 'What would you like to do?', { choices: [], placeholder: 'Select a category first', optional: true });
     need.removeAttribute('name');
     need.disabled = true;
     const needHint = node('p', '', { class: 'help-desk-hint', hidden: '' });
     needWrap.append(needHint);
     category.onchange = () => {
-      const topic = orderTopics.find(entry => String(entry.groupIndex) === category.value);
+      const topic = topicsNow().find(entry => String(entry.groupIndex) === category.value);
       need.replaceChildren(node('option', topic ? 'Select what you need' : 'Select a category first', { value: '' }));
       need.disabled = !topic;
       needHint.hidden = true;
@@ -842,10 +917,21 @@
     const orderGo = node('button', 'Continue with this order', { type: 'button', class: 'help-desk-start-go' });
     orderGo.onclick = () => {
       if (orders.length && !orderChosen) { message('Choose the order your question is about.', true); return; }
+      // An order that isn't listed: a real order number, and a date that isn't in the future.
+      const unlistedOn = preferredOrder === 'other' && !unlisted.hidden;
+      if (unlistedOn) {
+        const number = unlistedNumber.value.trim();
+        if (!/^#?\s*[A-Za-z]{0,4}-?\d{3,12}$/.test(number)) { message('Enter your order number, like #1001. You’ll find it in your order confirmation email.', true); unlistedNumber.focus(); return; }
+        if ((unlistedDate.value && unlistedDate.value > new Date().toISOString().slice(0, 10)) || unlistedDate.validity?.rangeOverflow) { message('The order date can’t be in the future.', true); unlistedDate.focus(); return; }
+      }
       if (!category.value) { message('Choose a category.', true); category.focus(); return; }
       if (!need.value) { message('Choose what you need help with.', true); need.focus(); return; }
       const [g, o] = need.value.split(':').map(Number);
-      openOption({ group: groups[g], option: groups[g].options[o] });
+      openOption({ group: groups[g], option: groups[g].options[o] }, unlistedOn ? () => {
+        // The number they entered goes into the request's own Order Number.
+        const box = form.querySelector('input[name=orderNumber]');
+        if (box && !box.value.trim()) { box.value = unlistedNumber.value.trim(); box.dispatchEvent(new Event('input', { bubbles: true })); }
+      } : undefined);
     };
     needWrap.append(orderGo);
     orderPane.append(needWrap);
@@ -867,6 +953,10 @@
     quick.append(node('span', 'Or choose a common question:', { class: 'help-desk-quick-label' }));
     const quickButton = (label, onclick) => { const button = node('button', label, { type: 'button', class: 'help-desk-quick-button' }); button.onclick = onclick; quick.append(button); return button; };
     quickButton('International Shipping', () => openOption(findOption(entry => entry.flow === 'international' && entry.subcategory === 'International Shipping')));
+    // Dealers and affiliates: their topic's options (pricing, applications, payouts...).
+    for (const topic of ['Wholesale Queries', 'Affiliate Queries']) {
+      if (groups.some(entry => entry.label === topic)) quickButton(topic, () => { message('', false, false); startRequest(topic); });
+    }
     // Product questions: fit, sizes, setting up and care.
     const productWrap = node('div', '', { 'data-fields': '', class: 'help-desk-start-need', hidden: '' });
     const productQuestion = field(productWrap, 'startProduct', 'What’s your product question?', { choices: [], placeholder: 'Select a question', optional: true });
@@ -1042,13 +1132,17 @@
       history.append(summary);
       const list = node('ul');
       const date = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' });
+      // In the customer's words, not the team's ("Cancellation: Cancelled" is "Order cancelled").
+      const STATUS_WORDS = { 'Open': 'Received', 'In progress': 'In progress', 'Waiting on customer': 'Your reply needed', 'Resolved': 'Resolved' };
+      const CANCEL_WORDS = { Pending: 'Cancellation requested', Approved: 'Cancellation approved', Rejected: 'Couldn\'t be cancelled', Cancelled: 'Order cancelled' };
+      const ADDRESS_WORDS = { Pending: 'Address change requested', Updated: 'Address updated', Rejected: 'Address couldn\'t be changed' };
       for (const ticket of config.tickets) {
         const item = node('li');
         const link = node('a', `#${ticket.number} · ${ticket.topic}`, { href: trackingLink(ticket.token) });
-        item.append(link, node('span', ticket.status, { class: 'help-desk-pill', 'data-status': ticket.status }));
+        item.append(link, node('span', STATUS_WORDS[ticket.status] || ticket.status, { class: 'help-desk-pill', 'data-status': ticket.status }));
         // A cancellation request also shows where the cancellation stands.
-        if (ticket.cancelStatus) item.append(node('span', `Cancellation: ${ticket.cancelStatus}`, { class: 'help-desk-pill', 'data-cancel': ticket.cancelStatus }));
-        if (ticket.addressStatus) item.append(node('span', `Address change: ${ticket.addressStatus}`, { class: 'help-desk-pill', 'data-cancel': ticket.addressStatus === 'Updated' ? 'Cancelled' : ticket.addressStatus }));
+        if (ticket.cancelStatus) item.append(node('span', CANCEL_WORDS[ticket.cancelStatus] || `Cancellation: ${ticket.cancelStatus}`, { class: 'help-desk-pill', 'data-cancel': ticket.cancelStatus }));
+        if (ticket.addressStatus) item.append(node('span', ADDRESS_WORDS[ticket.addressStatus] || `Address change: ${ticket.addressStatus}`, { class: 'help-desk-pill', 'data-cancel': ticket.addressStatus === 'Updated' ? 'Cancelled' : ticket.addressStatus }));
         item.append(node('small', `Updated ${date.format(new Date(ticket.updatedAt))}`));
         list.append(item);
       }
@@ -2377,6 +2471,64 @@
           ['Regular', 'Regular Shipping', 'The standard rate and delivery time.'],
           ['Expedited', 'Expedited Shipping', 'Faster delivery, at a higher cost.'],
         ]) : null;
+
+        // Live rates (once the store turns them on): what each carrier charges
+        // for the products' weight to this address, from ShipStation.
+        if (abroad && config.liveRates) {
+          const box = node('div', '', { class: 'help-desk-rates', 'aria-live': 'polite' });
+          const show = node('button', 'Show Shipping Rates', { type: 'button', class: 'help-desk-rates-button' });
+          const list = node('div');
+          box.append(show, list);
+          fields.append(box);
+          const money = (amount, currency) => {
+            try { return new Intl.NumberFormat(undefined, { style: 'currency', currency }).format(amount); } catch { return `${currency} ${Number(amount).toFixed(2)}`; }
+          };
+          const say = (text, error) => list.replaceChildren(node('p', text, { class: error ? 'help-desk-track-error' : 'help-desk-rates-note', ...(error ? { role: 'alert' } : {}) }));
+          show.onclick = async () => {
+            list.replaceChildren();
+            if (!selected.size) { message('Select the products you want shipped first.', true); return; }
+            if (!country.value) { message('Please select the country.', true); picker.wrap.querySelector('select')?.focus(); return; }
+            if (!zip.value.trim() && !NO_POSTAL_CODE.includes(country.value)) { message('Enter the ZIP / postal code to see shipping rates.', true); zip.focus(); return; }
+            message('', false, false);
+            const url = new URL(endpoint);
+            url.searchParams.set('rates', '1');
+            url.searchParams.set('country', country.value);
+            url.searchParams.set('province', state()?.value || '');
+            url.searchParams.set('city', city.value.trim());
+            url.searchParams.set('zip', zip.value.trim());
+            url.searchParams.set('products', [...selected.keys()].join(','));
+            url.searchParams.set('quantities', [...selected.values()].map(product => product.qty || 1).join(','));
+            show.disabled = true;
+            show.textContent = 'Getting rates...';
+            try {
+              const data = await (await fetch(url, { headers: { Accept: 'application/json' } })).json();
+              if (data.available === false) { box.remove(); return; }
+              if (!Array.isArray(data.rates)) { say(data.error || 'Shipping rates are unavailable right now.', true); return; }
+              if (!data.rates.length) {
+                say(data.error === 'noWeight' ? 'We can\'t price this shipment online. Send your request and our team will reply with the shipping cost.'
+                  : data.error === 'unavailable' ? 'Shipping rates are unavailable right now. Send your request and our team will reply with them.'
+                    : 'No carrier quotes this address online. Send your request and our team will reply with shipping options.');
+                return;
+              }
+              const rows = node('ul', '', { class: 'help-desk-rates-list' });
+              for (const rate of data.rates) {
+                const row = node('li');
+                row.append(node('span', `${rate.carrier} · ${rate.service}`), node('strong', money(rate.price, data.currency)));
+                rows.append(row);
+              }
+              list.replaceChildren(node('h4', 'Estimated Shipping Rates'), rows,
+                node('p', 'For these products to this address. Duties and taxes aren\'t included. Our team confirms the final cost when we reply.', { class: 'help-desk-rates-note' }));
+            } catch (error) {
+              console.warn('Help desk: shipping rates failed.', error);
+              say('Shipping rates are unavailable right now. Send your request and our team will reply with them.', true);
+            } finally {
+              show.disabled = false;
+              show.textContent = 'Show Shipping Rates';
+            }
+          };
+          // Rates for other products or another address no longer apply.
+          grid.addEventListener('change', () => list.replaceChildren());
+        }
 
         // No prices on the form: once the products and address are in, the
         // request is sent, and our team replies with shipping options and costs.

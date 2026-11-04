@@ -1,6 +1,6 @@
 import type { PrismaClient } from "@prisma/client";
 import { correctQuery, MAX_SECTION_LENGTH, rankArticles, sectionsFromHtml, starterArticles, storeFacts, validAction } from "./help-desk-articles";
-import { aiRelated } from "./help-desk-ai.server";
+import { aiAssistantEnabled, aiRelated } from "./help-desk-ai.server";
 import { loadShippingSetup, shippingSettings } from "./help-desk-shipping.server";
 import { forget, memo } from "./memo.server";
 
@@ -262,32 +262,45 @@ export async function rankedAnswers(db: PrismaClient, admin: AdminClient | undef
 // A help center search that always finds something. Best first:
 // - what matches the words as typed (exact);
 // - with misspellings fixed ("cancle" is "cancel"): correctedTo says what was searched;
+// - deep (they pressed Enter, or stopped typing): what the AI finds by
+//   meaning, when it's on, then anything sharing a telling word;
 // - anything sharing a telling word (related);
-// - deep (they pressed Enter): what the AI finds by meaning, when it's on;
 // - else the most helpful articles, so the customer is never left with nothing.
 // Only an exact match counts as answered: the rest still goes on the team's
-// "searches nothing answered" list.
-export type SearchResult = { results: Answer[]; exact: boolean; correctedTo?: string; related?: boolean };
+// "searches nothing answered" list. deeper: the AI could find more, so the
+// storefront asks again with deep once the customer stops typing.
+export type SearchResult = { results: Answer[]; exact: boolean; correctedTo?: string; related?: boolean; deeper?: boolean };
 export async function searchAnswers(db: PrismaClient, admin: AdminClient | undefined, shop: string, question: string, { deep = false } = {}): Promise<SearchResult> {
-  const exact = await answerQuestion(db, admin, shop, question);
-  if (exact.length) return { results: exact, exact: true };
   const rows = await listArticles(db, shop);
   const corrected = correctQuery(question, rows);
-  if (corrected) {
-    const fixed = await answerQuestion(db, admin, shop, corrected);
-    if (fixed.length) return { results: fixed, exact: false, correctedTo: corrected };
+  const [exact, fixed] = await Promise.all([
+    rankedAnswers(db, admin, shop, question),
+    corrected ? rankedAnswers(db, admin, shop, corrected) : Promise.resolve([]),
+  ]);
+  // A misspelled word the search skipped ("cancle my order" found only
+  // "order"): when the fixed words match clearly better, they're what was meant.
+  const best = (found: { score: number }[]) => Math.max(0, ...found.map((entry) => entry.score));
+  if (fixed.length && best(fixed) > best(exact) * 1.2) {
+    return { results: fixed.map((entry) => entry.answer), exact: false, correctedTo: corrected ?? undefined };
   }
+  if (exact.length) return { results: exact.map((entry) => entry.answer), exact: true };
   const loose = (await rankedAnswers(db, admin, shop, corrected ?? question, 6, { loose: true })).map((entry) => entry.answer);
-  if (loose.length) return { results: loose, exact: false, related: true };
-  if (deep) {
+  // The AI reads it the way a person would (other words, other languages),
+  // so it goes first; what shares a word fills in after it.
+  if (deep && aiAssistantEnabled()) {
     const { knowledge } = await assistantSources(db, admin, shop, question);
-    const ids = await memo(`help-related|${shop}|${question.toLowerCase()}`, 60 * MINUTE, () => aiRelated(question, knowledge));
+    const ids = await memo(`help-related|${shop}|${question.trim().toLowerCase()}`, 60 * MINUTE, () => aiRelated(question, knowledge));
     const byId = new Map(knowledge.map((answer) => [answer.id, answer]));
     const picked = ids.map((id) => byId.get(id)).filter((answer): answer is Answer => Boolean(answer));
-    if (picked.length) return { results: picked, exact: false, related: true };
+    if (picked.length) {
+      const seen = new Set(picked.map((answer) => answer.id));
+      return { results: [...picked, ...loose.filter((answer) => !seen.has(answer.id))].slice(0, 6), exact: false, related: true };
+    }
   }
+  const deeper = !deep && aiAssistantEnabled();
+  if (loose.length) return { results: loose, exact: false, related: true, deeper };
   const popular = [...rows].sort((a, b) => (b.helpful ?? 0) - (a.helpful ?? 0)).slice(0, 5).map(articleAnswer);
-  return { results: popular, exact: false, related: true };
+  return { results: popular, exact: false, related: true, deeper };
 }
 
 // Everything the AI assistant may answer from: every article and live fact,
