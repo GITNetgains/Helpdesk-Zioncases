@@ -22,6 +22,7 @@ import { renderArticlePage, renderMissingArticle } from "../services/help-desk-a
 import { articleCollections, currentAction } from "../services/help-desk-articles";
 import { answerNewRequest, assistantTurn } from "../services/help-desk-assistant.server";
 import { clearTyping, markTyping, typingState } from "../services/help-desk-typing.server";
+import { pushKeys, savePushSubscription, SERVICE_WORKER } from "../services/help-desk-push.server";
 
 const headers = { "Cache-Control": "no-store" };
 const privateHeaders = { "Cache-Control": "private, no-store" };
@@ -60,6 +61,9 @@ export async function loader({ request }: LoaderFunctionArgs) {
   const params = new URL(request.url).searchParams;
   // Signed by Shopify, so this is the shopper's own customer ID (empty when logged out).
   const customerId = params.get("logged_in_customer_id") || "";
+
+  // The service worker behind browser notifications of team replies (request page).
+  if (params.get("sw") === "1") return new Response(SERVICE_WORKER, { headers: { "Content-Type": "application/javascript; charset=utf-8", "Cache-Control": "no-cache" } });
 
   // The search at the top of the form: help articles, then the store's policies, pages and products.
   // deep: they pressed Enter or stopped typing, so a search nothing matched may also ask the AI.
@@ -222,6 +226,16 @@ export async function action({ request }: ActionFunctionArgs) {
       const id = text("id").slice(0, 100);
       await recordSearch(db, shop, text("question"), !opened ? "none" : text("source") === "article" ? "faq" : "shopify", opened && text("source") === "article" ? id : undefined).catch(() => undefined);
       return json({ ok: true }, 200);
+    }
+    // The request page's bell: notify this browser when the team replies (on), or stop (off).
+    case "push": {
+      if (!hit(`push|${client}`, 20, MINUTE)) return tooMany();
+      const token = text("token");
+      const ok = TOKEN.test(token) && await savePushSubscription(db, shop, token, { endpoint: text("endpoint"), p256dh: text("p256dh"), auth: text("auth") }, text("on") !== "0").catch((error) => {
+        console.error(`Help Desk could not save a browser for notifications on ${shop}:`, error);
+        return false;
+      });
+      return json({ ok }, ok ? 200 : 400);
     }
     // "Did this answer your question?"
     case "answer-vote": {
@@ -519,8 +533,13 @@ async function trackingPage(shop: string, admin: AdminClient | undefined, token:
   const order = stale && admin ? await db.helpDeskTicket.findUnique({ where: { id: ticket.id } }) ?? ticket : ticket;
   const shipment = order.orderVerified
     ? { order: order.orderName, status: order.shipmentStatus, carrier: order.carrier, number: order.trackingNumber, url: order.trackingUrl } : null;
+  // The key browsers subscribe with, for notifications of team replies (not needed on a live refresh).
+  const pushKey = live ? "" : await pushKeys(db, shop).then((keys) => keys.publicKey).catch((error) => {
+    console.error(`Help Desk could not load browser notification keys for ${shop}:`, error);
+    return "";
+  });
   const html = renderRequestPage(ticket, {
-    imageCounts, requestImages, products, receivedProducts, shipment, canReply: customerCanReply(ticket), maxImages: MAX_REPLY_IMAGES, maxLength: MAX_MESSAGE_LENGTH, state,
+    imageCounts, requestImages, products, receivedProducts, shipment, canReply: customerCanReply(ticket), maxImages: MAX_REPLY_IMAGES, maxLength: MAX_MESSAGE_LENGTH, state, pushKey,
   });
   // Plain HTML is passed through as it is, skipping Shopify's render of the whole theme.
   return live ? new Response(html, { headers: { ...privateHeaders, "Content-Type": "text/html; charset=utf-8" } }) : liquid(html);

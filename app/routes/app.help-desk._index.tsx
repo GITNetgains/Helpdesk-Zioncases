@@ -240,6 +240,7 @@ function TicketList({ screen }: { screen: InboxData }) {
             <s-table-header listSlot="secondary">Status</s-table-header>
             <s-table-header>Assignee</s-table-header>
             <s-table-header>Last activity</s-table-header>
+            <s-table-header>Category</s-table-header>
           </s-table-header-row>
           <s-table-body>
             {tickets.map((ticket) => (
@@ -259,7 +260,6 @@ function TicketList({ screen }: { screen: InboxData }) {
                         {ticket.unread ? <strong>#{ticket.number} {ticket.topic}</strong> : `#${ticket.number} ${ticket.topic}`}
                       </s-link>
                     </s-stack>
-                    {ticket.category && <s-text color="subdued">{ticket.subcategory ? `${ticket.category} › ${ticket.subcategory}` : ticket.category}</s-text>}
                     {(ticket.humanRequestedAt || ticket.photoFlag || ticket.cancelStatus || ticket.addressStatus || ticket.priority === "High" || ticket.priority === "Urgent") && <s-stack direction="inline" gap="small-100">
                       {ticket.humanRequestedAt && <s-badge tone="critical" icon="person">Wants a person</s-badge>}
                       {(ticket.priority === "High" || ticket.priority === "Urgent") && <PriorityBadge priority={ticket.priority} />}
@@ -288,6 +288,14 @@ function TicketList({ screen }: { screen: InboxData }) {
                     <span suppressHydrationWarning>{ago(ticket.lastActivityAt ?? ticket.createdAt)}</span>
                     {!ticket.firstResponseAt && ticket.status !== "Resolved" && <s-text tone="critical"><span suppressHydrationWarning>No reply yet · {duration(Date.now() - new Date(ticket.createdAt).getTime())}</span></s-text>}
                   </s-stack>
+                </s-table-cell>
+                {/* What the ticket is about: its category, and the subcategory under it. */}
+                <s-table-cell>
+                  {/* Laid out like the Customer cell: the category, then the subcategory under it. */}
+                  {ticket.category ? <s-stack gap="none">
+                    <s-text type="strong">{ticket.category}</s-text>
+                    {ticket.subcategory && <s-text color="subdued">{ticket.subcategory}</s-text>}
+                  </s-stack> : <s-text color="subdued">Uncategorized</s-text>}
                 </s-table-cell>
               </s-table-row>
             ))}

@@ -83,9 +83,14 @@ html.hd-theme-dark,html.hd-theme-dark body{background:#0a0a0a;color-scheme:dark}
 /* Live: a beating dot while the screen keeps itself up to date, a flash of "Updated" when a change comes in. */
 .hd-live{display:inline-flex;align-items:center;gap:7px;flex:none;height:32px;padding:0 12px;border:1px solid var(--hd-border);border-radius:999px;background:var(--hd-surface);color:var(--hd-ink);font-size:12px;font-weight:650;letter-spacing:.01em;white-space:nowrap}
 .hd-live i{position:relative;width:8px;height:8px;border-radius:50%;background:#12b76a}
-.hd-live i::after{content:"";position:absolute;inset:0;border-radius:50%;background:#12b76a;animation:hd-live-beat 1.8s cubic-bezier(.2,.6,.3,1) infinite}
+/* A steady dot: it pulses only twice when a change comes in, never all the time beside the bell. */
+.hd-live i::after{content:"";position:absolute;inset:0;border-radius:50%;background:#12b76a;opacity:0}
+.hd-live i[data-beat]::after{animation:hd-live-beat 1.2s cubic-bezier(.2,.6,.3,1) 2}
+@media(prefers-reduced-motion:reduce){.hd-live i[data-beat]::after,.hd-live-flash{animation:none}}
 .hd-live[data-state="offline"]{color:var(--hd-muted)}
 .hd-live[data-state="offline"] i,.hd-live[data-state="offline"] i::after{background:#98a2b3;animation:none}
+/* As wide for "Updated" as for "Live", so the bell and buttons beside it never shift when it flashes. */
+.hd-live>span{display:inline-block;min-width:48px;text-align:left}
 .hd-live-flash{animation:hd-live-flash 1.2s ease}
 @keyframes hd-live-beat{0%{transform:scale(1);opacity:.7}100%{transform:scale(2.8);opacity:0}}
 @keyframes hd-live-flash{0%{color:#12b76a}100%{color:inherit}}

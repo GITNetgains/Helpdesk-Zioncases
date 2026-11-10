@@ -32,6 +32,7 @@ import { articleCollections, validAction } from "./help-desk-articles";
 import { ASSISTANT_COPY, MAX_ASSISTANT_COPY, readAssistantCopy, type AssistantCopyKey } from "./help-desk-assistant";
 import { aiAssistantEnabled } from "./help-desk-ai.server";
 import { clearTyping } from "./help-desk-typing.server";
+import { notifyReply } from "./help-desk-push.server";
 
 // Server side of the Help Desk admin: one loader per screen (inbox, overview,
 // ticket, settings) and the action every screen posts to.
@@ -441,6 +442,8 @@ export const helpDeskAction = async ({ request }: ActionFunctionArgs) => {
         // Every reply shows on the customer's request page; "email" also emails it.
         const byEmail = text("kind") === "reply" && text("channel") !== "page" && emailConfigured();
         if (byEmail) queueEmail(db, { shop, ticketId: result.ticketId!, kind: "reply", messageId: result.messageId }, admin);
+        // And a browser notification, where the customer turned them on.
+        if (text("kind") === "reply") void notifyReply(db, shop, result.messageId);
         const emailed = byEmail;
         return data<ActionResult>({ errors: {}, ticketId: result.ticketId, emailed });
       }

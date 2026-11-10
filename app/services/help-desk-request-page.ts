@@ -80,6 +80,22 @@ const STYLES = `<style>
 .hdt .hdt-theme svg{width:18px;height:18px}
 .hdt .hdt-theme-dark,.hdt[data-chat-theme="light"] .hdt-theme-light{display:none}
 .hdt[data-chat-theme="light"] .hdt-theme-dark{display:block}
+/* The bell: browser notifications of team replies. Shown once the page script knows the browser can. */
+.hdt .hdt-bell{position:relative;flex:none;display:grid;place-items:center;width:36px!important;min-width:36px!important;height:36px;margin:0;padding:7px;border:1px solid rgba(255,255,255,.2);border-radius:9px;background:rgba(255,255,255,.08);color:#fff;box-shadow:none}
+.hdt .hdt-bell[hidden]{display:none!important}
+.hdt .hdt-bell:hover{background:rgba(255,255,255,.18);transform:none;box-shadow:none}
+.hdt .hdt-bell svg{width:18px;height:18px}
+.hdt .hdt-bell[aria-pressed="true"]{border-color:#2fbf71;color:#2fbf71}
+.hdt .hdt-bell[aria-pressed="true"] svg path:first-child{fill:currentColor}
+.hdt .hdt-bell[data-blocked]{opacity:.55}
+.hdt[data-chat-theme="light"] .hdt-bell{border-color:#dfe3ee;background:#f6f7fb;color:var(--ink)}
+.hdt[data-chat-theme="light"] .hdt-bell:hover{background:#eceff6}
+.hdt[data-chat-theme="light"] .hdt-bell[aria-pressed="true"]{border-color:#0c7a43;color:#0c7a43}
+.hdt-push-offer{display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid rgba(255,255,255,.1);background:#1b2850;color:#e8ecf8;font-size:13px;line-height:1.4}
+.hdt-push-offer span{flex:1;min-width:0}
+.hdt .hdt-push-offer button{flex:none;margin:0;padding:6px 12px;border:0;border-radius:8px;background:var(--accent);color:#fff;font-size:12.5px;font-weight:700;line-height:1.2;cursor:pointer;box-shadow:none;width:auto;min-width:0}
+.hdt .hdt-push-offer button.hdt-push-later{padding:6px 8px;background:transparent;color:inherit;opacity:.75;font-weight:600}
+.hdt[data-chat-theme="light"] .hdt-push-offer{background:#eef2ff;border-bottom-color:#dfe3ee;color:var(--ink)}
 /* Until the request is resolved the chat stays open: beside the page on wide screens, in it on narrow ones. */
 @media(min-width:1100px){.hdt[data-chat-locked][data-chat-open]:not([data-chat-expanded]){max-width:1530px;padding-right:486px}}
 @media(max-width:1099px){.hdt[data-chat-locked][data-chat-open]:not([data-chat-expanded]) .hdt-chatbox{position:relative;right:auto;bottom:auto;z-index:auto;width:100%;height:min(600px,78dvh);min-height:420px;margin:16px 0;box-shadow:0 12px 34px rgba(7,13,31,.2)}}
@@ -421,6 +437,7 @@ const SCRIPT = `<script>
         root.setAttribute('data-hdt-stamp', stamp);
         enhance(root);
         themeButton(root.getAttribute('data-chat-theme'));
+        bell();
         renderTyping();
         if (stick) toBottom(true);
         else if (root.querySelector('.hdt-thread')) root.querySelector('.hdt-thread').scrollTop = keep;
@@ -476,6 +493,119 @@ const SCRIPT = `<script>
     var stick = atBottom();
     thread.append(bubble);
     if (stick) toBottom(true);
+  }
+
+  // Browser notifications of team replies: the bell in the chat's header turns
+  // them on for this request in this browser. They arrive even with the page
+  // closed; the service worker skips them while this request is on screen.
+  var pushKey = root ? root.getAttribute('data-hdt-push') || '' : '';
+  var pushReady = Boolean(pushKey && token && window.isSecureContext && 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window);
+  var pushMemory = 'hdt-push-' + token;
+  function remembered(key) { try { return window.localStorage.getItem(key); } catch (error) { return null; } }
+  function remember(key, value) { try { if (value === null) window.localStorage.removeItem(key); else window.localStorage.setItem(key, value); } catch (error) { /* private mode */ } }
+  var pushOn = pushReady && Notification.permission === 'granted' && remembered(pushMemory) === '1';
+  function bell() {
+    var button = root && root.querySelector('.hdt-bell');
+    if (!button) return;
+    if (!pushReady) { button.hidden = true; return; }
+    button.hidden = false;
+    var blocked = Notification.permission === 'denied';
+    if (blocked) button.setAttribute('data-blocked', ''); else button.removeAttribute('data-blocked');
+    button.setAttribute('aria-pressed', String(pushOn && !blocked));
+    var label = blocked ? 'Notifications are blocked for this site in your browser settings'
+      : pushOn ? 'Notifications are on: tap to turn them off' : 'Notify me when the team replies';
+    button.setAttribute('aria-label', label);
+    button.setAttribute('title', label);
+  }
+  function keyBytes(key) {
+    var text = atob((key + '==='.slice((key.length + 3) % 4)).replace(/-/g, '+').replace(/_/g, '/'));
+    var bytes = new Uint8Array(text.length);
+    for (var i = 0; i < text.length; i++) bytes[i] = text.charCodeAt(i);
+    return bytes;
+  }
+  function sameKey(subscription) {
+    var saved = subscription.options && subscription.options.applicationServerKey;
+    if (!saved) return true;
+    var a = new Uint8Array(saved);
+    var b = keyBytes(pushKey);
+    if (a.length !== b.length) return false;
+    for (var i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+    return true;
+  }
+  function activated(registration) {
+    var worker = registration.installing || registration.waiting;
+    if (registration.active || !worker) return Promise.resolve(registration);
+    return new Promise(function (resolve) {
+      worker.addEventListener('statechange', function () { if (worker.state === 'activated') resolve(registration); });
+    });
+  }
+  // This browser's subscription with the store's key (a new one if the key changed).
+  function pushSubscription() {
+    return navigator.serviceWorker.register(base + '?sw=1', { scope: base }).then(activated).then(function (registration) {
+      var subscribe = function () { return registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: keyBytes(pushKey) }); };
+      return registration.pushManager.getSubscription().then(function (existing) {
+        if (!existing) return subscribe();
+        return sameKey(existing) ? existing : existing.unsubscribe().then(subscribe);
+      });
+    });
+  }
+  function tellServer(subscription, on) {
+    var keys = subscription.toJSON().keys || {};
+    var body = new FormData();
+    body.append('intent', 'push');
+    body.append('token', token);
+    body.append('endpoint', subscription.endpoint);
+    body.append('p256dh', keys.p256dh || '');
+    body.append('auth', keys.auth || '');
+    body.append('on', on ? '1' : '0');
+    return fetch(base + '?ticket=' + encodeURIComponent(token), { method: 'POST', body: body, headers: { Accept: 'application/json' }, credentials: 'same-origin' })
+      .then(function (response) { if (!response.ok) throw new Error('Notifications answered ' + response.status); });
+  }
+  function turnPushOn() {
+    Notification.requestPermission().then(function (permission) {
+      if (permission !== 'granted') {
+        toast(permission === 'denied' ? 'Notifications are blocked. Allow them for this site in your browser settings.' : 'Notifications are still off.');
+        return null;
+      }
+      return pushSubscription().then(function (subscription) { return tellServer(subscription, true); }).then(function () {
+        pushOn = true;
+        remember(pushMemory, '1');
+        hidePushOffer();
+        toast("Notifications are on. We'll let you know when our team replies.");
+      });
+    }).catch(function () { toast("Notifications couldn't be turned on. Please try again."); })
+      .then(function () { bell(); if (Notification.permission === 'denied') hidePushOffer(); });
+  }
+  function turnPushOff() {
+    navigator.serviceWorker.getRegistration(base)
+      .then(function (registration) { return registration ? registration.pushManager.getSubscription() : null; })
+      .then(function (subscription) { return subscription ? tellServer(subscription, false) : null; })
+      .catch(function () {})
+      .then(function () { pushOn = false; remember(pushMemory, null); bell(); toast('Notifications are off for this request.'); });
+  }
+  // Offered once, under the chat's header, until they turn it on or say not now.
+  function hidePushOffer() {
+    var offer = root && root.querySelector('.hdt-push-offer');
+    if (offer) offer.remove();
+  }
+  function pushOffer() {
+    if (!pushReady || pushOn || Notification.permission !== 'default' || remembered('hdt-push-offer') === 'no') return;
+    var head = root.querySelector('.hdt-chat-head');
+    if (!head || root.querySelector('.hdt-push-offer')) return;
+    var offer = document.createElement('div');
+    offer.className = 'hdt-push-offer';
+    var text = document.createElement('span');
+    text.textContent = 'Get a notification when our team replies, even with this page closed.';
+    var yes = document.createElement('button');
+    yes.type = 'button';
+    yes.className = 'hdt-push-yes';
+    yes.textContent = 'Turn on';
+    var later = document.createElement('button');
+    later.type = 'button';
+    later.className = 'hdt-push-later';
+    later.textContent = 'Not now';
+    offer.append(text, yes, later);
+    head.after(offer);
   }
 
   // Tells the team the customer is typing, at most every couple of seconds.
@@ -599,6 +729,13 @@ const SCRIPT = `<script>
     setTheme(savedTheme === 'light' || savedTheme === 'dark' ? savedTheme
       : window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark', false);
     root.addEventListener('click', function (event) {
+      if (event.target.closest && event.target.closest('.hdt-bell')) {
+        if (Notification.permission === 'denied') toast('Notifications are blocked. Allow them for this site in your browser settings.');
+        else if (pushOn) turnPushOff(); else turnPushOn();
+        return;
+      }
+      if (event.target.closest && event.target.closest('.hdt-push-yes')) { turnPushOn(); return; }
+      if (event.target.closest && event.target.closest('.hdt-push-later')) { remember('hdt-push-offer', 'no'); hidePushOffer(); return; }
       if (event.target.closest && event.target.closest('.hdt-theme')) {
         setTheme(root.getAttribute('data-chat-theme') === 'light' ? 'dark' : 'light', true);
         return;
@@ -702,6 +839,10 @@ const SCRIPT = `<script>
     setInterval(check, 1000);
     document.addEventListener('visibilitychange', check);
     window.addEventListener('focus', check);
+    bell();
+    window.setTimeout(pushOffer, 1200);
+    // Already on: keep the server's copy current (browsers sometimes renew it).
+    if (pushOn) pushSubscription().then(function (subscription) { return tellServer(subscription, true); }).catch(function () {});
   }
 })();
 </script>`;
@@ -805,6 +946,8 @@ export type RequestPageExtras = {
   imageCounts: Map<string, number>; requestImages: number; products: PageProduct[]; receivedProducts: PageProduct[];
   canReply: boolean; maxImages: number; maxLength: number; state?: { sent?: boolean; error?: string; draft?: string };
   shipment?: PageShipment | null;
+  // The store's VAPID public key: the bell turns on browser notifications of team replies.
+  pushKey?: string;
 };
 
 const safeUrl = (url: string) => /^https:\/\//i.test(url) ? url : "";
@@ -1073,6 +1216,8 @@ ${ticket.allowVideos ? `<label class="hdt-drop"><i aria-hidden="true">🎥</i><s
     ...SUMMARY_FIELDS.filter((key) => values[key]).map((key) => `<div><dt>${escape(fieldLabels[key] ?? key)}</dt><dd>${escape(fieldValue(key, values[key]))}</dd></div>`),
   ].join("");
   const count = shown.length + (chat || cleared ? 0 : 1);
+  // Browser notifications of team replies, while the request is open.
+  const push = !resolved && Boolean(extras.pushKey);
 
   const stamp = liveStamp(ticket.status, ticket.messages.length, ticket.messages.at(-1)?.id, ticket.allowPhotos, `${ticket.cancelStatus ?? ""}${ticket.addressStatus ? `|${ticket.addressStatus}` : ""}${ticket.returnStatus ? `|${ticket.returnStatus}` : ""}${ticket.editStatus ? `|e:${ticket.editStatus}` : ""}${ticket.replacementStatus ? `|r:${ticket.replacementStatus}` : ""}${ticket.quoteStatus ? `|q:${ticket.quoteStatus}` : ""}`, ticket.allowVideos);
   return page(`Request #${ticket.number}`, `
@@ -1089,6 +1234,7 @@ ${ticket.allowVideos ? `<label class="hdt-drop"><i aria-hidden="true">🎥</i><s
 <div class="hdt-chat-head"${resolved ? " data-closed" : ""}${connecting ? " data-connecting" : ""}><div class="hdt-chat-brand">${agent ? `<span class="hdt-chat-avatar" data-person aria-hidden="true">${escape(nameInitial(agent))}</span>` : `<span class="hdt-chat-avatar" data-bot aria-hidden="true"></span>`}
 <div><h2>${agent ? `<small>You're chatting with</small><span title="${escape(agent)}">${escape(agent)}</span>` : "Customer Support"}</h2>${advisorStatus}</div>
  </div><div class="hdt-chat-actions"><span class="hdt-count">${count} message${count === 1 ? "" : "s"}</span>
+${push ? `<button type="button" class="hdt-bell" hidden aria-pressed="false" aria-label="Notify me when the team replies" title="Notify me when the team replies"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg></button>` : ""}
 <button type="button" class="hdt-theme" aria-label="Switch to light mode" title="Switch to light mode"><svg class="hdt-theme-light" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4.2"/><path d="M12 2.5v2.2M12 19.3v2.2M4.6 4.6l1.6 1.6M17.8 17.8l1.6 1.6M2.5 12h2.2M19.3 12h2.2M4.6 19.4l1.6-1.6M17.8 6.2l1.6-1.6"/></svg><svg class="hdt-theme-dark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.5 14.2A8.5 8.5 0 0 1 9.8 3.5a8.5 8.5 0 1 0 10.7 10.7z"/></svg></button>
 <button type="button" class="hdt-expand" aria-label="Full screen" title="Full screen" aria-pressed="false"><svg class="hdt-expand-open" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg><svg class="hdt-expand-close" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 14h6v6M20 10h-6V4M14 10l7-7M3 21l7-7"/></svg></button>
 <button type="button" class="hdt-chat-close" aria-label="Close chat window" title="${resolved ? "Close chat" : "Close chat window (the chat stays open: reopen it any time)"}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg></button></div></div>
@@ -1104,5 +1250,5 @@ ${shipmentCard(extras.shipment)}
 <p>This page is private to you. Keep the link to yourself: anyone with it can see this request.</p>
 <p>Looking for another request? <a href="?ticket=">Find it with its number</a>.</p></div>
 </aside>
-</div>`, ` data-hdt-stamp="${escape(stamp)}" data-hdt-token="${escape(ticket.accessToken)}"${resolved ? "" : " data-chat-open data-chat-locked"}`);
+</div>`, ` data-hdt-stamp="${escape(stamp)}" data-hdt-token="${escape(ticket.accessToken)}"${push ? ` data-hdt-push="${escape(extras.pushKey!)}"` : ""}${resolved ? "" : " data-chat-open data-chat-locked"}`);
 }

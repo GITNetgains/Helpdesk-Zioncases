@@ -131,6 +131,7 @@ model HelpDeskTicket {
   attachments HelpDeskAttachment[]
   messages    HelpDeskMessage[]
   emails      HelpDeskEmail[]
+  pushSubscriptions HelpDeskPushSubscription[]
 
   @@unique([shop, requestKey])
   @@unique([shop, number])
@@ -355,6 +356,26 @@ model HelpDeskSettings {
   // Google Places API key for address suggestions on the storefront form
   // (help-desk-places.server.ts). Never sent back to the browser.
   googlePlacesKey     String  @default("")
+  // Browser notifications of team replies (Web Push): the store's VAPID key
+  // pair, made the first time it's needed. The private key never leaves the server.
+  pushPublicKey       String  @default("")
+  pushPrivateKey      String  @default("")
+}
+
+// A customer's browser that asked to be notified when the team replies on
+// their request (Web Push). Removed when the browser says it's gone.
+model HelpDeskPushSubscription {
+  id        String   @id @default(cuid())
+  ticketId  String
+  endpoint  String
+  p256dh    String
+  auth      String
+  createdAt DateTime @default(now())
+  ticket    HelpDeskTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+
+  // One browser can follow several requests.
+  @@unique([ticketId, endpoint])
+  @@index([endpoint])
 }
 
 // Shopify staff who have opened the Help Desk, so tickets can be assigned to

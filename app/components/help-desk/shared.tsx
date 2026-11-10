@@ -24,8 +24,27 @@ export function HelpDeskNavigation({ current }: { current: "tickets" | "overview
     <LiveIndicator />
     <WaitingBell />
     <ThemeToggle />
-    {!full && <FullScreenButton />}
+    {full ? <MinimizeButton /> : <FullScreenButton />}
   </div>;
+}
+
+// The full screen window and the Help Desk in the admin talk over this channel
+// (both are the app's own pages): Minimize closes the window and opens the
+// same screen in the normal view.
+const WINDOW_CHANNEL = "help-desk-window";
+type WindowMessage = { type: "minimize"; path: string };
+
+function MinimizeButton() {
+  const location = useLocation();
+  const minimize = () => {
+    const params = new URLSearchParams(location.search);
+    params.delete("fullscreen");
+    const query = params.toString();
+    const channel = new BroadcastChannel(WINDOW_CHANNEL);
+    channel.postMessage({ type: "minimize", path: `${location.pathname}${query ? `?${query}` : ""}` } satisfies WindowMessage);
+    channel.close();
+  };
+  return <s-button icon="minimize" variant="secondary" accessibilityLabel="Leave full screen and go back to the normal view" onClick={minimize}>Minimize</s-button>;
 }
 
 // Light or dark in one click (Settings › Appearance also has Auto).
@@ -46,6 +65,19 @@ function ThemeToggle() {
 // included (App Bridge's app window, with Shopify's own bar to close it).
 function FullScreenButton() {
   const location = useLocation();
+  const navigate = useNavigate();
+  // Minimize in the full screen window: close it, showing the screen it was on.
+  useEffect(() => {
+    if (typeof BroadcastChannel === "undefined") return;
+    const channel = new BroadcastChannel(WINDOW_CHANNEL);
+    channel.onmessage = (event: MessageEvent<WindowMessage>) => {
+      if (event.data?.type !== "minimize" || !event.data.path.startsWith("/app/")) return;
+      navigate(event.data.path);
+      const appWindow = document.getElementById("help-desk-full-screen") as (HTMLElement & { hide?: () => Promise<void> }) | null;
+      void appWindow?.hide?.();
+    };
+    return () => channel.close();
+  }, [navigate]);
   const params = new URLSearchParams(location.search);
   params.set("fullscreen", "1");
   return <>
@@ -55,6 +87,10 @@ function FullScreenButton() {
 }
 
 type Waiting = { id: string; number: number; name: string; topic: string; humanRequestedAt: string };
+// The bell's last answer, kept between screens: a new screen shows it straight
+// away instead of an empty bell until its first check (the badge blinking).
+let lastWaiting: { count: number; waiting: Waiting[] } | null = null;
+let lastSeen: Set<string> | null = null;
 
 // The bell: customers waiting to talk to a person, after the chat assistant on
 // their request page passed them to the team. Checked every 10 seconds; a new
@@ -62,9 +98,9 @@ type Waiting = { id: string; number: number; name: string; topic: string; humanR
 export function WaitingBell() {
   const shopify = useAppBridge();
   const navigate = useNavigate();
-  const [state, setState] = useState<{ count: number; waiting: Waiting[] }>({ count: 0, waiting: [] });
+  const [state, setState] = useState<{ count: number; waiting: Waiting[] }>(() => lastWaiting ?? { count: 0, waiting: [] });
   const [open, setOpen] = useState(false);
-  const seen = useRef<Set<string> | null>(null);
+  const seen = useRef<Set<string> | null>(lastSeen);
   const box = useRef<HTMLDivElement>(null);
   useEffect(() => {
     let stopped = false;
@@ -76,8 +112,10 @@ export function WaitingBell() {
         const next = await response.json() as { count: number; waiting: Waiting[] };
         // A customer who wasn't waiting at the last check: let the team know.
         if (seen.current) for (const entry of next.waiting) if (!seen.current.has(entry.id)) shopify.toast.show(`${entry.name} wants to talk to a person (#${entry.number})`);
-        seen.current = new Set(next.waiting.map((entry) => entry.id));
-        setState(next);
+        seen.current = lastSeen = new Set(next.waiting.map((entry) => entry.id));
+        // Only a real change re-renders the bell.
+        if (!lastWaiting || JSON.stringify(lastWaiting) !== JSON.stringify(next)) setState(next);
+        lastWaiting = next;
       } catch {
         // Offline or restarting: the next check tries again.
       }
@@ -269,12 +307,17 @@ export function useLiveRefresh({ ticketId = "", scope = "", paused = false, inte
     let last: string | null = null;
     let checking = false;
     let stopped = false;
+    // Offline only after three failed checks in a row: one slow or dropped
+    // check (the dev tunnel, a deploy) shouldn't flip the header back and forth.
+    let failures = 0;
+    const failed = () => { if (++failures >= 3) announce("offline"); };
     const check = async () => {
       if (checking || stopped || live.current.paused || document.visibilityState !== "visible") return;
       checking = true;
       try {
         const response = await fetch(url, { headers: { Accept: "application/json" }, cache: "no-store" });
-        if (!response.ok) { announce("offline"); return; }
+        if (!response.ok) { failed(); return; }
+        failures = 0;
         const pulse = await response.json() as Record<string, unknown> & { stamp?: string };
         const { stamp } = pulse;
         if (!stamp || stopped) return;
@@ -288,7 +331,7 @@ export function useLiveRefresh({ ticketId = "", scope = "", paused = false, inte
         last = stamp;
       } catch {
         // Offline, restarting or signed out: try again on the next tick.
-        announce("offline");
+        failed();
       } finally {
         checking = false;
       }
@@ -305,7 +348,9 @@ export function useLiveRefresh({ ticketId = "", scope = "", paused = false, inte
 // The Live sign: a beating dot while the screen keeps itself up to date, a
 // flash of "Updated" when a change comes in, grey "Offline" when it can't.
 export function LiveIndicator() {
-  const [state, setState] = useState<LiveState | null>(null);
+  // Shown from the start (as Live), always the same size: the header row never
+  // jumps when it appears or changes.
+  const [state, setState] = useState<LiveState>("live");
   const [flash, setFlash] = useState(0);
   useEffect(() => {
     const on = (event: Event) => {
@@ -316,12 +361,12 @@ export function LiveIndicator() {
     window.addEventListener(LIVE_EVENT, on);
     return () => window.removeEventListener(LIVE_EVENT, on);
   }, []);
-  if (!state) return null;
   const offline = state === "offline";
   return <span className="hd-live" data-state={offline ? "offline" : "live"} role="status" aria-live="polite"
     title={offline ? "Can't reach the server. Retrying..." : "This screen updates by itself"}>
-    <i aria-hidden="true" />
-    {offline ? "Offline" : <span key={flash} className={flash ? "hd-live-flash" : undefined}>{flash && state === "updated" ? "Updated" : "Live"}</span>}
+    {/* Keyed by the update, so each change replays its short pulse. */}
+    <i key={flash} aria-hidden="true" data-beat={flash && !offline ? "" : undefined} />
+    <span key={flash} className={flash && !offline ? "hd-live-flash" : undefined}>{offline ? "Offline" : flash && state === "updated" ? "Updated" : "Live"}</span>
   </span>;
 }
 
