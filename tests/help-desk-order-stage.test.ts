@@ -4,7 +4,7 @@ import { mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { orderStage } from "../app/services/help-desk-orders.server";
-import { asksOrderStatus, assistantTurn, orderStatusText } from "../app/services/help-desk-assistant.server";
+import { asksOrderStatus, asksRequestStatus, assistantTurn, orderStatusText } from "../app/services/help-desk-assistant.server";
 import { submitTicket } from "../app/services/help-desk.server";
 import { ensureArticles } from "../app/services/help-desk-articles.server";
 import { topics, validateHelpDesk } from "../app/services/help-desk";
@@ -97,5 +97,19 @@ describe("The chat on an order request", () => {
     const unsure = await assistantTurn(db, undefined, shop, ticketId!, "my dog chewed the handle");
     expect(unsure).toMatchObject({ notifyTeam: true, handoff: false });
     expect(unsure.reply).toBe("Thanks Sandy! Your request is submitted and in process. We'll let you know here as soon as there's any update on it. Thanks for your patience.");
+  });
+
+  it("knows the request it's on: asked how it's going, it says where it stands without asking again", async () => {
+    const form = new FormData();
+    for (const [key, value] of Object.entries({ requestKey: crypto.randomUUID(), name: "Sandy Lee", email: "sandy@example.com", topic: topics[3], orderType: "Where is my order?", delivery: "Package lost", orderNumber: "#1003", details: "It never came", lostPreference: "Refund", category: "Shipping & Delivery", subcategory: "Lost Package" })) form.set(key, value);
+    form.append("products", "gid://shopify/Product/1");
+    const { ticketId, number, errors } = await submitTicket(db, shop, form);
+    expect(errors).toEqual({});
+    for (const text of ["any update on my request?", "what's the status of my claim", "is my refund approved"]) expect(asksRequestStatus(text), text).toBe(true);
+    for (const text of ["where is my order", "how do I clean the case"]) expect(asksRequestStatus(text), text).toBe(false);
+    const turn = await assistantTurn(db, undefined, shop, ticketId!, "any update on my request?");
+    expect(turn).toMatchObject({ notifyTeam: false, handoff: false });
+    expect(turn.reply).toContain(`Your request #${number} (Lost Package): our team has it and will reply here soon.`);
+    expect(turn.reply).toContain("- Lost package: pending review");
   });
 });

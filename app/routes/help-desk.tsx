@@ -19,7 +19,7 @@ import { blocked, clear, clientKey, hit } from "../services/rate-limit.server";
 import { addressDetails, suggestAddresses } from "../services/help-desk-places.server";
 import { answerPage, ensureArticles, listArticles, searchAnswers, recordSearch, voteArticle } from "../services/help-desk-articles.server";
 import { renderArticlePage, renderMissingArticle } from "../services/help-desk-article-page";
-import { articleCollections, validAction } from "../services/help-desk-articles";
+import { articleCollections, currentAction } from "../services/help-desk-articles";
 import { answerNewRequest, assistantTurn } from "../services/help-desk-assistant.server";
 import { clearTyping, markTyping, typingState } from "../services/help-desk-typing.server";
 
@@ -107,11 +107,12 @@ export async function loader({ request }: LoaderFunctionArgs) {
     liveRatesOn(db, shop).catch(() => false),
   ]);
   return json({
-    home: shippingSetup?.home || "US", liveRates, addressSuggestions: true, addressProvider: placesKey ? "google" : "osm", shippingCountries: SHIPPING_TIMES_COUNTRIES, countries, issues, orderTypes, topics, updates, deliveryIssues, productParts, cancelReasons, cancelScopes, issueResolutions, purchasePlaces, provinces: PROVINCES, groups: formGroups, orders,
+    // Rates on Domestic and International Shipping: ShipStation's, or the store's own flat rates.
+    home: shippingSetup?.home || "US", liveRates: liveRates || Boolean(shippingSetup?.zones.length), addressSuggestions: true, addressProvider: placesKey ? "google" : "osm", shippingCountries: SHIPPING_TIMES_COUNTRIES, countries, issues, orderTypes, topics, updates, deliveryIssues, productParts, cancelReasons, cancelScopes, issueResolutions, purchasePlaces, provinces: PROVINCES, groups: formGroups, orders,
     tickets: tickets && tickets.map(({ accessToken, lastActivityAt, ...ticket }) => ({ ...ticket, updatedAt: lastActivityAt ?? ticket.createdAt, token: accessToken })),
     collections: articleCollections,
     // keywords: so the suggestions shown straight away, before the app's own search answers, find them too.
-    articles: articles.map(({ id, question, answer, keywords, collection, action, helpful }) => ({ id, question, answer, keywords, collection, action: validAction(action) ? action : "", helpful, source: "article", url: "", image: "" })),
+    articles: articles.map(({ id, question, answer, keywords, collection, action, helpful }) => ({ id, question, answer, keywords, collection, action: currentAction(action), helpful, source: "article", url: "", image: "" })),
   }, 200, privateHeaders);
 }
 

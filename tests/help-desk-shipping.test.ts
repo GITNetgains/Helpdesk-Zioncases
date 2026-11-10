@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { addBusinessDays, daysInText, orderShipping, quotedAnswer, parseDays, processingDays, rateTransit, readShippingSettings, shippingAnswer, zonesFor, type ShippingSetup } from "../app/services/help-desk-shipping";
+import { addBusinessDays, daysInText, flatRatesFor, orderShipping, quotedAnswer, parseDays, processingDays, rateTransit, readShippingSettings, shippingAnswer, zonesFor, type ShippingSetup } from "../app/services/help-desk-shipping";
 import { shapeSetup } from "../app/services/help-desk-shipping.server";
 
 const none = { processing: "", rates: {}, note: "" };
@@ -118,9 +118,36 @@ describe("Shipping times", () => {
     expect(shaped).toEqual({
       home: "US", currency: "USD", processingTime: "P1D",
       zones: [{ name: "US", general: true, restOfWorld: true, countries: [{ code: "US", provinces: ["HI"] }], rates: [
-        { name: "Free", description: "", price: 0, currency: "USD", minTotal: 50, maxTotal: null, byWeight: false },
-        { name: "UPS", description: "", price: null, currency: "USD", minTotal: null, maxTotal: null, byWeight: false },
+        { name: "Free", description: "", price: 0, currency: "USD", minTotal: 50, maxTotal: null, byWeight: false, minWeightOz: null, maxWeightOz: null },
+        { name: "UPS", description: "", price: null, currency: "USD", minTotal: null, maxTotal: null, byWeight: false, minWeightOz: null, maxWeightOz: null },
       ] }],
     });
+  });
+
+  it("offers the flat rates an order meets: its zone, order total and weight", () => {
+    const shaped = shapeSetup({
+      shop: { currencyCode: "USD", shopAddress: { countryCodeV2: "US" } },
+      deliveryProfiles: { nodes: [{ default: true, profileLocationGroups: [{ locationGroupZones: { nodes: [
+        { zone: { name: "Domestic", countries: [{ code: { countryCode: "US", restOfWorld: false }, provinces: [] }] }, methodDefinitions: { nodes: [
+          { name: "Standard", description: null, active: true, rateProvider: { __typename: "DeliveryRateDefinition", price: { amount: "8.0", currencyCode: "USD" } }, methodConditions: [] },
+          { name: "Standard", description: null, active: true, rateProvider: { __typename: "DeliveryRateDefinition", price: { amount: "0.0", currencyCode: "USD" } },
+            methodConditions: [{ field: "TOTAL_PRICE", operator: "GREATER_THAN_OR_EQUAL_TO", conditionCriteria: { __typename: "MoneyV2", amount: "70.0" } }] },
+          { name: "UPS", description: "", active: true, rateProvider: { __typename: "DeliveryParticipant" }, methodConditions: [] },
+        ] } },
+        { zone: { name: "International", countries: [{ code: { countryCode: null, restOfWorld: true }, provinces: [] }] }, methodDefinitions: { nodes: [
+          { name: "Free International Shipping", description: null, active: true, rateProvider: { __typename: "DeliveryRateDefinition", price: { amount: "0.0", currencyCode: "USD" } },
+            methodConditions: [{ field: "TOTAL_WEIGHT", operator: "GREATER_THAN_OR_EQUAL_TO", conditionCriteria: { __typename: "Weight", value: 20, unit: "KILOGRAMS" } }] },
+          { name: "International Shipping", description: null, active: true, rateProvider: { __typename: "DeliveryRateDefinition", price: { amount: "30.0", currencyCode: "USD" } }, methodConditions: [] },
+        ] } },
+      ] } }] }] },
+    });
+    expect(shaped.zones[1].rates[0].minWeightOz).toBeCloseTo(705.48, 1);
+    // Domestic: $8 under $70, free from $70; never the carrier-calculated UPS.
+    expect(flatRatesFor(shaped, "US", "IL", { weightOz: 200, total: 50 })).toEqual([{ name: "Standard", price: 8, currency: "USD" }]);
+    expect(flatRatesFor(shaped, "US", "IL", { weightOz: 200, total: 90 })).toEqual([{ name: "Standard", price: 0, currency: "USD" }]);
+    // Abroad: free shipping from 20 kg only, and only when the weight is known.
+    expect(flatRatesFor(shaped, "AU", "QLD", { weightOz: 229, total: 90 })).toEqual([{ name: "International Shipping", price: 30, currency: "USD" }]);
+    expect(flatRatesFor(shaped, "AU", "QLD", { weightOz: 900, total: 90 }).map((rate) => rate.name)).toEqual(["Free International Shipping", "International Shipping"]);
+    expect(flatRatesFor(shaped, "AU", "QLD", { weightOz: null, total: 90 }).map((rate) => rate.name)).toEqual(["International Shipping"]);
   });
 });

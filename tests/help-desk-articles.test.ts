@@ -47,6 +47,22 @@ describe("Help articles", () => {
     ["Can I buy some foam dividers that are in your cases?", "Can I buy replacement parts like wheels, risers, lids or foam?"],
     ["Failed Delivery", "The carrier couldn't deliver my package"],
     ["where is my order", "Where is my order?"],
+    // Hinglish, the way customers write it.
+    ["lock nahi khul raha", "The lock won't open or won't take the combination"],
+    ["invoice chahiye", "Can I get an invoice or receipt?"],
+    ["product toota hua aaya", "My item arrived damaged or broken"],
+    ["saman kam aaya", "Something is missing from my order"],
+    ["galat colour aaya", "I received the wrong item, colour or risers"],
+    ["paise nahi aaye", "Where is my refund?"],
+    ["address badalna hai", "Can I change my shipping address?"],
+    ["do u ship to uk", "Do you ship internationally?"],
+    ["I ordered the incorrect case. It was ordered last night and I was hoping to stop the delivery and re-order the correct case.", "Can I change an item, colour or quantity on my order?"],
+    ["I was wondering if I could purchase replaceable wheels for my zion case. A couple wheels cracked", "Can I buy replacement parts like wheels, risers, lids or foam?"],
+    ["Hello, I need to make a return the item is still new in the box.", "What is your return policy?"],
+    ["Slab Case X for return: insert not fitting Correctly", "It doesn't fit my slabs or cards. Can I return it?"],
+    ["This luggage is very flimsy and it's disappointing, I expected much better quality.", "The product isn't what I expected"],
+    ["can I cancel my order, it already shipped", "Can I change or cancel my order after it has shipped?"],
+    ["I already sent a request, can I send another one?", "I already sent a request. Can I send another one?"],
     ["return policy", "What is your return policy?"],
     ["do you ship to canada", "Do you ship internationally?"],
   ])("answers %j", (question, expected) => {
@@ -160,6 +176,13 @@ describe("The request page's assistant", () => {
     for (const text of ["are you there?", "anyone there??", "hello anyone there"]) expect(talk(text), text).toBe("stillThere");
     for (const text of ["bye", "ok bye", "that's all", "have a nice day!", "good night"]) expect(talk(text), text).toBe("goodbye");
     for (const text of ["sorry", "my bad"]) expect(talk(text), text).toBe("sorry");
+    // Upset, or nothing asked yet: acknowledged, then asked what they need.
+    for (const text of ["this is ridiculous", "worst service ever", "bakwas service", "I am so frustrated!", "not happy"]) expect(talk(text), text).toBe("upset");
+    for (const text of ["lol", "hmm", "?", "haan", "acha"]) expect(talk(text), text).toBe("filler");
+    expect(talk("not happy with my product")).not.toBe("upset");
+    expect(talk("hello?")).toBe("greet");
+    // Asking for a person in Hinglish.
+    for (const text of ["mujhe kisi insaan se baat karni hai", "team se baat karao"]) expect(talk(text), text).toBe("handoff");
     // Not small talk: a question with it, or asking for a person.
     expect(talk("Can I talk to a human?")).toBe("handoff");
     expect(talk("hi")).toBe("greet");
@@ -173,8 +196,8 @@ describe("The request page's assistant", () => {
   it("explains how to do it on the form, step by step, when the customer asks how", () => {
     const cancel = { ...sure("Can I cancel my order?").answer, action: "Orders › Cancel Order" };
     const how = assistantMessage({ kind: "answer", answer: cancel }, "", ASSISTANT_COPY, "how do I cancel my order?");
-    expect(how).toContain("How to do it:\n\n1. On our Help Desk page, choose \"I have a question about an order\".\n2. Pick your order (or \"My order isn't listed\").\n3. Choose Orders as the category and Cancel Order under \"What would you like to do?\", then press Continue with this order.\n4. Check it's the right order");
-    expect(requestSteps("Other Queries › Payment Issue")[2]).toBe("Choose Other order questions as the category and Payment Issue under \"What would you like to do?\", then press Continue with this order.");
+    expect(how).toContain("How to do it:\n\n1. On our Help Desk page, choose \"I have a question about an order\".\n2. Pick your order (or \"My order isn't listed\").\n3. Choose Orders as the category (if it asks) and Cancel Order under \"What would you like to do?\", then press Continue with this order.\n4. Check it's the right order");
+    expect(requestSteps("Other Queries › Payment Issue")[2]).toBe("Choose Other order questions as the category (if it asks) and Payment Issue under \"What would you like to do?\", then press Continue with this order.");
     // Not about an order: its own button, or every topic.
     expect(requestSteps("Shipping › International Shipping").slice(0, 2)).toEqual(["On our Help Desk page, choose \"My question isn't about an order\".", "Press International Shipping."]);
     expect(requestSteps("Other Queries › PSA slab fit")[1]).toBe("Press Product Query, choose PSA slab fit and press Continue with this question.");

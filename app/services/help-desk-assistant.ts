@@ -18,6 +18,8 @@ export const ASSISTANT_COPY = {
   stillThere: "Yes, I'm here {first_name}! What can I help you with?",
   goodbye: "Thanks for chatting {first_name}! If anything else comes up, just write here. Have a great day!",
   sorry: "No worries at all! Take your time, and tell me what you need help with.",
+  upset: "I'm really sorry about this {first_name}, I understand how frustrating it is. Tell me what happened, and I'll find the quickest way to sort it out. If you'd rather talk to a person from our team, just say \"talk to a person\".",
+  filler: "I'm here {first_name}! What can I help you with? You can ask about your order, shipping, returns, a damaged or missing item, or any of our products.",
   chatCleared: "Done {first_name}, I've cleared the chat. Your request is still saved with our team. What can I help you with?",
   orderInProcess: "Thanks {first_name}! Your request is submitted and in process. We'll let you know here as soon as there's any update on it. Thanks for your patience.",
 };
@@ -40,6 +42,8 @@ export const ASSISTANT_COPY_FIELDS: { key: AssistantCopyKey; label: string; deta
   { key: "stillThere", label: "When the customer asks if anyone's there", details: "\"Are you there?\", \"anyone there?\"." },
   { key: "goodbye", label: "When the customer says goodbye", details: "\"Bye\", \"that's all\", \"have a good day\"." },
   { key: "sorry", label: "When the customer apologises", details: "\"Sorry\", \"my bad\"." },
+  { key: "upset", label: "When the customer is upset", details: "\"Worst service\", \"this is ridiculous\", \"bakwas\". It apologises, then asks what happened." },
+  { key: "filler", label: "When the customer hasn't asked anything yet", details: "\"Hmm\", \"lol\", \"?\", \"haan\"." },
   { key: "orderInProcess", label: "On an order request, when the assistant can't answer", details: "Asked where their order is, the assistant shows its live status from Shopify instead." },
   { key: "chatCleared", label: "When the customer clears the chat", details: "\"Clear chat\", \"start over\". Only their view is cleared: your team still sees the whole conversation." },
 ];

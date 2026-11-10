@@ -1,5 +1,5 @@
 import type { PrismaClient } from "@prisma/client";
-import { correctQuery, MAX_SECTION_LENGTH, rankArticles, sectionsFromHtml, starterArticles, storeFacts, validAction } from "./help-desk-articles";
+import { correctQuery, MAX_SECTION_LENGTH, rankArticles, sectionsFromHtml, starterArticles, storeFacts, currentAction } from "./help-desk-articles";
 import { aiAssistantEnabled, aiRelated } from "./help-desk-ai.server";
 import { loadShippingSetup, shippingSettings } from "./help-desk-shipping.server";
 import { forget, memo } from "./memo.server";
@@ -79,7 +79,7 @@ export const listArticles = (db: PrismaClient, shop: string) =>
   db.helpDeskFaq.findMany({ where: { shop }, orderBy: [{ createdAt: "asc" }, { id: "asc" }] });
 
 const articleAnswer = (row: { id: string; question: string; answer: string; collection: string; action: string }): Answer =>
-  ({ id: row.id, question: row.question, answer: row.answer, collection: row.collection, action: validAction(row.action) ? row.action : "", source: "article", url: "", image: "" });
+  ({ id: row.id, question: row.question, answer: row.answer, collection: row.collection, action: currentAction(row.action), source: "article", url: "", image: "" });
 
 // ---------- From Shopify ----------
 

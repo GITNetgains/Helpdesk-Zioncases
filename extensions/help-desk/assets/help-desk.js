@@ -387,7 +387,6 @@
       const active = [...progress.children].map((item, at) => ({ item, at })).filter(({ item }) => !item.hidden);
       const position = active.findIndex(({ at }) => at === index) + 1;
       counter.textContent = `Step ${position} of ${active.length} · ${progress.children[index].textContent}`;
-      for (const line of chosenLines) line.refresh();
       renderCrumbs();
       if (moved && form.isConnected) {
         if (form.getBoundingClientRect().top < 0) form.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -758,31 +757,34 @@
     const aboutAnOrder = entry => ORDER_FLOWS.includes(entry.flow) || (entry.flow === 'question' && ORDER_SECTIONS.includes(entry.section));
     // Where the order is (from Shopify), and what can be done with it there:
     // being prepared, it can still be tracked, changed, cancelled or sped up;
-    // on its way (the carrier says so), tracked; delivered or failed,
-    // everything else (a problem with an item, a return, a delivery issue);
-    // shipped with no word from the carrier, tracked or anything else;
-    // cancelled, a question. Partly shipped, or unknown: everything.
+    // shipped or on its way, it has left the warehouse: only tracked (the
+    // changes are listed, but say why they can't be made); delivered,
+    // everything after delivery (a problem with an item, a return, a lost
+    // package, a delivery issue); failed, everything but those that need it
+    // delivered; cancelled, a question. Partly shipped, or unknown: everything
+    // (a lost package only once delivered).
     const stageOf = order => order?.stage || (order?.cancelled ? 'cancelled' : order?.fulfillment === 'partial' ? 'partial' : order?.fulfillment ? 'shipped' : order ? 'processing' : null);
     const STAGE_WORDS = { processing: 'Being prepared', partial: 'Partly shipped', transit: 'On its way', shipped: 'Shipped', delivered: 'Delivered', failed: 'Delivery failed', cancelled: 'Cancelled' };
     const TRACK = 'Shipping & Delivery|Track My Order';
+    const LOST = 'Shipping & Delivery|Lost Package';
     const BEFORE_SHIPPING = [TRACK, 'Orders|Edit Items, Color or Quantity', 'Orders|Change Shipping Address', 'Shipping & Delivery|Expedited Shipping', 'Orders|Cancel Order'];
+    // A problem with an item, a return or a warranty claim: once it's been delivered.
+    const AFTER_DELIVERY = ['productIssue', 'wrongItem', 'return'];
+    const needsDelivery = option => AFTER_DELIVERY.includes(option.flow) || option.section === 'Returns' || option.section === 'Warranty';
+    const inShipment = stage => stage === 'shipped' || stage === 'transit';
+    const SHIPPED_ERROR = 'The order is already in shipment and has left the warehouse. Therefore, it cannot be modified or cancelled. If you no longer require the order, you can raise a return request 6 days after delivery.';
     const offeredFor = (stage, option) => {
       const key = `${option.category}|${option.subcategory}`;
+      if (key === LOST) return stage === 'delivered' || stage === null;
       if (stage === 'processing') return BEFORE_SHIPPING.includes(key);
-      if (stage === 'transit') return key === TRACK;
-      if (stage === 'delivered' || stage === 'failed') return !BEFORE_SHIPPING.includes(key);
-      if (stage === 'shipped') return key === TRACK || !BEFORE_SHIPPING.includes(key);
+      if (inShipment(stage)) return BEFORE_SHIPPING.includes(key);
+      if (stage === 'delivered') return !BEFORE_SHIPPING.includes(key);
+      if (stage === 'failed') return !BEFORE_SHIPPING.includes(key) && !needsDelivery(option);
       if (stage === 'cancelled') return option.flow === 'question';
       return true;
     };
-    const STAGE_NOTES = {
-      processing: 'Not shipped yet: you can still change it, change the address, add expedited shipping or cancel it.',
-      transit: 'On its way: see where it is now. Once it’s delivered, you can report a problem or return something here.',
-      shipped: 'Shipped: see where it is, report a problem with an item, start a return, or ask about the delivery.',
-      delivered: 'Delivered: report a problem with an item, start a return, or ask about the delivery.',
-      failed: 'The carrier couldn’t deliver it: tell us about the delivery, or anything else about the order.',
-      cancelled: 'This order was cancelled: ask about its refund, payment or invoice.',
-    };
+    // Shipped, not delivered yet: anything but tracking can't be done.
+    const blockedFor = (stage, option) => inShipment(stage) && `${option.category}|${option.subcategory}` !== TRACK;
     let orderStage = null;
     const shipState = order => STAGE_WORDS[stageOf(order)] || (order.fulfillment === 'fulfilled' ? 'Shipped' : order.fulfillment === 'partial' ? 'Partly shipped' : 'Not shipped yet');
     const itemCount = order => items(order).reduce((sum, item) => sum + (Number(item.quantity) || 1), 0);
@@ -846,9 +848,6 @@
               lines.append(row);
             }
             orderDetails.append(head, lines);
-            // What can be done with it now, in a word.
-            const note = STAGE_NOTES[orderStage];
-            if (note) orderDetails.append(node('p', note, { class: 'help-desk-hint help-desk-stage-note' }));
           }
           needWrap.hidden = false;
           fillCategories();
@@ -880,10 +879,14 @@
       placeholder: 'Select a category', optional: true,
     });
     category.removeAttribute('name');
+    // Delivered: the categories for a problem with an item and returns lead.
+    const DELIVERED_ORDER = ['Product Issues', 'Returns, Exchanges & Refunds', 'Orders'];
+    const deliveredRank = topic => { const at = DELIVERED_ORDER.indexOf(topic.entry.label); return at < 0 ? DELIVERED_ORDER.length : at; };
     // The categories for this order, keeping the one picked if it still applies;
     // a single one is picked straight away.
     function fillCategories() {
       const now = topicsNow();
+      if (orderStage === 'delivered') now.sort((a, b) => deliveredRank(a) - deliveredRank(b));
       const kept = now.some(topic => String(topic.groupIndex) === category.value) ? category.value : '';
       category.replaceChildren(node('option', 'Select a category', { value: '' }), ...now.map(topic => node('option', topicName(topic), { value: String(topic.groupIndex) })));
       category.value = kept || (now.length === 1 ? String(now[0].groupIndex) : '');
@@ -893,14 +896,17 @@
     need.removeAttribute('name');
     need.disabled = true;
     const needHint = node('p', '', { class: 'help-desk-hint', hidden: '' });
+    // On the page only while it applies, so it's never taken for another step's error.
+    const needBlocked = node('p', SHIPPED_ERROR, { class: 'help-desk-track-error', role: 'alert' });
+    const showBlocked = on => { if (on) needHint.after(needBlocked); else needBlocked.remove(); };
     needWrap.append(needHint);
-    category.onchange = () => {
-      const topic = topicsNow().find(entry => String(entry.groupIndex) === category.value);
+    // The category's options, under a heading for each ticket category when it covers several.
+    function fillNeed(topic) {
       need.replaceChildren(node('option', topic ? 'Select what you need' : 'Select a category first', { value: '' }));
       need.disabled = !topic;
       needHint.hidden = true;
+      showBlocked(false);
       if (!topic) return;
-      // Several ticket categories in one topic: a heading for each.
       const sections = new Set(topic.offered.map(({ option }) => option.section));
       const sets = new Map();
       for (const { option, index } of topic.offered) {
@@ -911,12 +917,18 @@
         }
         parent.append(node('option', option.label, { value: `${topic.groupIndex}:${index}` }));
       }
+    }
+    category.onchange = () => fillNeed(topicsNow().find(entry => String(entry.groupIndex) === category.value));
+    const chosenNeed = () => {
+      const [g, o] = need.value.split(':').map(Number);
+      return need.value ? groups[g]?.options[o] : null;
     };
     need.onchange = () => {
-      const [g, o] = need.value.split(':').map(Number);
-      const option = need.value ? groups[g]?.options[o] : null;
+      const option = chosenNeed();
+      const blocked = Boolean(option) && blockedFor(orderStage, option);
+      showBlocked(blocked);
       needHint.textContent = option?.description || '';
-      needHint.hidden = !option?.description;
+      needHint.hidden = blocked || !option?.description;
     };
     const orderGo = node('button', 'Continue with this order', { type: 'button', class: 'help-desk-start-go' });
     orderGo.onclick = () => {
@@ -930,6 +942,7 @@
       }
       if (!category.value) { message('Choose a category.', true); category.focus(); return; }
       if (!need.value) { message('Choose what you need help with.', true); need.focus(); return; }
+      if (blockedFor(orderStage, chosenNeed())) { message(SHIPPED_ERROR, true); need.focus(); return; }
       const [g, o] = need.value.split(':').map(Number);
       openOption({ group: groups[g], option: groups[g].options[o] }, unlistedOn ? () => {
         // The number they entered goes into the request's own Order Number.
@@ -940,8 +953,8 @@
     needWrap.append(orderGo);
     orderPane.append(needWrap);
 
-    // Not about an order: in their own words, or a common question.
-    const ask = field(otherPane, 'startQuestion', 'Describe your question', { multiline: true, optional: true, placeholder: 'For example: do your cases fit PSA slabs, or do you take PayPal?' });
+    // Not about an order: a common question, or in their own words.
+    const ask = field(otherPane, 'startQuestion', 'Or describe your question', { multiline: true, optional: true, placeholder: 'For example: do your cases fit PSA slabs, or do you take PayPal?' });
     ask.removeAttribute('name');
     // An order it's about, if any: its number fills the question's own Order
     // Number; the date goes with the request (off while this pane is hidden).
@@ -970,7 +983,7 @@
     };
     otherPane.append(askGo);
     const quick = node('div', '', { class: 'help-desk-quick' });
-    quick.append(node('span', 'Or choose a common question:', { class: 'help-desk-quick-label' }));
+    quick.append(node('span', 'Choose a common question:', { class: 'help-desk-quick-label' }));
     const quickButton = (label, onclick) => { const button = node('button', label, { type: 'button', class: 'help-desk-quick-button' }); button.onclick = onclick; quick.append(button); return button; };
     quickButton('International Shipping', () => openOption(findOption(entry => entry.flow === 'international' && entry.subcategory === 'International Shipping')));
     // Dealers and affiliates: their topic's options (pricing, applications, payouts...).
@@ -1002,7 +1015,8 @@
       if (!productWrap.hidden) productQuestion.focus();
     });
     productButton.setAttribute('aria-expanded', 'false');
-    otherPane.append(quick, productWrap);
+    // The common questions stay on top, above the question box.
+    otherPane.prepend(quick, productWrap);
 
     // Every topic, as before.
     const allTopicsToggle = node('button', 'See all topics', { type: 'button', class: 'help-desk-link help-desk-all-topics-toggle', 'aria-expanded': 'false' });
@@ -1028,18 +1042,6 @@
     // email come from their account. Guests are asked to sign in first.
     const known = Boolean(customer?.name && customer?.email);
     const detailsStep = known ? 3 : 2;
-    // "Shipping › Domestic Shipping · Change" on the later steps.
-    const chosenLines = [];
-    function chosenLine(panel) {
-      const line = node('div', '', { class: 'help-desk-chosen' });
-      const text = node('span');
-      const change = node('button', 'Change', { type: 'button', class: 'help-desk-link' });
-      change.onclick = () => go(issueStep());
-      line.append(text, change);
-      line.refresh = () => { text.textContent = [groups[Number(group.value)]?.label, current?.label].filter(Boolean).join(' › '); line.hidden = !current; };
-      panel.querySelector('.help-desk-section-heading').after(line);
-      chosenLines.push(line);
-    }
     const contactSection = section('Your details', 'How we can reach you. Fields marked * are required.', 'Your details');
     const contactFields = node('div', '', { class: 'help-desk-contact-fields' });
     if (!customer) {
@@ -1063,9 +1065,7 @@
     });
 
     // Step 4: collect the fields needed for this request.
-    chosenLine(contactSection);
     const requestSection = section('Your request', '', 'Request');
-    chosenLine(requestSection);
     const requestTitle = requestSection.querySelector('h3');
     const requestText = requestSection.querySelector('p');
     requestSection.append(fields);
@@ -1075,7 +1075,6 @@
     trap.tabIndex = -1;
     trap.autocomplete = 'off';
     const reviewSection = section('Review and submit', 'Check your request before sending it to our team.', 'Review');
-    chosenLine(reviewSection);
     reviewSection.append(review);
     const requestBack = nav(requestSection, () => (stageBack ? stageBack() : go(known ? issueStep() : 2)), () => {
       if (!current) { message('Choose the issue that best describes your request.', true); return; }
@@ -1508,17 +1507,21 @@
         for (const [id, product] of selected) {
           if (!cards.has(id)) addCard(product);
           if (boxes.has(id)) continue;
-          const box = node('section', '', { class: 'help-desk-product-issue', 'aria-label': product.title });
-          const head = node('div', '', { class: 'help-desk-product-issue-head' });
-          head.append(thumb(product.image), node('strong', product.title));
-          box.append(head, node('input', '', { type: 'hidden', name: `itemTitle:${id}`, value: product.title }));
-          fill(box, product, id);
+          // Nothing to ask about each one (no fill): no box, just its title for the request.
+          const box = fill ? node('section', '', { class: 'help-desk-product-issue', 'aria-label': product.title }) : node('span', '', { hidden: '' });
+          if (fill) {
+            const head = node('div', '', { class: 'help-desk-product-issue-head' });
+            head.append(thumb(product.image), node('strong', product.title));
+            box.append(head);
+          }
+          box.append(node('input', '', { type: 'hidden', name: `itemTitle:${id}`, value: product.title }));
+          fill?.(box, product, id);
           boxes.set(id, box);
           cards.get(id).parentElement.append(box);
         }
         for (const [id, card] of cards) {
           card.setAttribute('aria-pressed', String(selected.has(id)));
-          card.parentElement.toggleAttribute('data-open', selected.has(id));
+          card.parentElement.toggleAttribute('data-open', Boolean(fill) && selected.has(id));
         }
         if (tips) tips.hidden = !selected.size;
       };
@@ -1713,8 +1716,8 @@
     function orderGate(kind, reveal) {
       const area = node('div', '', { 'data-fields': '', 'data-part': 'ask' });
       // A partly shipped order can still be asked about for a cancellation (what hasn't shipped), not for a new address.
-      // A lost package is about a shipped order; the others, one that hasn't shipped (a cancellation: not all of it).
-      orderField(area, null, kind === 'lost' ? shipped : order => order.fulfillment !== 'fulfilled' && (kind === 'cancel' || order.fulfillment !== 'partial'));
+      // A lost package is about a delivered order; the others, one that hasn't shipped (a cancellation: not all of it).
+      orderField(area, null, kind === 'lost' ? order => stageOf(order) === 'delivered' : order => order.fulfillment !== 'fulfilled' && (kind === 'cancel' || order.fulfillment !== 'partial'));
       const panel = node('div', '', { class: 'help-desk-track', 'data-part': 'ask' });
       const check = node('button', 'Continue', { type: 'button' });
       const result = node('p', '', { class: 'help-desk-track-error', role: 'alert', hidden: '' });
@@ -1740,10 +1743,11 @@
           if (!data.allowed) { show(data.error || 'We couldn\'t check your order right now. Please try again in a moment.'); return; }
           result.hidden = true;
           // The order checked out: say so, then its fields, as the next screen.
+          // A lost package says nothing: "we found your order" read as if the package was found.
           const verified = node('div', '', { class: 'help-desk-verified' });
-          verified.append(node('strong', `Order ${orderNumber}`), node('span', kind === 'lost' ? 'We found your order. Check its status below.' : kind === 'edit' ? 'This order is still at our warehouse, so you can ask to change it.' : kind !== 'cancel' ? 'This order\'s address can still be changed.'
+          verified.append(node('strong', `Order ${orderNumber}`), node('span', kind === 'lost' ? '' : kind === 'edit' ? 'This order is still at our warehouse, so you can ask to change it.' : kind !== 'cancel' ? 'This order\'s address can still be changed.'
             : data.partial ? 'Part of this order has shipped. You can ask to cancel the items that haven\'t shipped yet.' : 'This order hasn\'t shipped yet, so you can send a cancellation request.'));
-          more.append(verified);
+          if (kind !== 'lost') more.append(verified);
           reveal(more, data.country || '', data);
           stage('request', '', '', close);
           requestNext.hidden = false;
@@ -1950,7 +1954,7 @@
         orderGate('lost', (more, country, data) => {
           const lines = Array.isArray(data?.items) ? data.items : [];
           productCards(more, lines.map(line => ({ id: line.id, title: line.title, variant: line.variant || '', quantity: Number(line.quantity) || 1, image: line.image || '' })),
-            'Which product is missing?', () => {}, { search: !lines.length });
+            'Which product is missing?', null, { search: !lines.length });
           // The order as Shopify has it: its status and each shipment's tracking.
           const status = node('div', '', { class: 'help-desk-lost-status', role: 'group', 'aria-label': 'Order status' });
           status.append(node('h4', 'Order Status'), node('p', `Shopify status: ${data?.status || 'Unfulfilled'}`));
@@ -1961,6 +1965,8 @@
           }
           more.append(status);
           field(more, 'details', option.detailsLabel || 'Additional Details', { multiline: true, placeholder: option.placeholder || '' });
+          // Optional: a photo of where it was left, or of the tracking page.
+          imageField(more, false);
           const preference = choiceCards(more, 'lostPreference', 'What would you prefer?', [
             ['Send the missing product', 'Send the missing product', 'We ship it to you again.'],
             ['Refund', 'Refund', 'To your original payment method.'],
@@ -2447,9 +2453,18 @@
         orderDetails = field(fields, 'orderDetails', 'Order Details', { multiline: true, placeholder: 'Order date and any relevant information' });
         productDetails = field(fields, 'productDetails', 'Products to Return', { multiline: true, placeholder: 'Product name, variant and quantity' });
         for (const input of [orderDetails, productDetails]) input.addEventListener('input', () => { input.dataset.auto = ''; });
-        field(fields, 'details', 'Reason for Return', { multiline: true, placeholder: option.placeholder || 'For example: I ordered two and only need one.' });
+        // Why: the reason picked files the ticket; "Something else" keeps the request's own.
+        if (option.reasons?.length) {
+          const reason = field(fields, 'returnReason', 'Why are you returning it?', { choices: [...option.reasons.map(entry => [entry.subcategory, entry.label]), [option.subcategory, 'Something else']], placeholder: 'Select a reason' });
+          reason.onchange = () => {
+            const subcategory = fields.querySelector('input[type=hidden][name=subcategory]');
+            if (subcategory) subcategory.value = reason.value || option.subcategory;
+          };
+        }
+        field(fields, 'details', option.reasons?.length ? 'Tell Us More' : 'Reason for Return', { multiline: true, placeholder: option.placeholder || 'For example: I ordered two and only need one.' });
         if (!option.preset.resolution) field(fields, 'resolution', 'Preferred Resolution', { choices: [['Return', 'Return'], ['Exchange', 'Exchange'], ['Refund', 'Refund']] });
         imageField(fields, false);
+        if (option.disclaimer) fields.append(node('p', option.disclaimer, { class: 'help-desk-hint help-desk-refund-note', role: 'note' }));
       },
       // Shipping products to an address (domestic, international or anywhere):
       // the products, the address part by part and, if they like, our shipping
@@ -2457,13 +2472,13 @@
       international(option) {
         const home = config.home || 'US';
         const list = countries.filter(entry => option.region === 'domestic' ? entry.code === home : option.region === 'international' ? entry.code !== home : true);
-        // International: its Process Guidelines, and Regular or Expedited shipping.
+        // International: its Process Guidelines, and the carriers' live rates.
         const abroad = option.region === 'international';
         if (abroad) {
           guidelines(fields, [
             ['Select Product:', 'Choose the product you\'d like to purchase.'],
             ['Enter Shipping Address:', 'Provide your complete delivery address.'],
-            ['Choose Shipping Method:', 'Select Regular or Expedited Shipping.'],
+            ['See Shipping Rates:', 'Compare what each carrier charges to your address.'],
             ['Check Availability:', 'Our team will verify product availability and shipping carrier options.'],
             ['Get Shipping Details:', 'We\'ll share the estimated delivery date, shipping costs, and applicable taxes for your address.'],
           ]);
@@ -2474,11 +2489,15 @@
         fields.append(grid);
         const wide = input => { input.parentElement.classList.add('help-desk-wide'); return input; };
         // Domestic: the store's own country. Otherwise every country we ship to (the U.S. and Canada), then any other.
-        const picker = countryPicker(grid, 'country', 'Country', { only: option.region === 'domestic' ? list.map(entry => entry.code) : null, other: option.region !== 'domestic' });
+        // Domestic is always the store's country, and a quote there needs only
+        // the city, state and ZIP: no country to pick, no street.
+        const domestic = option.region === 'domestic';
+        const picker = countryPicker(grid, 'country', 'Country', { only: domestic ? list.map(entry => entry.code) : null, other: !domestic });
         picker.wrap.classList.add('help-desk-wide');
+        picker.wrap.hidden = domestic;
         const country = picker.input;
-        if (option.region !== 'international') picker.set(option.region === 'domestic' ? home : 'US');
-        const street = wide(field(grid, 'shipAddress1', 'Street Address', { placeholder: 'Start typing your address', autocomplete: 'shipping address-line1' }));
+        if (option.region !== 'international') picker.set(domestic ? home : 'US');
+        const street = domestic ? { value: '' } : wide(field(grid, 'shipAddress1', 'Street Address', { placeholder: 'Start typing your address', autocomplete: 'shipping address-line1' }));
         const city = field(grid, 'shipCity', 'City', { autocomplete: 'shipping address-level2' });
         const area = node('div');
         grid.append(area);
@@ -2512,14 +2531,11 @@
         grid.addEventListener('change', compose);
         states();
         addressSuggest(grid, () => country.value);
-        const method = abroad ? choiceCards(fields, 'shippingMethod', 'Shipping Method', [
-          ['Regular', 'Regular Shipping', 'The standard rate and delivery time.'],
-          ['Expedited', 'Expedited Shipping', 'Faster delivery, at a higher cost.'],
-        ]) : null;
 
-        // Live rates (once the store turns them on): what each carrier charges
-        // for the products' weight to this address, from ShipStation.
-        if (abroad && config.liveRates) {
+        // Rates for these products to this address, and nothing else: the
+        // ShipStation carriers the store turned on, and its own flat rates
+        // from Shopify's shipping settings. Domestic and International alike.
+        if (config.liveRates) {
           const box = node('div', '', { class: 'help-desk-rates', 'aria-live': 'polite' });
           const show = node('button', 'Show Shipping Rates', { type: 'button', class: 'help-desk-rates-button' });
           const list = node('div');
@@ -2558,11 +2574,11 @@
               const rows = node('ul', '', { class: 'help-desk-rates-list' });
               for (const rate of data.rates) {
                 const row = node('li');
-                row.append(node('span', `${rate.carrier} · ${rate.service}`), node('strong', money(rate.price, data.currency)));
+                row.append(node('span', rate.carrier ? `${rate.carrier} · ${rate.service}` : rate.service), node('strong', money(rate.price, rate.currency || data.currency)));
                 rows.append(row);
               }
-              list.replaceChildren(node('h4', 'Estimated Shipping Rates'), rows,
-                node('p', 'For these products to this address. Duties and taxes aren\'t included. Our team confirms the final cost when we reply.', { class: 'help-desk-rates-note' }));
+              list.replaceChildren(node('h4', 'Shipping Rates'), rows,
+                node('p', abroad ? 'Duties and taxes aren\'t included.' : 'For these products to this address.', { class: 'help-desk-rates-note' }));
             } catch (error) {
               console.warn('Help desk: shipping rates failed.', error);
               say('Shipping rates are unavailable right now. Send your request and our team will reply with them.', true);
@@ -2575,8 +2591,8 @@
           grid.addEventListener('change', () => list.replaceChildren());
         }
 
-        // No prices on the form: once the products and address are in, the
-        // request is sent, and our team replies with shipping options and costs.
+        // Once the products and address are in, the request is sent, and our
+        // team replies with the shipping options and costs.
         selfCheck('Review Request', () => {
           message('', false, false);
           if (!selected.size) { message('Select the products you want shipped first.', true); return; }
@@ -2587,8 +2603,7 @@
           // The browser's own checks (required, the postal format) on every field, in order.
           const invalid = [...grid.querySelectorAll('input, select, textarea')].find(input => input.willValidate && !input.checkValidity());
           if (invalid) { invalid.reportValidity(); invalid.focus(); return; }
-          if (street.value.length < 5) { message('Please enter the full street address, with the house or building number.', true); street.focus(); return; }
-          if (method && !method.querySelector('input:checked')) { message('Choose Regular or Expedited shipping.', true); return; }
+          if (!domestic && street.value.length < 5) { message('Please enter the full street address, with the house or building number.', true); street.focus(); return; }
           compose();
           return { request: true };
         }, () => false, null, '');
@@ -2625,6 +2640,8 @@
       },
       // Product questions, how-tos, the website and anything else.
       question(option) {
+        // A product question (fit, sizes, setting up and care): which product, to pin it down.
+        if (option.section === 'Product Compatibility' || option.section === 'Product Education') productSearch(fields, 'Which product is it about? (optional)', selected, () => {}, { required: false });
         field(fields, 'orderNumber', 'Order Number (optional)', { optional: true, placeholder: 'e.g. #1001' });
         field(fields, 'query', 'Your Inquiry', { multiline: true, placeholder: option.placeholder || 'How can we assist you?' });
         imageField(fields, false);

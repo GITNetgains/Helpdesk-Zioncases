@@ -73,7 +73,9 @@ export async function submitTicket(db: PrismaClient, shop: string, form: FormDat
   let editProblem = "";
   // A lost package: the products that didn't arrive, and sent again or refunded.
   const lostClaim = isLostClaim(values);
-  const products = shipping || wrongProduct || productIssue || cancelItems || editItems || lostClaim ? form.getAll("products").filter((value): value is string => typeof value === "string") : [];
+  // A product question: the product it's about, if they picked one.
+  const productQuestion = question && ["Product Compatibility", "Product Education"].includes(chosen.category);
+  const products = shipping || wrongProduct || productIssue || cancelItems || editItems || lostClaim || productQuestion ? form.getAll("products").filter((value): value is string => typeof value === "string") : [];
   // Editing: what to do with each order line picked, and the products to add (JSON from the form).
   if (editItems) {
     const text = (key: string, max = 200) => String(form.get(key) ?? "").trim().slice(0, max);
@@ -146,16 +148,17 @@ export async function submitTicket(db: PrismaClient, shop: string, form: FormDat
   }
   // Checked per product below; the overall rules see one product's worth.
   const files = perProduct.length ? perProduct.flatMap((item) => item.images).slice(0, MAX_IMAGES)
-    : returns || question || (order && (values.orderType === orderTypes[1] || wrongProduct)) ? fileList("images") : [];
+    : returns || question || lostClaim || (order && (values.orderType === orderTypes[1] || wrongProduct)) ? fileList("images") : [];
   const errors = validateHelpDesk(values, products, files, receivedProducts);
   const image = (file: File) => ["image/jpeg", "image/png", "image/webp"].includes(file.type) && file.size > 0 && file.size <= MAX_IMAGE_BYTES;
   const video = (file: File) => looksLikeVideo(file) && file.size > 0 && file.size <= MAX_VIDEO_BYTES;
   if (perProduct.some((item) => !item.note && !item.part && !item.asked)) errors.details = "Tell us what's wrong with each product.";
   if (editProblem) errors.products = editProblem;
-  // International shipping: Regular or Expedited, and the team sends a quote.
+  // International shipping: the team sends a quote. The form shows live rates
+  // instead of asking for Regular or Expedited; a method sent anyway must be one of them.
   const quote = shipping && chosen.subcategory === "International Shipping";
-  if (quote && !shippingMethods.includes(values.shippingMethod ?? "")) errors.shippingMethod = "Choose Regular or Expedited shipping.";
-  if (!quote) delete values.shippingMethod;
+  if (quote && values.shippingMethod && !shippingMethods.includes(values.shippingMethod)) errors.shippingMethod = "Choose Regular or Expedited shipping.";
+  if (!quote || !values.shippingMethod) delete values.shippingMethod;
   if (lostClaim) {
     if (!products.length) errors.products = "Select the missing products.";
     if (!lostPreferences.includes(values.lostPreference ?? "")) errors.lostPreference = "Choose whether you'd like the product sent again or a refund.";
@@ -195,6 +198,9 @@ export async function submitTicket(db: PrismaClient, shop: string, form: FormDat
   if (videos.some((file) => !looksLikeVideo(file) || !file.size || file.size > MAX_VIDEO_BYTES)) return { errors: { videos: `Use a video (${VIDEO_FORMATS_LABEL}), up to 50 MB.` } };
   const clips = await readVideos(videos);
   if ("error" in clips) return { errors: { videos: clips.error } };
+  const filed = classifyWithChoice(values.topic, values, chosen);
+  const duplicate = await openRequestFor(db, shop, values, filed);
+  if (duplicate) return { errors: { form: `You already have an open request about this (#${duplicate}). Please continue on that request: our team will reply there.` } };
   // A request to cancel the order (or some of its items) waits for the team's decision.
   const cancellation = order && values.orderType === orderTypes[0] && values.update === updates[2];
   // So does a new shipping address.
@@ -209,10 +215,29 @@ export async function submitTicket(db: PrismaClient, shop: string, form: FormDat
     ...(warrantyClaim ? { replacementStatus: "Pending", replacementKind: "warranty", tags: "warranty" } : {}),
     ...(quote ? { quoteStatus: "Pending", tags: "shipping-quote" } : {}),
     ...(lostClaim ? { replacementStatus: "Pending", replacementKind: "lost", replacementSolution: values.lostPreference, tags: "lost-package" } : {}),
-    shop, requestKey: requestKey as string, name: values.name, email: values.email, topic: values.topic, details: JSON.stringify(values), ...classifyWithChoice(values.topic, values, chosen),
+    shop, requestKey: requestKey as string, name: values.name, email: values.email, topic: values.topic, details: JSON.stringify(values), ...filed,
     products: JSON.stringify([...new Set(products)]), receivedProducts: JSON.stringify([...new Set(receivedProducts)]),
     customerId: /^\d+$/.test(customerId) ? customerId : "", attachments: { create: [...images.attachments, ...clips.attachments, ...productFiles] },
   });
+}
+
+// One open request per issue: the number of the customer's request (same
+// email) that isn't resolved yet, about the same issue and the same order (or
+// both about none), or null. General questions can differ, so they never clash.
+const normalOrder = (value = "") => value.replace(/[#\s]/g, "").toLowerCase();
+async function openRequestFor(db: PrismaClient, shop: string, values: HelpDeskValues, filed: { category: string; subcategory: string }) {
+  if (!filed.category || !filed.subcategory || filed.category === "Other" || !values.email) return null;
+  const open = await db.helpDeskTicket.findMany({
+    where: { shop, channel: "form", status: { not: "Resolved" }, category: filed.category, subcategory: filed.subcategory },
+    select: { number: true, email: true, details: true }, orderBy: { createdAt: "desc" }, take: 200,
+  });
+  const email = values.email.toLowerCase();
+  const order = normalOrder(values.orderNumber);
+  const match = open.find((ticket) => {
+    if (ticket.email.toLowerCase() !== email) return false;
+    try { return normalOrder(String((JSON.parse(ticket.details) as HelpDeskValues).orderNumber ?? "")) === order; } catch { return false; }
+  });
+  return match?.number ?? null;
 }
 
 // Checks each image's bytes match its declared type, so a renamed file can't pass as an image.

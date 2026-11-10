@@ -31,6 +31,10 @@ export type FormOption = {
   // Field labels and placeholders that suit this option.
   detailsLabel?: string;
   placeholder?: string;
+  // A return's reasons ("Why are you returning it?"): the one picked is the ticket's sub-category.
+  reasons?: { label: string; subcategory: string }[];
+  // Shown under the request's fields, before it's sent (a refund's timing).
+  disclaimer?: string;
   // "tracking": the form can answer it straight away from the order's live
   // tracking; a request is only sent if the customer still needs help.
   selfService?: "tracking";
@@ -130,11 +134,8 @@ const formOptions: FormOption[] = [
   productIssue("Squeaking or Noise", "Manufacturing Defect", "Squeaking or noise", broken),
   productIssue("Other Issue", "Product Damage", "Other damage", broken),
   productIssue("Inside Damaged", "Product Damage", "Inside damaged", broken, "", "For example: the foam inside is torn or an insert is cracked, but the outside looks fine."),
-  returnRequest("Return Extra Quantity", "Ordered extra"),
-  returnRequest("Ordered Wrong Item", "Ordered the wrong item or colour"),
-  returnRequest("Exchange for Another Model", "Exchange for another model", { resolution: "Exchange" }),
-  returnRequest("Doesn't Fit My Cards", "Doesn't fit my cards"),
-  returnRequest("Not as Expected", "Doesn't meet expectations"),
+  { ...returnRequest("Return & Exchange Request", "Exchange for another model", { resolution: "Exchange" }), placeholder: "For example: I'd like the 9-pocket case instead of the 4-pocket one." },
+  { ...returnRequest("Return & Refund Request", "Return for refund", { resolution: "Refund" }), placeholder: "For example: I ordered two and only need one." },
   question("Refund Status", "Returns", "Refund status", "Please include your order number and the date your return was sent."),
   productIssue("Warranty Claim", "Warranty", "Replacement request", broken, "", "Please describe the issue and your date of purchase."),
   question("Buy Replacement Parts", "Warranty", "Buy a replacement part", "Which part, and for which product?"),
@@ -249,25 +250,45 @@ const WRONG_KINDS: NonNullable<FormOption["kinds"]> = [
   { label: "Wrong quantity", hint: "Too many or too few.", category: "Wrong Item Received", subcategory: "Wrong quantity" },
 ];
 const PRODUCT_CATEGORIES = ["Product Damage", "Shipping Damage", "Manufacturing Defect", "Missing Parts", "Wrong Item Received", "Warranty"];
+// Returns: two requests, an exchange or a refund, each asking why; the reason
+// files the ticket. Their own sub-category stands when the reason is "Something else".
+const RETURNS_TOPIC: typeof ORDERS_TOPIC = [
+  ["Return & Exchange Request", "Returns", "Exchange for another model", "Send it back and get another model, colour or size instead."],
+  ["Return & Refund Request", "Returns", "Return for refund", "Send it back for a refund to your original payment method."],
+  ["Refund Status", "Returns", "Refund status", "Check on a refund for a return you've already sent."],
+];
+const RETURN_REASONS: NonNullable<FormOption["reasons"]> = [
+  { label: "I ordered extra", subcategory: "Ordered extra" },
+  { label: "I ordered the wrong item or colour", subcategory: "Ordered the wrong item or colour" },
+  { label: "It doesn't fit my cards", subcategory: "Doesn't fit my cards" },
+  { label: "It doesn't meet my expectations", subcategory: "Doesn't meet expectations" },
+];
+export const REFUND_DISCLAIMER = "Your refund will be initiated within 5-10 business days after your return is approved.";
+// Asked as the return's reason, not offered as requests of their own.
+const RETURN_REASON_SUBCATEGORIES = RETURN_REASONS.map(({ subcategory }) => ["Returns", subcategory]);
+// Partner topics, in the customer's words where the sub-category reads like the team's.
+const OPTION_LABELS: Record<string, string> = {
+  "Wholesale application rejected": "Why was my wholesale application rejected?",
+  "Affiliate application rejected": "Why was my affiliate application rejected?",
+};
 
 // Sub-categories the team can still set on a ticket, but customers don't pick:
 // Domestic Shipping covers Hawaii, Alaska and the territories, and a faster
 // delivery is asked about with the order (Track Order, Shipping Times),
 // pre-orders are no longer offered on the form, and every product issue
 // other than the broad choices above.
-export const STAFF_ONLY = [[SHIPPING, "Shipping Times"], [SHIPPING, "Hawaii, Alaska & U.S. Territories"], [SHIPPING, "Signature Required"], [SHIPPING, "International Pre-Order"],
+export const STAFF_ONLY = [[SHIPPING, "Shipping Times"], [SHIPPING, "Hawaii, Alaska & U.S. Territories"], [SHIPPING, "Signature Required"], [SHIPPING, "International Pre-Order"], ...RETURN_REASON_SUBCATEGORIES,
   ...PRODUCT_CATEGORIES.flatMap((name) => categories.find((entry) => entry.name === name)!.subcategories
     .filter((sub) => !PRODUCT_TOPIC.some(([, category, subcategory]) => category === name && subcategory === sub)).map((sub) => [name, sub]))];
 const staffOnly = (category: string, subcategory: string) => STAFF_ONLY.some(([name, sub]) => name === category && sub === subcategory);
 const mainTopics: { label: string; hint: string; categories: string[] }[] = [
-  { label: "Returns, Exchanges & Refunds", hint: "Send a product back, swap it for another model, or check on a refund.", categories: ["Returns"] },
   { label: "Wholesale Queries", hint: "Dealers and stores: pricing, MOQ, applications and tax certificates.", categories: ["Wholesale Questions"] },
   { label: "Affiliate Queries", hint: "Affiliates and creators: joining, support and payouts.", categories: ["Affiliates & Partnerships"] },
   { label: "Other Queries", hint: "Other order and delivery questions, product fit and how-tos, the website and checkout, feedback, or anything else.",
     categories: [ORDERS, SHIPPING, "Product Compatibility", "Product Education", "Website & Checkout", "Feedback & Ideas", "Other"] },
 ];
 // Options listed by hand (Orders, Shipping) aren't offered again under Other Queries.
-const listed = (category: string, subcategory: string) => [...ORDERS_TOPIC, ...SHIPPING_TOPIC, ...PRODUCT_TOPIC].some(([, name, sub]) => name === category && sub === subcategory);
+const listed = (category: string, subcategory: string) => [...ORDERS_TOPIC, ...SHIPPING_TOPIC, ...PRODUCT_TOPIC, ...RETURNS_TOPIC].some(([, name, sub]) => name === category && sub === subcategory);
 
 export const formGroups: FormGroup[] = [
   {
@@ -286,12 +307,21 @@ export const formGroups: FormGroup[] = [
     options: PRODUCT_TOPIC.map(([label, category, subcategory, description]) => ({ ...flowFor(category, subcategory), label, section: category, description,
       ...(label === "Damaged or Defective" ? { kinds: DAMAGE_KINDS } : label === "Received the Wrong Item" ? { kinds: WRONG_KINDS } : label === "Product Quality Issue" ? { kinds: QUALITY_KINDS } : {}) })),
   },
+  {
+    label: "Returns, Exchanges & Refunds", flat: true,
+    hint: "Send a product back for an exchange or a refund, or check on a refund.",
+    options: RETURNS_TOPIC.map(([label, category, subcategory, description]) => {
+      const option = flowFor(category, subcategory);
+      return { ...option, label, section: category, description,
+        ...(option.flow === "return" ? { reasons: RETURN_REASONS } : {}), ...(option.preset.resolution === "Refund" ? { disclaimer: REFUND_DISCLAIMER } : {}) };
+    }),
+  },
   ...mainTopics.map(topic => ({
     label: topic.label,
     hint: topic.hint,
     options: topic.categories.flatMap(name => categories.find(entry => entry.name === name)!.subcategories
       .filter(subcategory => !listed(name, subcategory) && !staffOnly(name, subcategory))
-      .map(subcategory => ({ ...flowFor(name, subcategory), label: subcategory, section: name }))),
+      .map(subcategory => ({ ...flowFor(name, subcategory), label: OPTION_LABELS[subcategory] ?? subcategory, section: name }))),
   })),
 ];
 

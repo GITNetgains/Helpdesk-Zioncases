@@ -1,5 +1,6 @@
 import { addressFromValues, addressLines, cancelScopes, countryName, fieldLabels, VIDEO_EXTENSIONS, type ShippingAddress, parseEditRequest } from "./help-desk";
 import { ASSISTANT_AVATAR, nameInitial } from "./help-desk-avatar";
+import { REFUND_DISCLAIMER } from "./help-desk-form";
 
 // The customer-facing pages served through the app proxy: the private request
 // page and the lookup page. They are returned as Liquid so the store's theme
@@ -25,7 +26,8 @@ const STEPS = [
   { label: "Resolved", status: "Resolved" },
 ];
 // Short facts go in the summary; what the customer wrote goes in their message.
-const SUMMARY_FIELDS = ["orderNumber", "orderDate", "orderType", "update", "cancelReason", "issue", "defects", "resolution", "existing", "registeredEmail", "country"];
+// The form's broad request types (orderType, update, issue) aren't shown: the request's own issue is.
+const SUMMARY_FIELDS = ["orderNumber", "orderDate", "cancelReason", "defects", "resolution", "existing", "registeredEmail", "country"];
 const MESSAGE_FIELDS = ["orderNote", "details", "query", "orderDetails", "productDetails", "quantities", "address", "otherDetails"];
 
 const STYLES = `<style>
@@ -771,6 +773,8 @@ ${note(state)}
 export type PageProduct = { id: string; title: string; image: string };
 export type RequestPageTicket = {
   number: number; topic: string; status: string; channel: string; createdAt: Date; accessToken: string; details: string;
+  // What the request is about, as the team files it ("Lost Package"): the tag on the customer's first message.
+  subcategory?: string;
   // Staff turned on photo uploads for this request.
   allowPhotos?: boolean;
   // When the customer was passed to the team by the chat assistant, until someone replies.
@@ -866,6 +870,12 @@ function returnCard(ticket: RequestPageTicket, order: string) {
 ${order ? `<p>${escape(order)}</p>` : ""}<ol aria-label="Return progress">${list}</ol>
 <p>${escape(RETURN_COPY[status] ?? "")}</p>${label}${ticket.returnNote ? `<blockquote>${multiline(ticket.returnNote)}</blockquote>` : ""}
 ${ticket.returnDecidedAt ? `<p>Updated ${time(ticket.returnDecidedAt)}</p>` : ""}</div>`;
+}
+
+// A return for a refund: when the money comes back.
+function refundCard(values: Record<string, string>) {
+  if (values.resolution !== "Refund") return "";
+  return `<div class="hdt-card hdt-pad hdt-help"><h2>Your refund</h2><p>${escape(REFUND_DISCLAIMER)}</p><p>We refund to your original payment method once the product is received and checked.</p></div>`;
 }
 
 const EDIT_COPY: Record<string, string> = {
@@ -1005,7 +1015,8 @@ export function renderRequestPage(ticket: RequestPageTicket, extras: RequestPage
 
   // The customer's original request, as the first message of the conversation.
   const written = MESSAGE_FIELDS.filter((key) => values[key]).map((key) => `<p>${multiline(values[key])}</p>`).join("");
-  const facts = ["orderType", "update", "cancelReason", "issue", "resolution"].filter((key) => values[key]).map((key) => `<span>${escape(values[key])}</span>`).join("");
+  // Tagged with what it's about, not the form's broad request type (every delivery question was "Where is my order?").
+  const facts = [ticket.subcategory ?? "", values.cancelReason, values.resolution].filter(Boolean).map((value) => `<span>${escape(value)}</span>`).join("");
   const wrongItem = extras.receivedProducts.length > 0;
   const requestBody = `${facts ? `<div class="hdt-facts">${facts}</div>` : ""}${written || (facts ? "" : `<p>${escape(ticket.topic)}</p>`)}
 ${productList("Received", extras.receivedProducts)}${productList(wrongItem ? "Wanted instead" : "Products", extras.products)}${files(extras.requestImages)}`;
@@ -1058,6 +1069,7 @@ ${ticket.allowVideos ? `<label class="hdt-drop"><i aria-hidden="true">🎥</i><s
   const summary = [
     `<div><dt>Request</dt><dd>#${ticket.number}</dd></div>`,
     `<div><dt>Submitted</dt><dd>${time(ticket.createdAt, "date")}</dd></div>`,
+    ...(ticket.subcategory ? [`<div><dt>Issue</dt><dd>${escape(ticket.subcategory)}</dd></div>`] : []),
     ...SUMMARY_FIELDS.filter((key) => values[key]).map((key) => `<div><dt>${escape(fieldLabels[key] ?? key)}</dt><dd>${escape(fieldValue(key, values[key]))}</dd></div>`),
   ].join("");
   const count = shown.length + (chat || cleared ? 0 : 1);
@@ -1085,7 +1097,7 @@ ${foot}
 </div>
 <button type="button" class="hdt-chat-launcher" aria-label="Open chat with our support team" title="Chat with our support team" aria-controls="hdt-chatbox" aria-expanded="false"><span class="hdt-chat-launcher-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></span></button>
 <aside class="hdt-aside">
-${cancellationCard(ticket, values.orderNumber ? `Order ${values.orderNumber}` : "", values.cancelScope === cancelScopes[1])}${addressCard(ticket, values)}${returnCard(ticket, values.orderNumber ? `Order ${values.orderNumber}` : "")}${editCard(ticket, values)}${replacementCard(ticket)}${quoteCard(ticket)}
+${cancellationCard(ticket, values.orderNumber ? `Order ${values.orderNumber}` : "", values.cancelScope === cancelScopes[1])}${addressCard(ticket, values)}${returnCard(ticket, values.orderNumber ? `Order ${values.orderNumber}` : "")}${refundCard(values)}${editCard(ticket, values)}${replacementCard(ticket)}${quoteCard(ticket)}
 <div class="hdt-card hdt-pad"><h2>Request summary</h2><dl style="margin-top:8px">${summary}</dl></div>
 ${shipmentCard(extras.shipment)}
 <div class="hdt-card hdt-pad hdt-help"><h2>Good to know</h2>

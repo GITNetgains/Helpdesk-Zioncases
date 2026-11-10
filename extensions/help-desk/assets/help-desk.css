@@ -572,12 +572,6 @@
 .help-desk button.help-desk-all-topics-toggle { justify-self: start; }
 @media (prefers-reduced-motion: reduce) { .help-desk .help-desk-start-pane { animation: none; } }
 
-/* What was picked, with Change, on the last two steps. */
-.help-desk .help-desk-chosen {
-  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px;
-  padding: 12px 16px; border: 1px solid #eceef2; border-radius: 10px; background: #f8f9fb; font-size: 14px; font-weight: 600;
-}
-.help-desk .help-desk-chosen[hidden] { display: none; }
 .help-desk button.help-desk-link {
   min-height: 0; margin: 0; padding: 0; border: 0; background: none; box-shadow: none; color: var(--hd-accent);
   font: inherit; font-size: 14px; font-weight: 600; letter-spacing: 0; text-decoration: underline; text-underline-offset: 3px; text-transform: none;
@@ -711,7 +705,6 @@
 .help-desk .help-desk-section-request label > span:first-child { color: #252d43; }
 .help-desk .help-desk-section-request textarea { min-height: 156px; }
 .help-desk .help-desk-section-request .help-desk-upload { max-width: 860px; }
-.help-desk .help-desk-section-review .help-desk-chosen { border-color: #e6e9ef; background: #f7f8fb; }
 .help-desk .help-desk-section-review .help-desk-review { box-shadow: 0 2px 8px rgba(25, 33, 61, .025); }
 .help-desk .help-desk-section-review .help-desk-review-row { min-height: 52px; align-items: center; }
 .help-desk .help-desk-section-review .help-desk-review-row:nth-child(even) { background: #fff; }

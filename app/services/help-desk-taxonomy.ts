@@ -35,7 +35,7 @@ export const categories = [
       "Delivered to Wrong Address", "Lost Package", "Signature Required", "Expedited Shipping", "Shipping Times", "Domestic Shipping", "International Shipping", "Hawaii, Alaska & U.S. Territories", "International Pre-Order", "Customs & Duties",
     ] },
   { name: "Returns", description: "The customer wants to send it back or swap it for another model.",
-    subcategories: ["Ordered extra", "Ordered the wrong item or colour", "Doesn't fit my cards", "Doesn't meet expectations", "Exchange for another model", "Refund status"] },
+    subcategories: ["Ordered extra", "Ordered the wrong item or colour", "Doesn't fit my cards", "Doesn't meet expectations", "Exchange for another model", "Return for refund", "Refund status"] },
   { name: "Warranty", description: "A replacement or spare part under warranty, or buying a spare part.",
     subcategories: ["Replacement request", "Buy a replacement part", "Claim status"] },
   { name: "Wholesale Questions", description: "Dealers and stores: pricing, MOQ, applications and tax certificates.",

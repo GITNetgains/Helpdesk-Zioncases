@@ -134,18 +134,19 @@ export type RateRequest = {
 export type CarrierRate = { carrier: string; service: string; cost: number };
 // What each carrier charges to send this weight from the warehouse to the
 // address (ShipStation's /shipments/getrates, one call per carrier, together).
+// Only for a plain package: no envelopes or flat-rate boxes the order wouldn't fit.
 // A carrier that can't quote (no service there, an error) is left out.
 export async function shipStationRates(account: Pick<ShipStationAccount, "key" | "secret">, request: RateRequest, carrierNames: Record<string, string> = {}): Promise<CarrierRate[]> {
   const answers = await Promise.allSettled(request.carriers.map((carrierCode) => call<{ serviceName: string; serviceCode: string; shipmentCost: number; otherCost: number }[]>(account, "/shipments/getrates", {
     method: "POST",
     body: {
-      carrierCode, serviceCode: null, packageCode: null,
+      carrierCode, serviceCode: null, packageCode: "package",
       fromPostalCode: request.fromPostalCode, fromCountry: request.fromCountry,
       toCountry: request.toCountry, toState: request.toState || null, toCity: request.toCity || null, toPostalCode: request.toPostalCode || null,
       weight: { value: Math.max(1, Math.ceil(request.weightOz)), units: "ounces" },
       confirmation: "none", residential: true,
     },
-  }).then((rates) => rates.map((rate) => ({ carrier: carrierNames[carrierCode] ?? carrierCode, service: rate.serviceName, cost: Number(rate.shipmentCost) + Number(rate.otherCost || 0) })))));
+  }).then((rates) => rates.map((rate) => ({ carrier: carrierNames[carrierCode] ?? carrierCode, service: rate.serviceName.replace(/\s+-\s+Package$/i, ""), cost: Number(rate.shipmentCost) + Number(rate.otherCost || 0) })))));
   for (const answer of answers) if (answer.status === "rejected") console.error("ShipStation couldn't quote a carrier:", answer.reason instanceof Error ? answer.reason.message : answer.reason);
   return answers.flatMap((answer) => answer.status === "fulfilled" ? answer.value : []).filter((rate) => Number.isFinite(rate.cost) && rate.cost > 0);
 }

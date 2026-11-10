@@ -22,6 +22,20 @@ export const articleCollections = [
 export const ACTION_SEPARATOR = " › ";
 export const articleActions = formGroups.flatMap((group) => [group.label, ...group.options.map((option) => `${group.label}${ACTION_SEPARATOR}${option.label}`)]);
 export const validAction = (action: string) => articleActions.includes(action);
+// Buttons saved before an option was renamed or folded into another open its replacement.
+const RETURNS = "Returns, Exchanges & Refunds";
+const RENAMED: Record<string, string> = {
+  [`${RETURNS} › Exchange for another model`]: `${RETURNS} › Return & Exchange Request`,
+  [`${RETURNS} › Ordered extra`]: `${RETURNS} › Return & Refund Request`,
+  [`${RETURNS} › Ordered the wrong item or colour`]: RETURNS,
+  [`${RETURNS} › Doesn't fit my cards`]: RETURNS,
+  [`${RETURNS} › Doesn't meet expectations`]: RETURNS,
+  [`${RETURNS} › Refund status`]: `${RETURNS} › Refund Status`,
+  "Wholesale Queries › Wholesale application rejected": "Wholesale Queries › Why was my wholesale application rejected?",
+  "Affiliate Queries › Affiliate application rejected": "Affiliate Queries › Why was my affiliate application rejected?",
+};
+// The action as the form names it now, or "" when it no longer opens anything.
+export const currentAction = (action: string) => validAction(action) ? action : validAction(RENAMED[action] ?? "") ? RENAMED[action] : "";
 
 export type Article = { question: string; answer: string; keywords: string; collection: string; action: string };
 

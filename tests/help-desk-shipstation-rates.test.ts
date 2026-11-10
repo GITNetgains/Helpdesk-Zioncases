@@ -77,9 +77,29 @@ describe("Live shipping rates on the storefront form", () => {
     const result = await liveShippingRates(db(settings), admin([{ value: 1, unit: "POUNDS" }, { value: 1, unit: "POUNDS" }]) as never, "rates.myshopify.com", request);
     // 1 lb x 2 + 1 lb + 8 oz packaging = 56 oz.
     expect(asked).toMatchObject({ weight: { value: 56, units: "ounces" }, toCountry: "GB", fromPostalCode: "90210" });
+    expect(asked).toMatchObject({ packageCode: "package" });
     expect(result).toEqual({ available: true, currency: "USD", weightOz: 56, rates: [
-      { carrier: "UPS", service: "Standard", price: 33 }, { carrier: "UPS", service: "Expedited", price: 55 },
+      { carrier: "UPS", service: "Standard", price: 33, currency: "USD", source: "shipstation" }, { carrier: "UPS", service: "Expedited", price: 55, currency: "USD", source: "shipstation" },
     ] });
+  });
+
+  it("adds the store's own flat rates from Shopify, and shows only those when ShipStation is off", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => url.endsWith("/carriers") ? json([{ code: "ups", name: "UPS" }])
+      : json([{ serviceName: "UPS Worldwide Saver - Package", shipmentCost: 40, otherCost: 0 }])));
+    const profiles = { deliveryProfiles: { nodes: [{ default: true, profileLocationGroups: [{ locationGroupZones: { nodes: [
+      { zone: { name: "International", countries: [{ code: { countryCode: null, restOfWorld: true }, provinces: [] }] }, methodDefinitions: { nodes: [
+        { name: "International Shipping", description: null, active: true, rateProvider: { __typename: "DeliveryRateDefinition", price: { amount: "30.0", currencyCode: "USD" } }, methodConditions: [] },
+      ] } },
+    ] } }] }] }, shop: { currencyCode: "USD", shopAddress: { countryCodeV2: "US" } } };
+    const shopifyAdmin = { graphql: vi.fn(async (query: string) => query.includes("HelpDeskShipping") ? json({ data: profiles })
+      : json({ data: { nodes: [{ variants: { nodes: [{ price: "40.00", inventoryItem: { measurement: { weight: { value: 1, unit: "POUNDS" } } } }] } }, { variants: { nodes: [{ price: "10.00", inventoryItem: { measurement: { weight: { value: 1, unit: "POUNDS" } } } }] } }] } })) };
+    const both = await liveShippingRates(db(settings), shopifyAdmin as never, "flat-both.myshopify.com", request);
+    expect(both).toMatchObject({ available: true, rates: [
+      { carrier: "", service: "International Shipping", price: 30, source: "shopify" },
+      { carrier: "UPS", service: "UPS Worldwide Saver", price: 44, source: "shipstation" },
+    ] });
+    const flatOnly = await liveShippingRates(db({ ...settings, enabled: false }), shopifyAdmin as never, "flat-only.myshopify.com", request);
+    expect(flatOnly).toMatchObject({ available: true, rates: [{ service: "International Shipping", price: 30, source: "shopify" }] });
   });
 
   it("won't price a shipment when a product has no weight in Shopify", async () => {

@@ -1,7 +1,7 @@
 import type { PrismaClient } from "@prisma/client";
 import { forget, memo } from "./memo.server";
 import { findOrder } from "./help-desk-orders.server";
-import { markedUp, orderShipping, quotedAnswer, readShippingSettings, readShipStationRates, shippingAnswer, shipStationRatesReady, toOunces, type OrderShipping, type ShippingAnswer, type ShippingSetup, type ShippingZone } from "./help-desk-shipping";
+import { flatRatesFor, markedUp, orderShipping, quotedAnswer, readShippingSettings, readShipStationRates, shippingAnswer, shipStationRatesReady, toOunces, type OrderShipping, type ShippingAnswer, type ShippingSetup, type ShippingZone } from "./help-desk-shipping";
 import { listShipStationCarriers, shipStationRates } from "./help-desk-shipstation.server";
 
 type AdminClient = { graphql: (query: string, options?: { variables?: Record<string, unknown> }) => Promise<Response> };
@@ -25,7 +25,7 @@ const SHIPPING_QUERY = `#graphql
                 nodes {
                   name description active
                   rateProvider { __typename ... on DeliveryRateDefinition { price { amount currencyCode } } }
-                  methodConditions { field operator conditionCriteria { __typename ... on MoneyV2 { amount } } }
+                  methodConditions { field operator conditionCriteria { __typename ... on MoneyV2 { amount } ... on Weight { value unit } } }
                 }
               }
             }
@@ -39,7 +39,7 @@ const SHIPPING_QUERY = `#graphql
 type MethodNode = {
   name: string; description: string | null; active: boolean;
   rateProvider: { __typename: string; price?: { amount: string; currencyCode: string } } | null;
-  methodConditions: { field: string; operator: string; conditionCriteria: { __typename: string; amount?: string } }[];
+  methodConditions: { field: string; operator: string; conditionCriteria: { __typename: string; amount?: string; value?: number; unit?: string } }[];
 };
 type ZoneNode = {
   zone: { name: string; countries: { code: { countryCode: string | null; restOfWorld: boolean }; provinces: { code: string }[] }[] };
@@ -62,6 +62,11 @@ export function shapeSetup(data: {
         const condition = method.methodConditions.find((entry) => entry.field === "TOTAL_PRICE" && entry.operator === operator && entry.conditionCriteria.amount !== undefined);
         return condition ? Number(condition.conditionCriteria.amount) : null;
       };
+      const weight = (operator: string) => {
+        const condition = method.methodConditions.find((entry) => entry.field === "TOTAL_WEIGHT" && entry.operator === operator && entry.conditionCriteria.value !== undefined);
+        // A limit of 0 (or an unknown unit) limits nothing.
+        return condition ? toOunces(Number(condition.conditionCriteria.value), condition.conditionCriteria.unit || "") || null : null;
+      };
       const fixed = method.rateProvider?.__typename === "DeliveryRateDefinition" ? method.rateProvider.price : undefined;
       return {
         name: method.name, description: method.description || "",
@@ -69,6 +74,7 @@ export function shapeSetup(data: {
         price: fixed ? Number(fixed.amount) : null, currency: fixed?.currencyCode || currency,
         minTotal: total("GREATER_THAN_OR_EQUAL_TO"), maxTotal: total("LESS_THAN_OR_EQUAL_TO"),
         byWeight: method.methodConditions.some((entry) => entry.field === "TOTAL_WEIGHT"),
+        minWeightOz: weight("GREATER_THAN_OR_EQUAL_TO"), maxWeightOz: weight("LESS_THAN_OR_EQUAL_TO"),
       };
     }),
   }))));
@@ -143,76 +149,101 @@ export async function quoteRates(admin: AdminClient | undefined, productIds: str
 
 const WEIGHTS_QUERY = `#graphql
   query HelpDeskQuoteWeights($ids: [ID!]!) {
-    nodes(ids: $ids) { ... on Product { id variants(first: 1) { nodes { inventoryItem { measurement { weight { value unit } } } } } } }
+    nodes(ids: $ids) { ... on Product { id variants(first: 1) { nodes { price inventoryItem { measurement { weight { value unit } } } } } } }
   }
 `;
-// The products' weight in ounces, each times how many: from the first variant,
-// as Shopify has it. null when Shopify can't be read; products with no weight count 0.
+// The products' weight in ounces and their price, each times how many: from
+// the first variant, as Shopify has it. null when Shopify can't be read;
+// products with no weight count 0 (missing says how many).
 export async function productsWeightOz(admin: AdminClient, productIds: string[], quantities: number[]) {
   try {
     const json = await (await admin.graphql(WEIGHTS_QUERY, { variables: { ids: productIds } })).json();
     if (json.errors?.length) throw new Error(JSON.stringify(json.errors).slice(0, 300));
-    type Node = { variants?: { nodes: { inventoryItem?: { measurement?: { weight?: { value: number; unit: string } | null } | null } | null }[] } } | null;
+    type Node = { variants?: { nodes: { price?: string | number | null; inventoryItem?: { measurement?: { weight?: { value: number; unit: string } | null } | null } | null }[] } } | null;
+    let ounces = 0;
     let total = 0;
     let missing = 0;
     (json.data?.nodes as Node[] ?? []).forEach((product, index) => {
-      const weight = product?.variants?.nodes[0]?.inventoryItem?.measurement?.weight;
-      const ounces = weight ? toOunces(Number(weight.value), weight.unit) : 0;
-      if (!ounces) missing++;
-      total += ounces * (quantities[index] || 1);
+      const variant = product?.variants?.nodes[0];
+      const weight = variant?.inventoryItem?.measurement?.weight;
+      const each = weight ? toOunces(Number(weight.value), weight.unit) : 0;
+      if (!each) missing++;
+      ounces += each * (quantities[index] || 1);
+      total += (Number(variant?.price) || 0) * (quantities[index] || 1);
     });
-    return { ounces: total, missing };
+    return { ounces, missing, total: Math.round(total * 100) / 100 };
   } catch (error) {
     console.error("Help Desk could not read product weights:", error instanceof Error ? error.message : error);
     return null;
   }
 }
 
-export type LiveRate = { carrier: string; service: string; price: number };
+// carrier is empty for the store's own (Shopify) flat rates.
+export type LiveRate = { carrier: string; service: string; price: number; currency: string; source: "shipstation" | "shopify" };
 export type LiveRates =
   | { available: false }
   | { available: true; rates: LiveRate[]; currency: string; weightOz: number; error?: "noWeight" | "noRates" | "unavailable" };
 
-// The live rates the International Shipping form shows once the products and
-// address are in: ShipStation's carriers, for the products' weight plus the
-// packaging, with the store's markup, cheapest first. available: false when
-// it's off or ShipStation isn't connected, so the form works as before.
+// The rates the Domestic and International Shipping forms show once the
+// products and address are in, and nothing else:
+// - ShipStation: the carriers connected there and turned on in the app, for
+//   the products' weight plus the packaging, with the store's markup;
+// - Shopify: the flat rates in Settings › Shipping and delivery for that
+//   address, with their order total and weight conditions applied.
+// Cheapest first. available: false when neither can be offered.
 export async function liveShippingRates(
   db: PrismaClient, admin: AdminClient | undefined, shop: string,
   request: { products: string[]; quantities: number[]; country: string; province: string; city: string; zip: string },
 ): Promise<LiveRates> {
+  if (!admin) return { available: false };
   const row = await db.helpDeskSettings.findUnique({ where: { shop }, select: { shippingTimes: true, shipstationKey: true, shipstationSecret: true } });
   const settings = readShipStationRates(row?.shippingTimes);
-  if (!admin || !row?.shipstationKey || !row.shipstationSecret || !shipStationRatesReady(settings)) return { available: false };
-  const none = (error: "noWeight" | "noRates" | "unavailable", weightOz = 0): LiveRates => ({ available: true, rates: [], currency: settings.currency, weightOz, error });
+  const shipStationOn = Boolean(row?.shipstationKey && row.shipstationSecret && shipStationRatesReady(settings));
+  const setup = await loadShippingSetup(admin, shop).catch(() => undefined);
+  if (!shipStationOn && !setup?.zones.length) return { available: false };
+  const currency = shipStationOn ? settings.currency : setup?.currency || "USD";
+  const none = (error: "noWeight" | "noRates" | "unavailable", weightOz = 0): LiveRates => ({ available: true, rates: [], currency, weightOz, error });
   if (!request.products.length) return none("noWeight");
   const weight = await productsWeightOz(admin, request.products, request.quantities);
   if (!weight) return none("unavailable");
-  // A product with no weight in Shopify would quote too low: none is better than a wrong one.
-  if (weight.missing) return none("noWeight");
-  const weightOz = Math.round((weight.ounces + settings.packagingOz) * 10) / 10;
-  // Asked again with the same weight, address and setup: the same answer, for 10 minutes.
-  const key = `ship-rates|${shop}|${weightOz}|${request.country}|${request.province}|${request.zip.toUpperCase()}|${settings.carriers.join("+")}|${settings.fromCountry}|${settings.fromPostalCode}`;
-  const account = { key: row.shipstationKey, secret: row.shipstationSecret };
-  try {
-    const rates = await memo(key, 10 * MINUTE, async () => {
-      const names = Object.fromEntries((await memo(`ship-carriers|${shop}`, 60 * MINUTE, () => listShipStationCarriers(account.key, account.secret)) ?? []).map((carrier) => [carrier.code, carrier.name]));
-      return shipStationRates(account, {
-        carriers: settings.carriers, fromPostalCode: settings.fromPostalCode, fromCountry: settings.fromCountry,
-        toCountry: request.country, toState: request.province, toCity: request.city, toPostalCode: request.zip, weightOz,
-      }, names);
-    });
-    const priced = rates.map((rate) => ({ carrier: rate.carrier, service: rate.service, price: markedUp(rate.cost, settings) }))
-      .sort((a, b) => a.price - b.price).slice(0, 8);
-    return priced.length ? { available: true, rates: priced, currency: settings.currency, weightOz } : none("noRates", weightOz);
-  } catch (error) {
-    console.error(`Help Desk could not get ShipStation rates for ${shop}:`, error instanceof Error ? error.message : error);
-    forget(key);
-    return none("unavailable", weightOz);
+  // A product with no weight in Shopify: its weight isn't known, so no carrier
+  // quote (it would be too low) and no flat rate that depends on the weight.
+  const knownWeight = weight.missing ? null : weight.ounces;
+
+  const shopify: LiveRate[] = setup ? flatRatesFor(setup, request.country, request.province, { weightOz: knownWeight, total: weight.total })
+    .map((rate) => ({ carrier: "", service: rate.name, price: rate.price, currency: rate.currency, source: "shopify" as const })) : [];
+
+  let carriers: LiveRate[] = [];
+  let carrierError = false;
+  const weightOz = knownWeight === null ? 0 : Math.round((knownWeight + (shipStationOn ? settings.packagingOz : 0)) * 10) / 10;
+  if (shipStationOn && knownWeight !== null) {
+    // Asked again with the same weight, address and setup: the same answer, for 10 minutes.
+    const key = `ship-rates|${shop}|${weightOz}|${request.country}|${request.province}|${request.zip.toUpperCase()}|${settings.carriers.join("+")}|${settings.fromCountry}|${settings.fromPostalCode}`;
+    const account = { key: row!.shipstationKey, secret: row!.shipstationSecret };
+    try {
+      const quoted = await memo(key, 10 * MINUTE, async () => {
+        const names = Object.fromEntries((await memo(`ship-carriers|${shop}`, 60 * MINUTE, () => listShipStationCarriers(account.key, account.secret)) ?? []).map((carrier) => [carrier.code, carrier.name]));
+        return shipStationRates(account, {
+          carriers: settings.carriers, fromPostalCode: settings.fromPostalCode, fromCountry: settings.fromCountry,
+          toCountry: request.country, toState: request.province, toCity: request.city, toPostalCode: request.zip, weightOz,
+        }, names);
+      });
+      carriers = quoted.map((rate) => ({ carrier: rate.carrier, service: rate.service, price: markedUp(rate.cost, settings), currency: settings.currency, source: "shipstation" as const }))
+        .sort((a, b) => a.price - b.price).slice(0, 8);
+    } catch (error) {
+      console.error(`Help Desk could not get ShipStation rates for ${shop}:`, error instanceof Error ? error.message : error);
+      forget(key);
+      carrierError = true;
+    }
   }
+
+  const rates = [...shopify, ...carriers].sort((a, b) => a.price - b.price);
+  if (rates.length) return { available: true, rates, currency, weightOz };
+  return none(carrierError ? "unavailable" : knownWeight === null ? "noWeight" : "noRates", weightOz);
 }
 
-// Whether the storefront form should offer live rates (checked on its load).
+// Whether the storefront form should offer rates (checked on its load): ShipStation's are on.
+// The store's own flat rates count too; the form's loader knows those from the shipping setup.
 export async function liveRatesOn(db: PrismaClient, shop: string) {
   const row = await db.helpDeskSettings.findUnique({ where: { shop }, select: { shippingTimes: true, shipstationKey: true, shipstationSecret: true } });
   return Boolean(row?.shipstationKey && row.shipstationSecret && shipStationRatesReady(readShipStationRates(row.shippingTimes)));

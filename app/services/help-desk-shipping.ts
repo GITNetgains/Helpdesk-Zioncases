@@ -130,7 +130,11 @@ export function arrivalWindow(from: Date, processing: DayRange, transit: DayRang
 // ---------- The store's zones and rates ----------
 
 // What Shopify's delivery profiles say, trimmed to what's needed.
-export type ShippingRate = { name: string; description: string; price: number | null; currency: string; minTotal: number | null; maxTotal: number | null; byWeight: boolean };
+// minWeightOz/maxWeightOz: the weight the rate is limited to, in ounces, when it is.
+export type ShippingRate = {
+  name: string; description: string; price: number | null; currency: string; minTotal: number | null; maxTotal: number | null; byWeight: boolean;
+  minWeightOz?: number | null; maxWeightOz?: number | null;
+};
 export type ShippingZone = { name: string; countries: { code: string; provinces: string[] }[]; restOfWorld: boolean; rates: ShippingRate[]; general: boolean };
 export type ShippingSetup = { home: string; currency: string; processingTime: string | null; zones: ShippingZone[] };
 
@@ -146,6 +150,22 @@ export function zonesFor(setup: ShippingSetup, country: string, province = "") {
   };
   const general = resolve(setup.zones.filter((zone) => zone.general));
   return general.length ? general : resolve(setup.zones.filter((zone) => !zone.general));
+}
+
+// The flat rates (Settings › Shipping and delivery) Shopify's checkout would
+// offer for this order at this address: the zone's fixed prices whose order
+// total and weight conditions it meets. A condition that can't be checked
+// (the total or weight isn't known) leaves that rate out. One price per name, the lowest.
+export function flatRatesFor(setup: ShippingSetup, country: string, province: string, order: { weightOz: number | null; total: number | null }) {
+  const within = (value: number | null, min: number | null | undefined, max: number | null | undefined) =>
+    (min == null && max == null) || (value !== null && (min == null || value >= min) && (max == null || value <= max));
+  const best = new Map<string, { name: string; price: number; currency: string }>();
+  for (const rate of zonesFor(setup, country, province).flatMap((zone) => zone.rates)) {
+    if (rate.price === null || !within(order.total, rate.minTotal, rate.maxTotal) || !within(order.weightOz, rate.minWeightOz, rate.maxWeightOz)) continue;
+    const seen = best.get(rate.name);
+    if (!seen || rate.price < seen.price) best.set(rate.name, { name: rate.name, price: rate.price, currency: rate.currency });
+  }
+  return [...best.values()];
 }
 
 const money = (amount: number, currency: string) => new Intl.NumberFormat("en", { style: "currency", currency: currency || "USD" }).format(amount);

@@ -26,8 +26,9 @@ export type AiResult =
   | { kind: "answer"; reply: string; sources: Answer[] }
   | { kind: "clarify"; reply: string }
   | { kind: "human" }
-  | { kind: "greet" }
-  | { kind: "thanks" };
+  // A greeting, thanks or small talk, answered in its own words (reply) when it wrote some.
+  | { kind: "greet"; reply: string }
+  | { kind: "thanks"; reply: string };
 
 const RULES = `You are the customer support assistant in the chat on a customer's support request page for an online store. Customers write casually: short phrases, typos, slang, other languages, several questions at once. Work out what they actually mean.
 
@@ -35,15 +36,17 @@ Answer ONLY from the store's sources below. They are the only facts you know abo
 - "answer" when the sources answer the question, with the ids of the sources you used.
 - When the customer asks how to do something, or says they want to do it (cancel, change an address or an item, return, exchange, report damage or a missing item, track an order, get a quote...), and a source has "Steps on the request form", walk them through those steps as a numbered list ("1. ..."), in order, adapted to what they said. Use only those steps: never invent a step, a button or a page.
 - "clarify" when the sources don't answer it, or only partly, or you aren't sure what they mean. Don't guess, generalise or fill gaps from general knowledge: a wrong answer is far worse than a question back. Ask one short question that would let you answer, or name the closest things the sources do cover, and give any steps the sources offer for what they're trying to do. Also "clarify" when they say an answer didn't help: ask what's still wrong, and don't repeat the same answer.
+- When the customer's request is given below, it's what they already sent us and where it stands. Never ask them again for anything in it (their order number, what's wrong, which product, photos already sent), and never tell them to send a new request for it. Use it to understand what they mean, and when they ask how it's going, say where it stands from it.
 - Things only the team can see or change (this customer's own order status, a refund that should have arrived, a replacement for a damaged item): "clarify", telling them the steps the sources give for it, such as which request to send with which details or photos. Don't promise that anything will happen, and don't say a person will reply.
 - "human" ONLY when the customer asks to talk to a person, agent, the team or customer service, in any wording or language. Never choose it for any other reason, even when they are upset: then acknowledge it in one sentence and help.
-- "greet" for a greeting with no question. "thanks" for thanks or "ok, got it" with no new question.
-- Small talk with no question about the store ("how's your day going?", "are you a bot?", "sorry", "bye", "lol"): "clarify", with a warm, natural one or two sentence reply in kind (you're the store's virtual assistant), then offer to help. Never "human" for it: asking whether you're a person isn't asking for one.
+- "greet" for a greeting with no question, and "thanks" for thanks or "ok, got it" with no new question: reply in kind, warmly and briefly, the way a person in a chat would (when their request is given below, you may mention you're here to help with it).
+- Small talk with no question about the store ("how's your day going?", "are you a bot?", "sorry", "bye", "lol"): "greet", with a warm, natural one or two sentence reply in kind (you're the store's virtual assistant), then offer to help. Never "human" for it: asking whether you're a person isn't asking for one.
+- Hold a real conversation: read the chat so far, follow up on what was said, and don't repeat an answer you already gave. Ask one question at a time when you need to know more.
 
 Writing the reply (for "answer" and "clarify"):
 - Plain text, no Markdown, no headings. Short: 1-4 sentences, a short "- " list for options, or a numbered list for steps.
 - Friendly and direct, like a helpful person on the store's team. Use "we" for the store.
-- Reply in the customer's language.
+- Always reply in English, even when the customer writes in Hindi, Hinglish or another language: understand it, answer in English.
 - Only facts from the sources. Never invent order details, dates, prices, links or promises.
 - Don't greet, don't sign off, don't say you're an AI, don't mention "sources" or "articles". The page adds its own line about reaching a person.`;
 
@@ -69,7 +72,8 @@ const sourceText = (sources: Answer[]) => sources.map((source) => {
 // What Claude makes of the customer's latest message. null when it couldn't
 // be asked (no key, timeout, API error) or said something unusable, so the
 // caller falls back to the keyword matching.
-export async function aiDecide(input: { message: string; history: AiTurn[]; knowledge: Answer[]; products: Answer[]; storeName?: string }): Promise<AiResult | null> {
+// request: the customer's request on this page (its issue, status and what they wrote), if any.
+export async function aiDecide(input: { message: string; history: AiTurn[]; knowledge: Answer[]; products: Answer[]; storeName?: string; request?: string }): Promise<AiResult | null> {
   if (!aiAssistantEnabled() || !input.knowledge.length) return null;
   const known = new Map([...input.knowledge, ...input.products].map((source) => [source.id, source]));
   const history = input.history.slice(-8).map((turn) => `${turn.role}: ${turn.text.slice(0, 1200)}`).join("\n\n");
@@ -88,13 +92,14 @@ export async function aiDecide(input: { message: string; history: AiTurn[]; know
       ],
       messages: [{
         role: "user",
-        content: `${input.products.length ? `Products that may be relevant:\n<sources>\n${sourceText(input.products)}\n</sources>\n\n` : ""}${history ? `The chat so far:\n<chat>\n${history}\n</chat>\n\n` : ""}The customer's new message:\n<message>\n${input.message.slice(0, 4000)}\n</message>`,
+        content: `${input.request ? `The customer's request (already sent):\n<request>\n${input.request}\n</request>\n\n` : ""}${input.products.length ? `Products that may be relevant:\n<sources>\n${sourceText(input.products)}\n</sources>\n\n` : ""}${history ? `The chat so far:\n<chat>\n${history}\n</chat>\n\n` : ""}The customer's new message:\n<message>\n${input.message.slice(0, 4000)}\n</message>`,
       }],
     });
     if (response.stop_reason !== "end_turn") return null;
     const text = response.content.flatMap((block) => block.type === "text" ? [block.text] : []).join("");
     const parsed = JSON.parse(text) as { action: string; source_ids: string[]; reply: string };
-    if (parsed.action === "greet" || parsed.action === "thanks" || parsed.action === "human") return { kind: parsed.action };
+    if (parsed.action === "human") return { kind: "human" };
+    if (parsed.action === "greet" || parsed.action === "thanks") return { kind: parsed.action, reply: parsed.reply.trim() };
     if (parsed.action === "clarify") return parsed.reply.trim() ? { kind: "clarify", reply: parsed.reply.trim() } : null;
     const sources = parsed.source_ids.map((id) => known.get(id)).filter((source): source is Answer => Boolean(source));
     // An answer must rest on something the store wrote; otherwise the keyword matching decides.

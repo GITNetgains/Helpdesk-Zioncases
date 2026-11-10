@@ -81,6 +81,18 @@ describe("Customer request page", () => {
     expect(nameInitial("@priya")).toBe("P");
     expect(nameInitial("  ")).toBe("?");
   });
+  it("tags the request with what it's about, not the form's request type", () => {
+    const lost = { ...ticket, subcategory: "Lost Package", details: JSON.stringify({ orderNumber: "#5001", orderType: "Where is my order?", details: "Never arrived" }) };
+    const html = renderRequestPage(lost, extras);
+    expect(html).toContain('<div class="hdt-facts"><span>Lost Package</span></div>');
+    expect(html).not.toContain("Where is my order?");
+    expect(html).toContain("<dt>Issue</dt><dd>Lost Package</dd>");
+  });
+  it("says when a refund is initiated", () => {
+    const html = renderRequestPage({ ...ticket, details: JSON.stringify({ orderNumber: "#5001", resolution: "Refund", details: "Ordered extra" }) }, extras);
+    expect(html).toContain("Your refund will be initiated within 5-10 business days after your return is approved.");
+    expect(renderRequestPage(ticket, extras)).not.toContain("Your refund");
+  });
   it("hides the reply box until the team has replied", () => {
     const html = renderRequestPage({ ...ticket, status: "Open" }, { ...extras, canReply: false });
     expect(html).not.toContain('name="body"');

@@ -2,14 +2,14 @@
   {
     "collection": "Orders & Delivery",
     "question": "Where is my order?",
-    "keywords": "track, tracking, order status, update, no updates, when will it arrive, not arrived yet, haven't received, shipped, not delivered yet, hasn't been delivered, package is not delivered, still not here, eta, when is it coming, when will i get it, where's my stuff, kab aayega, kahan hai, where's my package, package status, track my package, track package, tracking info, tracking information, haven't received my order, when will my order arrive, order arrive, tracking link, where is my tracking, didn't get my order, didn't get it, never got my order, placed an order, where it is, where is it, check my order, check on my order, no idea where",
+    "keywords": "track, tracking, order status, update, no updates, when will it arrive, not arrived yet, haven't received, shipped, not delivered yet, hasn't been delivered, package is not delivered, still not here, eta, when is it coming, when will i get it, where's my stuff, kab aayega, kahan hai, where's my package, package status, track my package, track package, tracking info, tracking information, haven't received my order, when will my order arrive, order arrive, tracking link, where is my tracking, didn't get my order, didn't get it, never got my order, placed an order, where it is, where is it, check my order, check on my order, no idea where, no update, no updates given, no updates seen, order placed no updates, order kahan hai, mera order kahan hai, order kab milega, order nahi aaya, abhi tak nahi aaya, parcel kahan hai, tracking kahan hai, order ka status, where is my parcel, my parcel, where is my shipment, where is my delivery",
     "action": "Orders › Track Order",
     "answer": "Choose Track Order below and enter your order number and the email you ordered with. You'll see your order's live status straight away: whether it has shipped, the carrier, the tracking number and the latest update.\n\nIf it hasn't shipped yet, it's still being prepared, and you'll get an email with tracking as soon as it leaves us."
   },
   {
     "collection": "Orders & Delivery",
     "question": "My tracking says delivered, but I don't have my package",
-    "keywords": "delivered but not received, says delivered, marked delivered, shows delivered, delivered and it didn't, never got, didn't receive, missing package, ups, usps, fedex, dhl, carrier, stolen, package stolen, porch pirate, someone took my package, delivered but missing, delivered but not here",
+    "keywords": "delivered but not received, says delivered, marked delivered, shows delivered, delivered and it didn't, never got, didn't receive, missing package, ups, usps, fedex, dhl, carrier, stolen, package stolen, porch pirate, someone took my package, delivered but missing, delivered but not here, says that they were delivered, says it was delivered, tracking says delivered, have not gotten my items, haven't gotten my items, not gotten, delivered none, marked as delivered, none delivered, none of it arrived",
     "action": "Other Queries › Delivered but Not Received",
     "answer": "Sorry it hasn't turned up. Before anything else:\n\n- Check around your door, mailbox, garage and with neighbours or your building's front desk.\n- Carriers sometimes mark a package as delivered a little before it actually arrives, so it's worth checking again later today.\n- Make sure the address on your order confirmation is right.\n\nStill nothing? Let us know below with your order number. We'll look into it with the carrier and keep you updated on your request page."
   },
@@ -23,28 +23,35 @@
   {
     "collection": "Orders & Delivery",
     "question": "Only part of my order arrived",
-    "keywords": "partial delivery, some items, few items, split, separate packages, fragments, rest of my order, only one case, coming separately, 2 out of 4, second package, other package, another package, other half, rest of the order, received 1 of 2, 1 of 2, one of two packages, only one package, only got one box, one box, only one box, got one box, only got one",
+    "keywords": "partial delivery, some items, few items, split, separate packages, fragments, rest of my order, only one case, coming separately, 2 out of 4, second package, other package, another package, other half, rest of the order, received 1 of 2, 1 of 2, one of two packages, only one package, only got one box, one box, only one box, got one box, only got one, few items delayed, some items delayed",
     "action": "Other Queries › Partial Delivery",
     "answer": "Larger orders sometimes ship in more than one package, and each package can arrive on a different day. Check your shipping emails for more than one tracking number.\n\nIf every package has been delivered and something is still missing, report it below and we'll send what's missing."
   },
   {
     "collection": "Orders & Delivery",
     "question": "Can I cancel my order?",
-    "keywords": "cancel, cancellation, i want to cancel, cancel it, stop the order, don't want it, ordered by mistake, delayed cancel, refund before shipping, changed my mind, change my mind, no longer want it, don't want it anymore, don't need it anymore, cancel my purchase, cancel karna hai, ordered by accident, by accident, accidentally ordered, don't want the order, don't want my order, do not want it, need to cancel, want to cancel my order, please cancel",
+    "keywords": "cancel, cancellation, i want to cancel, cancel it, stop the order, don't want it, ordered by mistake, delayed cancel, refund before shipping, changed my mind, change my mind, no longer want it, don't want it anymore, don't need it anymore, cancel my purchase, cancel karna hai, ordered by accident, by accident, accidentally ordered, don't want the order, don't want my order, do not want it, need to cancel, want to cancel my order, please cancel, order cancel karo, cancel kar do, cancel kardo, order nahi chahiye, cancel my order, cancel order, cancel my order please, cancel my order pls, please cancel my order",
     "action": "Orders › Cancel Order",
-    "answer": "Yes, as long as it hasn't shipped yet. Choose Cancel Order below: we check that the order can still be stopped, then you can cancel the whole order or just some items.\n\nOur team reviews every cancellation and confirms it on your request page and by email. The refund goes back to your original payment method; if you don't see it after 5-7 business days, check with your bank, then let us know.\n\nOnce an order has shipped it can't be cancelled, but you can return it when it arrives (international orders are final sale)."
+    "answer": "Yes, as long as it hasn't shipped yet. Choose Cancel Order below: we check that the order can still be stopped, then you can cancel the whole order or just some items.\n\nOur team reviews every cancellation and confirms it on your request page and by email. The refund goes back to your original payment method; if you don't see it after 5-7 business days, check with your bank, then let us know.\n\nOnce your order has left our warehouse, it can't be modified or cancelled. If you no longer need it, you can raise a return request 6 days after delivery. International orders are final sale."
+  },
+  {
+    "question": "Can I change or cancel my order after it has shipped?",
+    "answer": "Once your order has left our warehouse, it can't be modified or cancelled. If you no longer need it, you can raise a return request 6 days after delivery.\n\nYou can still follow it with Track Order. Once it's delivered, choose Return & Refund Request or Return & Exchange Request.",
+    "keywords": "after it shipped, after shipping, cancel after shipping, change after shipping, cancel shipped order, left the warehouse, stop the delivery, stop delivery, stop the shipment, stop shipping, intercept, return to sender, refuse the package, refuse delivery, too late to cancel, shipped already, cancel it now it shipped, it already shipped, already shipped cancel, cancel it already shipped, cancel my order it shipped, order already shipped",
+    "collection": "Orders & Delivery",
+    "action": "Orders › Track Order"
   },
   {
     "collection": "Orders & Delivery",
     "question": "Can I change an item, colour or quantity on my order?",
-    "keywords": "edit order, change order, wrong colour ordered, change variant, change size, add item, add free gift, add free pouch, add an item after ordering, remove item, fix before shipping, instead of, modify order, modify my order, add something, add to my order, add to order, add another, add one more, before it ships, before it ship, add to my order before",
+    "keywords": "edit order, change order, wrong colour ordered, change variant, change size, add item, add free gift, add free pouch, add an item after ordering, remove item, fix before shipping, instead of, modify order, modify my order, add something, add to my order, add to order, add another, add one more, before it ships, before it ship, add to my order before, fix it before shipping, can you fix it, i needed the, ordered the incorrect, re-order, reorder the correct",
     "action": "Orders › Edit Existing Order",
-    "answer": "Yes, before it ships. Choose Edit Existing Order below and tell us what you'd like to add, remove or change, such as an item, quantity, colour or size. If you're asking to add a promotional gift, our team will check whether your order qualifies and whether it can still be added.\n\nWe check with our warehouse that it hasn't been packed yet. If the change costs more or less, you'll see the difference before you send the request."
+    "answer": "Yes, before it ships. Choose Edit Existing Order below and tell us what you'd like to add, remove or change, such as an item, quantity, colour or size. If you're asking to add a promotional gift, our team will check whether your order qualifies and whether it can still be added.\n\nWe check with our warehouse that it hasn't been packed yet. If the change costs more or less, you'll see the difference before you send the request. Once your order has left our warehouse, it can't be modified or cancelled. If you no longer need it, you can raise a return request 6 days after delivery."
   },
   {
     "collection": "Orders & Delivery",
     "question": "Can I change my shipping address?",
-    "keywords": "address change, wrong address, update address, new address, moved, ship to a different address, i moved, entered wrong address, put the wrong address, wrong address on my order, fix my address, fix the address, address galat, galat address, address galat hai, address galat daal diya",
+    "keywords": "address change, wrong address, update address, new address, moved, ship to a different address, i moved, entered wrong address, put the wrong address, wrong address on my order, fix my address, fix the address, address galat, galat address, address galat hai, address galat daal diya, address badalna hai, address change karo, naya address",
     "action": "Orders › Modify Address",
     "answer": "Please tell us straight away. Choose Modify Address below and enter the new address: we check the order can still be changed before you send it.\n\nWe can't guarantee a change once the order is being processed or has shipped, and once a shipping label has been created the address can no longer be changed on our side. Double-check your address at checkout to avoid this."
   },
@@ -53,12 +60,12 @@
     "question": "My package is lost or the tracking hasn't moved",
     "keywords": "lost package, tracking not moving, stuck, cancelled tracking, tracking says cancelled, never arrived, package lost, armorship, package protection, stolen, theft, investigation, not updating, tracking hasn't changed, hasn't changed, no movement",
     "action": "Orders › Lost Package",
-    "answer": "Sorry about this. Tracking can take 24-48 hours to start updating after your shipping email, so give it a day if your order only just shipped.\n\nStill stuck? Choose Lost Package below with your order number. We check the latest tracking and open an investigation with the carrier for you, and you can tell us whether you'd prefer the products sent again or a refund. Once a package is with the carrier, delivery is the carrier's responsibility, so our team confirms what we can do once the investigation is done, and keeps you updated on your request page.\n\nAdded ARMORSHIP® package protection at checkout? It covers eligible loss, theft and damage in transit: tell us and we'll help with the claim."
+    "answer": "Sorry about this. Tracking can take 24-48 hours to start updating after your shipping email, so give it a day if your order only just shipped, and check Track Order for the latest.\n\nIf the tracking shows your order as delivered but it never reached you, choose Lost Package below with your order number. We check the latest tracking and open an investigation with the carrier for you, and you can tell us whether you'd prefer the products sent again or a refund. Our team confirms what we can do once the investigation is done, and keeps you updated on your request page.\n\nAdded ARMORSHIP® package protection at checkout? It covers eligible loss, theft and damage in transit: tell us and we'll help with the claim."
   },
   {
     "collection": "Orders & Delivery",
     "question": "My order is delayed",
-    "keywords": "delay, delayed, late, taking too long, pre-order, preorder, back order, estimated arrival, still waiting, months, it's been weeks, been 2 weeks, taking forever, so long, why so late, behind schedule, been waiting, waiting weeks, waiting for my order, still waiting for my order",
+    "keywords": "delay, delayed, late, taking too long, pre-order, preorder, back order, estimated arrival, still waiting, months, it's been weeks, been 2 weeks, taking forever, so long, why so late, behind schedule, been waiting, waiting weeks, waiting for my order, still waiting for my order, estimated time, estimated delivery, different times, delivery estimate, set to arrive, bahut late, late ho gaya, der ho gayi, itna time kyun, kab tak aayega",
     "action": "Other Queries › Shipment Delayed",
     "answer": "Orders usually take 2-3 business days to process (Monday to Friday, not holidays). During product launches, sales and holidays it can take longer, and carriers' delivery estimates aren't guaranteed: weather and carrier delays can add a few days.\n\nPre-order and back-ordered items ship as soon as they're in stock, and we email you the tracking when they do. You can check your order's status any time with Track Order. If the wait no longer works for you and your order hasn't shipped, you can ask to cancel it."
   },
@@ -93,7 +100,7 @@
   {
     "collection": "Shipping",
     "question": "Do you ship internationally?",
-    "keywords": "international, outside the us, overseas, worldwide, uk, canada, australia, europe, spain, france, singapore, ship to my country, ship outside, outside usa, outside the usa, outside america",
+    "keywords": "international, outside the us, overseas, worldwide, uk, canada, australia, europe, spain, france, singapore, ship to my country, ship outside, outside usa, outside the usa, outside america, españa, jaen, paris, germany, italy, united kingdom, england, japan, mexico, new zealand, ship to uk, do you ship to, u ship to, deliver to uk, ship to canada, ship to australia",
     "action": "Shipping › International Shipping",
     "answer": "Yes, to select countries. Choose International Shipping below, pick the products you want and enter your address. Our team sends you a quote with the shipping method, delivery date, shipping cost and any taxes, and you decide from there. You can also email help@zioncases.com for a quote.\n\nGood to know before you order:\n\n- Customs duties, import taxes, VAT and brokerage fees are paid by you, the customer.\n- International orders are final sale, including the product and shipping costs.\n- We can't refund international orders lost or damaged in transit or sent to a wrong address, but we'll work with the carrier on a claim for you."
   },
@@ -114,77 +121,77 @@
   {
     "collection": "Returns & Exchanges",
     "question": "What is your return policy?",
-    "keywords": "return, returns, return policy, send back, how long to return, return window, refund, money back, unused, still in the box, 6 months, six months, proof of purchase, receipt, final sale, partial refund, how to return, how do i return, how can i return, return my case, return a product, return an item, start a return, send it back, returning, changed my mind, days to return, how many days to return, return period, wapas karna hai, return kaise kare, used item, return a used item, return request, request a return, already opened, opened it, if i opened it, open box",
+    "keywords": "return, returns, return policy, send back, how long to return, return window, refund, money back, unused, still in the box, 6 months, six months, proof of purchase, receipt, final sale, partial refund, how to return, how do i return, how can i return, return my case, return a product, return an item, start a return, send it back, returning, changed my mind, days to return, how many days to return, return period, wapas karna hai, return kaise kare, used item, return a used item, return request, request a return, already opened, opened it, if i opened it, open box, return the item, make a return, new in the box, still new, return or exchange, return the case, return the bag, return karna hai, wapas bhejna hai, return kaise karu, return kaise karein",
     "action": "Returns, Exchanges & Refunds",
-    "answer": "We accept returns and exchanges within 6 months of purchase, as long as it's unused, in the condition you received it and in its original packaging, with your receipt or proof of purchase.\n\nChoose your reason below. Please don't send anything back before our team has approved the return: once it's approved, we send you the instructions, and your refund goes back to your original payment method once the return reaches us and is checked.\n\nGood to know:\n\n- Exchanges are subject to shipping charges.\n- Items that show signs of use, are damaged or are missing parts may only get a partial refund.\n- International orders are final sale.\n- Arrived damaged, defective or wrong? Tell us within 7 days of delivery instead, with photos: choose Damaged or Defective or Received the Wrong Item."
+    "answer": "We accept returns and exchanges within 6 months of purchase, as long as it's unused, in the condition you received it and in its original packaging, with your receipt or proof of purchase.\n\nChoose Return & Exchange Request or Return & Refund Request below, and tell us why you're returning it. Please don't send anything back before our team has approved the return: once it's approved, we send you the instructions. Your refund will be initiated within 5-10 business days after your return is approved. It goes back to your original payment method.\n\nGood to know:\n\n- Returns open once your order is delivered.\n- Exchanges are subject to shipping charges.\n- Items that show signs of use, are damaged or are missing parts may only get a partial refund.\n- International orders are final sale.\n- Arrived damaged, defective or wrong? Tell us within 7 days of delivery instead, with photos: choose Damaged or Defective or Received the Wrong Item."
   },
   {
     "collection": "Returns & Exchanges",
     "question": "I ordered the wrong model or colour. Can I exchange it?",
-    "keywords": "exchange, exchange process after shipping, swap after arrival, swap, wrong model, horizontal instead of vertical, vertical instead of horizontal, wrong colour ordered, wrong size, different colour, ordered wrong, upgrade, exchange for a bigger one, exchange for a smaller one, exchange item, exchange it for",
-    "action": "Returns, Exchanges & Refunds › Exchange for another model",
-    "answer": "Yes. If it's unused and in its original packaging, you can exchange it for the same item in another model or colour, or upgrade, within 6 months of purchase. Exchanges are subject to shipping charges.\n\nChoose Exchange for another model below and tell us which one you'd like instead. Not shipped yet? Change the order before it ships with Edit Existing Order."
+    "keywords": "exchange, exchange process after shipping, swap after arrival, swap, wrong model, horizontal instead of vertical, vertical instead of horizontal, wrong colour ordered, wrong size, different colour, ordered wrong, upgrade, exchange for a bigger one, exchange for a smaller one, exchange item, exchange it for, exchange karna hai, badalna hai, change karke do, dusra chahiye, exchange kar do",
+    "action": "Returns, Exchanges & Refunds › Return & Exchange Request",
+    "answer": "Yes. If it's unused and in its original packaging, you can exchange it for the same item in another model or colour, or upgrade, within 6 months of purchase. Exchanges are subject to shipping charges.\n\nChoose Return & Exchange Request below, pick why you're returning it, and tell us which one you'd like instead. Not shipped yet? Change the order before it ships with Edit Existing Order."
   },
   {
     "collection": "Returns & Exchanges",
     "question": "I ordered more than I need. Can I return the extra?",
     "keywords": "ordered extra, too many, only needed one, only need one, only need 1, return one, ordered two, ordered 2, duplicate, one too many, bought two, only want one, only wanted one, ordered two by accident, accidentally ordered two, send one back, return one of them",
-    "action": "Returns, Exchanges & Refunds › Ordered extra",
-    "answer": "Yes, within 6 months of purchase, as long as the extra is unused and in its original packaging. Choose Ordered extra below and tell us how many you'd like to send back, and wait for our team to approve it before you ship anything."
+    "action": "Returns, Exchanges & Refunds › Return & Refund Request",
+    "answer": "Yes, within 6 months of purchase, as long as the extra is unused and in its original packaging. Choose Return & Refund Request below, pick \"I ordered extra\" as the reason, tell us how many you'd like to send back, and wait for our team to approve it before you ship anything. Your refund will be initiated within 5-10 business days after your return is approved."
   },
   {
     "collection": "Returns & Exchanges",
     "question": "It doesn't fit my slabs or cards. Can I return it?",
-    "keywords": "doesn't fit, won't fit, too tight, graded guards, slab won't go in, wrong size for my cards, accommodate, too big, too small, too big for",
-    "action": "Returns, Exchanges & Refunds › Doesn't fit my cards",
-    "answer": "Yes, if it's unused and in its original packaging, within 6 months of purchase. Choose Doesn't fit my cards below and tell us which slab or holder you're using: we can often point you to a model that fits, as an exchange (exchanges are subject to shipping charges)."
+    "keywords": "doesn't fit, won't fit, too tight, graded guards, slab won't go in, wrong size for my cards, accommodate, too big, too small, too big for, would not go in, won't go in, doesn't go in, go in all the way, don't accommodate, doesn't accommodate, not fitting",
+    "action": "Returns, Exchanges & Refunds › Return & Exchange Request",
+    "answer": "Yes, if it's unused and in its original packaging, within 6 months of purchase. Choose Return & Exchange Request (for a model that fits) or Return & Refund Request below, pick \"It doesn't fit my cards\" as the reason, and tell us which slab or holder you're using: we can often point you to a model that fits. Exchanges are subject to shipping charges."
   },
   {
     "collection": "Returns & Exchanges",
     "question": "Where is my refund?",
-    "keywords": "refund status, refund update, haven't got my refund, money back, when will i get my refund, how long does a refund take, refund take, refund to show up, refund time, not refunded yet, credit, reimbursement, refund kab milega, still no refund, no refund yet, didn't get my refund",
-    "action": "Returns, Exchanges & Refunds › Refund status",
-    "answer": "We issue your refund once your return reaches us and is checked, back to your original payment method. It can then take a few business days for your bank to show it.\n\nHaven't seen it 5-7 business days after we confirmed it? Check with your bank or card company first, then choose Refund status below with your order number and the date you sent it back."
+    "keywords": "refund status, refund update, haven't got my refund, money back, when will i get my refund, how long does a refund take, refund take, refund to show up, refund time, not refunded yet, credit, reimbursement, refund kab milega, still no refund, no refund yet, didn't get my refund, refund initiated, refund timeline, refund after approval, when is the refund issued, refund nahi aaya, paise nahi aaye, paisa wapas kab, refund kab aayega, paise kab milenge",
+    "action": "Returns, Exchanges & Refunds › Refund Status",
+    "answer": "Your refund will be initiated within 5-10 business days after your return is approved. It goes back to your original payment method, and it can then take a few business days for your bank to show it.\n\nHaven't seen it 5-7 business days after we confirmed it? Check with your bank or card company first, then choose Refund Status below with your order number and the date you sent it back."
   },
   {
     "collection": "Returns & Exchanges",
     "question": "The product isn't what I expected",
-    "keywords": "not as expected, disappointed, quality, flimsy, colour different from photos, don't like it, not as described, not as pictured, looks different, different from the pictures, misleading, cheap, cheaply made, not as shown, as shown, different from the website, different from website",
-    "action": "Returns, Exchanges & Refunds › Doesn't meet expectations",
-    "answer": "Sorry it wasn't what you hoped for. If it's unused and in its original packaging, you can return or exchange it within 6 months of purchase. Choose Doesn't meet expectations below and tell us what wasn't right: your feedback goes to our product team."
+    "keywords": "not as expected, disappointed, quality, flimsy, colour different from photos, don't like it, not as described, not as pictured, looks different, different from the pictures, misleading, cheap, cheaply made, not as shown, as shown, different from the website, different from website, not up to standard, poor quality, very poor, low quality, price tag, pieces of plastic, not worth, expected better, expected much better",
+    "action": "Returns, Exchanges & Refunds › Return & Refund Request",
+    "answer": "Sorry it wasn't what you hoped for. If it's unused and in its original packaging, you can return or exchange it within 6 months of purchase. Choose Return & Exchange Request or Return & Refund Request below, pick \"It doesn't meet my expectations\" as the reason, and tell us what wasn't right: your feedback goes to our product team."
   },
   {
     "collection": "Damaged, Missing or Wrong Items",
     "question": "My item arrived damaged or broken",
-    "keywords": "damaged, broken, cracked, crack, arrived cracked, came cracked, arrived broken, came broken, chipped, chip, dent, dented, snapped, gouge, bent, broken handle, broken lid, cracked lid, broken wheel, wheel snapped, foam peeling, foam shedding, foam shavings, rattling, noisy when opening, corner, arrived damaged, damaged in shipping, 7 days, seven days, photos, video, packaging damaged, packaging photos, defective, defect, faulty, smashed, crushed, shattered, destroyed, came smashed, shattered acrylic, cracked acrylic, broken acrylic, handle broken, crushed box, box was crushed, box crushed, box damaged",
+    "keywords": "damaged, broken, cracked, crack, arrived cracked, came cracked, arrived broken, came broken, chipped, chip, dent, dented, snapped, gouge, bent, broken handle, broken lid, cracked lid, broken wheel, wheel snapped, foam peeling, foam shedding, foam shavings, rattling, noisy when opening, corner, arrived damaged, damaged in shipping, 7 days, seven days, photos, video, packaging damaged, packaging photos, defective, defect, faulty, smashed, crushed, shattered, destroyed, came smashed, shattered acrylic, cracked acrylic, broken acrylic, handle broken, crushed box, box was crushed, box crushed, box damaged, chipping, chip on, chip in, hole, one was damaged, was damaged, hinges broke, damaged lid, toota hua, toota hua aaya, toot gaya, tut gaya, tuta hua, toota, damage aaya, damage hua, crack aaya, phata hua, kharab aaya, broken aaya",
     "action": "Product Issues › Damaged or Defective",
     "answer": "Sorry it arrived like that. Please tell us within 7 days of delivery: choose Damaged or Defective below, pick the item from your order and add clear photos of the damage and its packaging. If the problem is easier to show in motion, include a short video too.\n\nOur team reviews the details and confirms the available resolution."
   },
   {
     "collection": "Damaged, Missing or Wrong Items",
     "question": "A riser arrived broken or the pins snapped",
-    "keywords": "riser broken, broken riser, pins broke, tabs broke, insert pins, riser snapped, locking riser, riser snapped, snapped when, broke when",
+    "keywords": "riser broken, broken riser, pins broke, tabs broke, insert pins, riser snapped, locking riser, riser snapped, snapped when, broke when, inserts snapped, plastic inserts, inserts on the risers, pins snapped, tabs snapped, broken tabs",
     "action": "Product Issues › Damaged or Defective",
     "answer": "Sorry about that. Choose Damaged or Defective below within 7 days of delivery, pick the risers from your order and add a photo of the broken riser. We'll send you a replacement riser."
   },
   {
     "collection": "Damaged, Missing or Wrong Items",
     "question": "Something is missing from my order",
-    "keywords": "missing, not in the box, didn't come with, without risers, no risers, lids missing, inserts missing, foam missing, labels missing, only received one, missing accessory, card holder, magnetic card holder, sling bag, labels, missing item, missing items, item missing, missing parts, missing pieces, box was empty, empty box, nothing in the box, not included, wasn't included, weren't included",
+    "keywords": "missing, not in the box, didn't come with, without risers, no risers, lids missing, inserts missing, foam missing, labels missing, only received one, missing accessory, card holder, magnetic card holder, sling bag, labels, missing item, missing items, item missing, missing parts, missing pieces, box was empty, empty box, nothing in the box, not included, wasn't included, weren't included, item nahi aaya, saman kam aaya, kuch missing hai, missing hai, risers nahi aaye, box mein nahi tha, ek item kam",
     "action": "Product Issues › Missing Item or Part",
     "answer": "Sorry about that. First, check every box and bag in your delivery: large orders can come in more than one package, on different days, and pre-order items ship when they're in stock.\n\nStill missing? Within 7 days of delivery, choose Missing Item or Part below, pick what's missing from your order, and we'll send it to you."
   },
   {
     "collection": "Damaged, Missing or Wrong Items",
     "question": "I received the wrong item, colour or risers",
-    "keywords": "wrong item, wrong product, wrong colour, wrong variant, wrong risers, risers for vertical, received instead of, delivered instead, got instead, sent instead, sent the wrong, incorrect order, wrong quantity, out of, not the same, and got, but got, i got, they sent, was sent, not what i ordered, wrong size sent, sent the wrong size, sent wrong, someone else's order, somebody else's order, not my order, different product, different item",
+    "keywords": "wrong item, wrong product, wrong colour, wrong variant, wrong risers, risers for vertical, received instead of, delivered instead, got instead, sent instead, sent the wrong, incorrect order, wrong quantity, out of, not the same, and got, but got, i got, they sent, was sent, not what i ordered, wrong size sent, sent the wrong size, sent wrong, someone else's order, somebody else's order, not my order, different product, different item, given the wrong item, was given the wrong, instead got, got another, received the regular, received another, don't match, not matching, galat item aaya, galat product aaya, galat colour aaya, wrong item aaya, dusra product aaya, galat saman",
     "action": "Product Issues › Received the Wrong Item",
     "answer": "Sorry we got that wrong. Within 7 days of delivery, choose Received the Wrong Item below, pick what you ordered and tell us what arrived instead, with a photo. We'll send the right item."
   },
   {
     "collection": "Damaged, Missing or Wrong Items",
     "question": "My case looks scratched, cloudy or not clear",
-    "keywords": "scratches, scratched, scratched lid, marks on the lid, cloudy, hazy, foggy, not clear, not transparent, lines, marks, film, protective film, wrapper, cannot remove, won't come off, cloudy acrylic, scratched acrylic",
+    "keywords": "scratches, scratched, scratched lid, marks on the lid, cloudy, hazy, foggy, not clear, not transparent, lines, marks, film, protective film, wrapper, cannot remove, won't come off, cloudy acrylic, scratched acrylic, non transparent, not see through, see through, hard to see through, scratch up, scratches easily, scratched up",
     "action": "Product Issues › Damaged or Defective",
     "answer": "Our acrylic ships with a thin protective film on both sides, and it can look like scratches, haze or a cloudy finish. Peel it off gently from one corner on each side, inside and out.\n\nMarks still there with the film off? Choose Damaged or Defective below with a photo and we'll make it right."
   },
@@ -198,28 +205,28 @@
   {
     "collection": "Damaged, Missing or Wrong Items",
     "question": "The lock won't open or won't take the combination",
-    "keywords": "lock, locked, combination, code, unable to open, can't open, lock won't set, lock issue, only one lock works, tsa, dial lock, forgot code, locked out, lock stuck, stuck lock, lock jammed, jammed, combination not working, lock broken, broken lock",
+    "keywords": "lock, locked, combination, code, unable to open, can't open, lock won't set, lock issue, only one lock works, tsa, dial lock, forgot code, locked out, lock stuck, stuck lock, lock jammed, jammed, combination not working, lock broken, broken lock, lock nahi khul raha, lock nahi khulta, lock khul nahi raha, lock band nahi ho raha, lock kharab, code nahi lag raha, lock nahi lag raha, lock jam",
     "action": "Product Issues › Damaged or Defective",
     "answer": "Most of our TSA locks come set to 000. To set your own code: open the lock with the current code, activate the reset mechanism, choose your new code, then return the reset mechanism to its original position. Test the new code a few times before you lock the case. Our video guide walks you through each lock type: https://zioncases.com/pages/setting-tsa-dial-combination-locks\n\nStill won't open or set? Choose Damaged or Defective, then \"Manufacturing defect in the product\", tell us which case you have and add a short video of what happens. We'll help, and if the lock is faulty, we'll make it right."
   },
   {
     "collection": "Damaged, Missing or Wrong Items",
     "question": "The bottom of my case is bowing or not flat",
-    "keywords": "bowing, warped, not flat, bottom bowing, uneven, wobble, rocking",
+    "keywords": "bowing, warped, not flat, bottom bowing, uneven, wobble, rocking, warped up, warping, bending, bends, middle of the case, won't stay",
     "action": "Product Issues › Damaged or Defective",
     "answer": "Sorry about that. Choose Damaged or Defective, then \"Manufacturing defect in the product\", and add a photo from the side showing the bowing. Our team reviews it and gets back to you with a solution."
   },
   {
     "collection": "Warranty & Parts",
     "question": "Is my case covered by warranty?",
-    "keywords": "warranty, wheel fell off, handle stopped working, rust, rusting, hinge torn, rivets, stopped working, after a few months, used it for a while, less than a year, broke after, after using, after use, stopped working after, under warranty, is it under warranty",
+    "keywords": "warranty, wheel fell off, handle stopped working, rust, rusting, hinge torn, rivets, stopped working, after a few months, used it for a while, less than a year, broke after, after using, after use, stopped working after, under warranty, is it under warranty, warranty hai kya, warranty milegi, guarantee hai kya",
     "action": "Product Issues › Warranty Claim",
     "answer": "For a problem that started after you've used your case for a while, choose Warranty Claim below. Tell us what happened and when you bought it, and add photos or a video.\n\nOur team checks your purchase date and warranty coverage, then confirms whether a replacement, a repair or another solution is available."
   },
   {
     "collection": "Warranty & Parts",
     "question": "Can I buy replacement parts like wheels, risers, lids or foam?",
-    "keywords": "replacement parts, spare parts, buy wheels, extra risers, foam dividers, inserts, buy a lid, replacement wheel, parts, new lid, order a lid, order parts, buy a part",
+    "keywords": "replacement parts, spare parts, buy wheels, extra risers, foam dividers, inserts, buy a lid, replacement wheel, parts, new lid, order a lid, order parts, buy a part, replaceable wheels, purchase replacement, purchase wheels, buy replacement, wheels cracked, new wheels",
     "action": "Other Queries › General question",
     "answer": "Tell us below which part you need, how many, and which product it's for. Our team will let you know what's available and the price.\n\nIf a part arrived broken, report it within 7 days of delivery with Damaged or Defective. If it broke later with normal use, choose Warranty Claim."
   },
@@ -275,7 +282,7 @@
   {
     "collection": "Payments & Discounts",
     "question": "Can I get an invoice or receipt?",
-    "keywords": "invoice, receipt, proof of purchase, tax invoice, billing, for my business, business invoice, company invoice, invoice for my order",
+    "keywords": "invoice, receipt, proof of purchase, tax invoice, billing, for my business, business invoice, company invoice, invoice for my order, invoice chahiye, bill chahiye, receipt chahiye, invoice bhejo, bill bhejo, gst bill",
     "action": "Other Queries › Invoice or Receipt",
     "answer": "Your order confirmation email works as a receipt. Need a formal invoice, or extra details on it? Tell us your order number and what you need."
   },
@@ -346,8 +353,8 @@
     "collection": "Returns & Exchanges",
     "question": "Can I return something I ordered by mistake?",
     "keywords": "ordered by mistake, ordered the wrong, clicked wrong, wrong one ordered, ordered wrong size, ordered wrong colour, my mistake",
-    "action": "Returns, Exchanges & Refunds › Ordered the wrong item or colour",
-    "answer": "Yes. If it's unused and in its original packaging, you can return or exchange it within 6 months of purchase (exchanges are subject to shipping charges). Choose Ordered the wrong item or colour below. Hasn't shipped yet? Change the order instead with Edit Existing Order."
+    "action": "Returns, Exchanges & Refunds",
+    "answer": "Yes. If it's unused and in its original packaging, you can return or exchange it within 6 months of purchase (exchanges are subject to shipping charges). Choose Return & Exchange Request or Return & Refund Request below and pick \"I ordered the wrong item or colour\" as the reason. Hasn't shipped yet? Change the order instead with Edit Existing Order."
   },
   {
     "collection": "Returns & Exchanges",
@@ -362,6 +369,13 @@
     "keywords": "claim status, warranty status, any update, update on my claim, follow up, my request, my ticket, haven't heard back, waiting for reply",
     "action": "",
     "answer": "Open your request from the link in our email, or from Your requests when you're signed in. Its page shows where it stands, and you can reply to our team there.\n\nCan't find it? Look it up with your request number and email from the request page."
+  },
+  {
+    "question": "I already sent a request. Can I send another one?",
+    "answer": "There's no need: we keep one open request per issue for each order, so everything stays in one place. Open your request from the link in our email, or from Your requests when you're signed in, and reply there to add details or photos. Our team answers there and by email.\n\nIf it's about a different issue or another order, you can send a new request. Once a request is resolved, you can send a new one about the same thing if you still need help.",
+    "keywords": "already sent a request, already submitted, sent twice, second request, another request, new request, duplicate request, same issue, same problem again, submit again, resubmit, open request, existing request, already have a request, already opened a ticket, another ticket, new ticket, add more details, add photos to my request, update my request",
+    "collection": "Warranty & Parts",
+    "action": ""
   },
   {
     "collection": "Warranty & Parts",
@@ -675,14 +689,14 @@
     "collection": "Wholesale & Partners",
     "question": "Why was my wholesale application rejected?",
     "keywords": "wholesale application rejected, wholesale rejected, wholesale application declined, wholesale application denied, application rejected, application declined, application denied, application not approved, why was i rejected, why was my application rejected, dealer application rejected",
-    "action": "Wholesale Queries › Wholesale application rejected",
+    "action": "Wholesale Queries › Why was my wholesale application rejected?",
     "answer": "We review every wholesale application. Wholesale accounts are for businesses with a brick-and-mortar store, a card show presence or a large breaking channel.\n\nIf yours wasn't approved, ask us below: our wholesale team will tell you why where they can, and what would help if you apply again."
   },
   {
     "collection": "Wholesale & Partners",
     "question": "Why was my affiliate application rejected?",
     "keywords": "affiliate application rejected, affiliate rejected, affiliate declined, affiliate denied, creator application rejected, influencer application rejected, not accepted affiliate, affiliate not approved, why was my affiliate application rejected",
-    "action": "Affiliate Queries › Affiliate application rejected",
+    "action": "Affiliate Queries › Why was my affiliate application rejected?",
     "answer": "We review every affiliate application. If yours wasn't approved, ask us below: our team will tell you why where they can, and what would help if you apply again."
   }
 ]

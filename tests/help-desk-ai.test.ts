@@ -55,8 +55,21 @@ describe("The AI assistant", () => {
     expect(await aiDecide({ message: "it broke", history: [], knowledge, products: [] })).toEqual({ kind: "clarify", reply: "Which order is it about?" });
     reply.next = { action: "human", source_ids: [], reply: "" };
     expect(await aiDecide({ message: "agent se baat karao", history: [], knowledge, products: [] })).toEqual({ kind: "human" });
-    reply.next = { action: "greet", source_ids: [], reply: "" };
-    expect(await aiDecide({ message: "namaste", history: [], knowledge, products: [] })).toEqual({ kind: "greet" });
+    reply.next = { action: "greet", source_ids: [], reply: "Hello! How can I help you today?" };
+    expect(await aiDecide({ message: "namaste", history: [], knowledge, products: [] })).toEqual({ kind: "greet", reply: "Hello! How can I help you today?" });
+    reply.next = { action: "thanks", source_ids: [], reply: "" };
+    expect(await aiDecide({ message: "ok thanks", history: [], knowledge, products: [] })).toEqual({ kind: "thanks", reply: "" });
+  });
+
+  it("is given the customer's request, so it never asks for it again", async () => {
+    reply.next = { action: "clarify", source_ids: [], reply: "Your lost package request is with our team." };
+    await aiDecide({ message: "any news?", history: [{ role: "assistant", text: "Hi!" }], knowledge, products: [], request: "Request #1007\nIssue: Shipping & Delivery › Lost Package" });
+    const call = reply.calls[0] as { system: { text: string }[]; messages: { content: string }[] };
+    expect(call.messages[0].content).toContain("<request>\nRequest #1007\nIssue: Shipping & Delivery › Lost Package\n</request>");
+    expect(call.messages[0].content).toContain("<chat>\nassistant: Hi!\n</chat>");
+    expect(call.system.map((block) => block.text).join("")).toContain("Never ask them again for anything in it");
+    // Never in Hindi or Hinglish: the app is in English.
+    expect(call.system.map((block) => block.text).join("")).toContain("Always reply in English");
   });
 
   it("finds help center answers by meaning, only ones that exist", async () => {

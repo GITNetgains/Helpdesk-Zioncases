@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { cancelOrderInShopify, confirmItemsCancelled, decideCancellation } from "../app/services/help-desk-cancel.server";
 import { rejectAddressChange, updateAddressInShopify } from "../app/services/help-desk-address.server";
 import { applyOrderEdit, cleanOps, previewOrderEdit, rejectOrderEdit } from "../app/services/help-desk-edit.server";
@@ -29,6 +29,9 @@ beforeAll(async () => {
   }
 });
 afterAll(async () => { await db.$disconnect(); rmSync(temp, { recursive: true, force: true }); });
+// Each test starts with the earlier tests' requests resolved: the same customer
+// can't have two open requests about the same issue and order.
+beforeEach(async () => { await db.helpDeskTicket.updateMany({ where: { status: { not: "Resolved" } }, data: { status: "Resolved" } }); });
 
 describe("Help desk persistence", () => {
   it("persists tickets, removes inactive fields and deduplicates retries", async () => {
@@ -194,7 +197,7 @@ describe("Help desk conversations", () => {
     const body = form();
     const first = await submitTicket(db, numbered, body, "42");
     const retry = await submitTicket(db, numbered, body);
-    const second = await submitTicket(db, numbered, form());
+    const second = await submitTicket(db, numbered, form({ email: "second@example.com" }));
     const other = await submitTicket(db, "numbers-other.myshopify.com", form());
     expect([first.number, retry.number, second.number, other.number]).toEqual([1001, 1001, 1002, 1001]);
     expect(first.token).toMatch(/^[a-f0-9]{48}$/);
@@ -202,6 +205,21 @@ describe("Help desk conversations", () => {
     expect(retry.created).toBe(false);
     expect((await db.helpDeskTicket.findUniqueOrThrow({ where: { id: first.ticketId } })).customerId).toBe("42");
     expect((await db.helpDeskTicket.findUniqueOrThrow({ where: { id: second.ticketId } })).customerId).toBe("");
+  });
+  it("refuses a second open request about the same issue and order, until the first is resolved", async () => {
+    const lost = (extra: Record<string, string> = {}) => form({ topic: topics[3], orderType: orderTypes[3], delivery: deliveryIssues[0], orderNumber: "#7001", details: "Where is it?", existing: "", query: "", category: "Shipping & Delivery", subcategory: "Track My Order", ...extra });
+    const first = await submitTicket(db, shop, lost());
+    expect(first.errors).toEqual({});
+    // The same customer (any case), issue and order (written either way): refused, naming the open request.
+    const again = await submitTicket(db, shop, lost({ email: "Customer@Example.com", orderNumber: "7001" }));
+    expect(again.errors.form).toContain(`#${first.number}`);
+    // Another order, another customer or another issue: fine.
+    expect((await submitTicket(db, shop, lost({ orderNumber: "#7002" }))).errors).toEqual({});
+    expect((await submitTicket(db, shop, lost({ email: "someone@example.com" }))).errors).toEqual({});
+    expect((await submitTicket(db, shop, lost({ delivery: deliveryIssues[6], subcategory: "Shipment Delayed" }))).errors).toEqual({});
+    // Once the first is resolved, a new one can be sent.
+    await updateTicketStatus(db, shop, first.ticketId!, "Resolved");
+    expect((await submitTicket(db, shop, lost())).errors).toEqual({});
   });
   it("logs property changes and only touches the owning shop's tickets", async () => {
     const { ticketId } = await submitTicket(db, shop, form());
@@ -1069,7 +1087,11 @@ describe("International shipping quotes", () => {
     return body;
   };
 
-  it("needs Regular or Expedited shipping, and starts pending", async () => {
+  it("takes no shipping method (the form shows live rates), and starts pending", async () => {
+    const plain = await submitTicket(db, shop, request({ shippingMethod: "", email: "rates-only@example.com" }));
+    expect(plain.errors).toEqual({});
+    expect(JSON.parse((await db.helpDeskTicket.findUniqueOrThrow({ where: { id: plain.ticketId } })).details)).not.toHaveProperty("shippingMethod");
+    // A method sent anyway must still be Regular or Expedited.
     expect((await submitTicket(db, shop, request({ shippingMethod: "Teleport" }))).errors.shippingMethod).toBeTruthy();
     const { ticketId, errors } = await submitTicket(db, shop, request());
     expect(errors).toEqual({});

@@ -15,6 +15,47 @@ function orderOf(details: string) {
 const ORDER_STATUS = /\bwhere('?s| is)?\b[^?.!]*\b(order|package|parcel|stuff|shipment|delivery)\b|\btrack(ing)?\b|\b(order|delivery|shipping) status\b|\bstatus of (my|the) order\b|\b(has|did) (it|my order|the order) (ship|shipped|arrive|left)\b|\bshipped yet\b|\bwhen (will|does|is) (it|my order|the order|my package)\b[^?.!]*\b(arrive|come|ship|deliver)|\b(kab|kb) (aayega|ayega|aaega|milega|aaegi|ayegi)\b|\bkahan (hai|h)\b/i;
 export const asksOrderStatus = (text: string) => ORDER_STATUS.test(text);
 
+// Asking how their request is going: its status, not the order's.
+// A bare "update?" or "status" asks it too, as does "koi update?" / "kya hua?".
+const REQUEST_STATUS = /\b(status|update|progress|news|any word)\b[^?.!]*\b(request|ticket|case|claim|return|refund|cancell?ation|replacement|exchange)\b|\b(request|ticket|case|claim|return|refund|cancell?ation|replacement|exchange)\b[^?.!]*\b(status|update|progress|approved|going)\b|\bany (update|news)\b|^\s*(any\s+)?(update|updates|status|news|progress)\s*[?.!]*\s*$|\b(koi|kya|kuch) (update|news)\b|^\s*(kya hua|aur kya hua|kab tak)\s*[?.!]*\s*$/i;
+export const asksRequestStatus = (text: string) => REQUEST_STATUS.test(text);
+
+// The request as the customer sent it and where it stands, so the assistant
+// never asks again for what's already on it, and can say how it's going.
+type RequestFacts = {
+  number: number; status: string; category: string; subcategory: string; details: string;
+  cancelStatus: string; addressStatus: string; returnStatus: string; editStatus: string; replacementStatus: string; replacementKind: string; quoteStatus: string;
+};
+const STATUS_WORDS: Record<string, string> = {
+  Open: "our team has it and will reply here soon",
+  "In progress": "our team is working on it",
+  "Waiting on customer": "our team has replied and is waiting for your answer",
+  Resolved: "it's resolved",
+};
+// Each decision the team makes on a request, where it stands.
+function decisions(ticket: RequestFacts) {
+  const kind = ticket.replacementKind === "warranty" ? "Warranty claim" : ticket.replacementKind === "lost" ? "Lost package" : "Replacement part";
+  return [["Cancellation", ticket.cancelStatus], ["Address change", ticket.addressStatus], ["Return", ticket.returnStatus], ["Order changes", ticket.editStatus], [kind, ticket.replacementStatus], ["Shipping details", ticket.quoteStatus]]
+    .filter(([, status]) => status).map(([label, status]) => `${label}: ${status === "Pending" ? "pending review" : status.toLowerCase()}`);
+}
+export function requestStatusText(ticket: RequestFacts) {
+  const about = ticket.subcategory || ticket.category;
+  const lines = decisions(ticket);
+  return `Your request #${ticket.number}${about ? ` (${about})` : ""}: ${STATUS_WORDS[ticket.status] ?? ticket.status.toLowerCase()}.${lines.length ? `\n${lines.map((line) => `- ${line}`).join("\n")}` : ""}\n\nWe'll also email you as soon as anything changes.`;
+}
+// For the AI: the request's issue, status and what the customer wrote on it.
+function requestContext(ticket: RequestFacts) {
+  let values: Record<string, string> = {};
+  try { values = JSON.parse(ticket.details || "{}") as Record<string, string>; } catch { values = {}; }
+  const facts = [
+    `Request #${ticket.number}`, `Issue: ${[ticket.category, ticket.subcategory].filter(Boolean).join(" › ") || "not set"}`, `Status: ${ticket.status} (${STATUS_WORDS[ticket.status] ?? ""})`,
+    ...decisions(ticket),
+    ...["orderNumber", "orderDate", "defects", "resolution", "cancelReason", "country"].filter((key) => values[key]).map((key) => `${key}: ${values[key]}`),
+  ];
+  const wrote = ["details", "query", "orderNote", "productDetails", "otherDetails"].map((key) => values[key]).filter(Boolean).join("\n").slice(0, 2000);
+  return `${facts.join("\n")}${wrote ? `\nWhat they wrote:\n${wrote}` : ""}`;
+}
+
 // The order's live status in a few lines: cancelled, on hold, being prepared,
 // or each shipment with its carrier, tracking, and when it arrived or should.
 const day = (iso: string | null) => iso ? new Intl.DateTimeFormat("en-US", { weekday: "long", month: "long", day: "numeric", timeZone: "UTC" }).format(new Date(iso)) : "";
@@ -47,14 +88,15 @@ type AdminClient = { graphql: (query: string, options?: { variables?: Record<str
 export const ASSISTANT = "Assistant";
 export const HUMAN_TAG = "needs-human";
 
-const ASKS_FOR_PERSON = /\b(human|person|people|agent|representative|rep|someone|somebody|staff|manager|supervisor|operator|live (chat|support)|real (person|human)|talk to|speak (to|with)|call me|phone me|customer (service|care))\b/i;
-const GREETING = /^\s*(hi+|hello+|hey+|hiya|yo|howdy|hola|namaste|namaskar|salaam|salam|good (morning|afternoon|evening|day))\b[\s!.,]*(there|team|guys|zion|bhai|sir)?[\s!.,]*$/i;
+// ...in Hinglish too: "kisi insaan se baat karni hai", "team se baat karao".
+const ASKS_FOR_PERSON = /\b(human|person|people|agent|representative|rep|someone|somebody|staff|manager|supervisor|operator|live (chat|support)|real (person|human)|talk to|speak (to|with)|call me|phone me|customer (service|care)|insaan|insan|aadmi|kisi se baat|(team|banda|bande) se baat|baat (karao|karwao|kara do|karwa do|krwao)|call (karo|kar do|kardo)|phone (karo|kar do|kardo))\b/i;
+const GREETING = /^\s*(hi+|hello+|hey+|hiya|yo|howdy|hola|namaste|namaskar|salaam|salam|good (morning|afternoon|evening|day))\b[\s!.,?]*(there|team|guys|zion|bhai|sir)?[\s!.,?]*$/i;
 const THANKS = /^\s*(thanks?|thank you|thank u|thanku|thnx|thanx|thx|ty|cheers|shukriya|dhanyavad|dhanyawad|ok(ay)?|great|perfect|awesome|got it|cool|nice|that helps?|that worked|solved)\b[\s\S]{0,40}$/i;
 
 // Small talk: the whole message is chat, not a question about the store ("hi,
 // how are you?"). A message that also asks something ("how are you, where's my
 // order?") isn't, and is answered as a question.
-export type SmallTalk = "howAreYou" | "whoAreYou" | "whatCanYouDo" | "stillThere" | "goodbye" | "sorry";
+export type SmallTalk = "howAreYou" | "whoAreYou" | "whatCanYouDo" | "stillThere" | "goodbye" | "sorry" | "upset" | "filler";
 const SMALL_TALK: [SmallTalk, RegExp][] = [
   ["howAreYou", /^(how (are|r) (you|u|ya)( doing)?( today)?|how ?(is|s) (it going|your day|everything|life)|how do you do|hows it going|whats up|wassup|wazzup|sup|you good|hope (you are|youre) (well|good|doing well)|kaise ho( aap)?|aap kaise ho|kaisa hai|kya haal( hai)?|kya hal hai|sab (theek|thik|badhiya|badiya)( hai)?)$/],
   ["whoAreYou", /^(who (are|r) (you|u)|who is this|what (are|r) (you|u)|whats your name|what is your name|your name|(are|r) (you|u) (a |an )?(bot|robot|ai|chat ?bot|machine|computer|human|real|real person|real human|person|automated)|is this (a |an )?(bot|robot|ai|chat ?bot|automated|real person|human|person)|am i (talking|chatting|speaking) (to|with) (a |an )?(bot|robot|ai|human|real person|person|machine)|(aap|tum|ap) (kaun|kon) (ho|hai|hain))$/],
@@ -62,12 +104,18 @@ const SMALL_TALK: [SmallTalk, RegExp][] = [
   ["stillThere", /^((are|r) (you|u) (still )?there|(is )?any ?(one|body) (there|here|available)|you there|still there|hello+ (anyone|any one)|koi hai)$/],
   ["goodbye", /^(bye+|bye bye|good ?bye|see (you|ya|u)( later| soon)?|take care|good ?night|gn|thats (all|it)( for now)?|nothing else|no (thats|that is) (all|it)|im (good|done|all set|fine)|all (good|set|done)|have a (good|nice|great) (day|one|night|evening|weekend)|ok bye|chalo bye|alvida)$/],
   ["sorry", /^(sorry|so sorry|my bad|oops|apologies|my apologies|sorry for (the )?(trouble|bother|confusion|delay)|maaf karna|sorry bhai)$/],
+  // Upset, without saying about what yet: acknowledged first, then asked.
+  ["upset", /^((this is |that is |thats |its )?(ridiculous|unacceptable|pathetic|terrible|horrible|awful|a joke|a scam|disgusting)|(very |so |really )?(bad|worst|terrible|poor|pathetic) (service|support|experience|company)|worst( service| experience| company| support)?( ever)?|(i am |im )?(so |very |really )?(angry|upset|frustrated|annoyed|disappointed|fed up|pissed( off)?)|(this is |its )?(so )?frustrating|not happy( at all)?|bakwas( service| hai)?|ghatiya( service| hai)?|bekar( service| hai)?|bahut bura|kya bakwas hai)$/],
+  // Nothing to answer yet: "lol", "hmm", "?", "haha".
+  ["filler", /^(lol+|lmao|haha+|hehe+|hmm+|hm+|umm+|uh+|ah+|oh+|k+|kk+|ok ok|yes|yeah|yep|ya|haan|han|ji|acha|achha|accha|theek hai|thik hai)$/],
 ];
 
 // The message as small talk is matched: lower case, no punctuation or emoji,
 // without a leading "hi"/"ok" or a trailing "there"/"please".
 function smallTalkOf(message: string): SmallTalk | null {
   let text = message.toLowerCase().replace(/[’‘`]/g, "'").replace(/'/g, "").replace(/[^a-z0-9\s]+/g, " ").replace(/\s+/g, " ").trim();
+  // Only punctuation ("?", "...", "!!"): nothing said yet.
+  if (!text && /[?!.]/.test(message)) return "filler";
   if (!text || text.length > 80) return null;
   // Matched as written first, then with each filler word taken off ("are you
   // there" is asking, "hi there" isn't).
@@ -104,8 +152,9 @@ export type Decision =
   // Not sure what they mean, or the answer didn't help: ask, and offer the
   // closest answers. reply: the AI's own words for it.
   | { kind: "clarify"; reason: "unsure" | "unhelpful" | "repeat"; suggestions: Answer[]; reply?: string }
-  | { kind: "greet" }
-  | { kind: "thanks" }
+  // reply: the AI's own words for it (help-desk-ai.server.ts), else the store's wording.
+  | { kind: "greet"; reply?: string }
+  | { kind: "thanks"; reply?: string }
   | { kind: "smalltalk"; topic: SmallTalk }
   // The request's order, live from Shopify (asked where it is).
   | { kind: "orderStatus" }
@@ -166,18 +215,20 @@ function quickDecision(message: string): Decision | null {
 
 // With AI on, Claude reads the message (help-desk-ai.server.ts); without it,
 // or when it can't be reached, the keyword matching above decides.
-async function smartDecide(db: PrismaClient, admin: AdminClient | undefined, shop: string, text: string, answered: string[], history: AiTurn[]): Promise<Decision> {
+async function smartDecide(db: PrismaClient, admin: AdminClient | undefined, shop: string, text: string, answered: string[], history: AiTurn[], request = ""): Promise<Decision> {
   const message = text.trim();
   if (aiAssistantEnabled()) {
     const quick = quickDecision(message);
-    // "No, that's not it" is for the AI too: it can see what it answered.
-    if (quick && quick.kind !== "clarify") return quick;
+    // Only an empty message or asking for a person skips the AI: greetings,
+    // small talk and "no, that's not it" it answers in its own words, like a chat.
+    if (quick?.kind === "silent" || quick?.kind === "handoff") return quick;
     const { knowledge, products } = await assistantSources(db, admin, shop, message);
-    const ai = await aiDecide({ message, history, knowledge, products });
+    const ai = await aiDecide({ message, history, knowledge, products, request });
     if (ai?.kind === "answer") return { kind: "answer", answer: ai.sources[0], reply: ai.reply };
     if (ai?.kind === "clarify") return { kind: "clarify", reason: "unsure", suggestions: [], reply: ai.reply };
     if (ai?.kind === "human") return { kind: "handoff", reason: "asked" };
-    if (ai) return { kind: ai.kind };
+    if (ai) return { kind: ai.kind, ...(ai.reply ? { reply: ai.reply } : {}) };
+    if (quick) return quick;
   }
   return keywordDecide(db, admin, shop, text, answered);
 }
@@ -228,9 +279,9 @@ export function assistantMessage(decision: Decision, firstName = "", copy: Assis
     case "clarify":
       return clarifyBody(decision, firstName, copy);
     case "greet":
-      return withFirstName(copy.greeting, firstName);
+      return decision.reply ?? withFirstName(copy.greeting, firstName);
     case "thanks":
-      return withFirstName(copy.thanks, firstName);
+      return decision.reply ?? withFirstName(copy.thanks, firstName);
     case "smalltalk":
       return withFirstName(copy[decision.topic], firstName);
     case "handoff":
@@ -260,7 +311,8 @@ export type Turn = { decision: Decision; reply: string; notifyTeam: boolean; han
 export async function assistantTurn(db: PrismaClient, admin: AdminClient | undefined, shop: string, ticketId: string, text: string, now = new Date()): Promise<Turn> {
   const ticket = await db.helpDeskTicket.findFirst({
     where: { id: ticketId, shop },
-    select: { id: true, name: true, email: true, details: true, priority: true, tags: true, humanRequestedAt: true, messages: { where: { OR: [{ kind: { in: ["customer", "reply", "bot"] } }, { kind: "event", body: CHAT_CLEARED }] }, orderBy: { createdAt: "desc" }, take: 30, select: { kind: true, body: true, createdAt: true } } },
+    select: { id: true, name: true, email: true, details: true, priority: true, tags: true, humanRequestedAt: true,
+      number: true, status: true, channel: true, category: true, subcategory: true, cancelStatus: true, addressStatus: true, returnStatus: true, editStatus: true, replacementStatus: true, replacementKind: true, quoteStatus: true, messages: { where: { OR: [{ kind: { in: ["customer", "reply", "bot"] } }, { kind: "event", body: CHAT_CLEARED }] }, orderBy: { createdAt: "desc" }, take: 30, select: { kind: true, body: true, createdAt: true } } },
   });
   const quiet: Turn = { decision: { kind: "silent" }, reply: "", notifyTeam: true, handoff: false };
   if (!ticket) return quiet;
@@ -302,13 +354,21 @@ export async function assistantTurn(db: PrismaClient, admin: AdminClient | undef
       return { decision: { kind: "orderStatus" }, reply, notifyTeam: false, handoff: false };
     }
   }
+  // A request sent from the form, asked how it's going: where it stands, from the request itself.
+  const sent = ticket.channel !== "chat";
+  if (sent && asksRequestStatus(text)) {
+    const reply = `${requestStatusText(ticket)}\n\n${withFirstName(copy.followUp, firstName)}`;
+    await say(reply);
+    return { decision: { kind: "orderStatus" }, reply, notifyTeam: false, handoff: false };
+  }
   // If understanding fails (Shopify or the AI down), the customer still hears back.
-  let decision = await smartDecide(db, admin, shop, text, answered, history)
+  let decision = await smartDecide(db, admin, shop, text, answered, history, sent ? requestContext(ticket) : "")
     .catch((error): Decision => { console.error(`Help Desk assistant could not read a message on ticket ${ticket.id}:`, error); return { kind: "clarify", reason: "unsure", suggestions: [] }; });
   if (decision.kind === "silent") return quiet;
   // On an order request, what the assistant can't answer is the team's: the
   // customer hears their request is in process, and the team is told.
-  if (orderNumber && decision.kind === "clarify" && decision.reason === "unsure" && !asksHow(text)) {
+  // (The AI's own reply stands: it knows the request and answers in its words.)
+  if (orderNumber && decision.kind === "clarify" && decision.reason === "unsure" && !decision.reply && !asksHow(text)) {
     const reply = withFirstName(copy.orderInProcess, firstName);
     await say(reply);
     return { decision, reply, notifyTeam: true, handoff: false };

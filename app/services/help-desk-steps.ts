@@ -36,7 +36,7 @@ function flowSteps(option: FormOption & { kinds?: FormOption["kinds"] }): string
       return [PICK_ORDER, "Pick the product, describe the reason and add photos.", "Choose a refund or an exchange (returns: within 6 months of purchase, unused and in the original packaging).", SUBMIT, "Once our team approves it, we send the return instructions. Please don't ship anything back before that."];
     case "international":
       return option.region === "domestic"
-        ? ["Pick the products and enter your address.", "You'll see each shipping option with its price and delivery date.", "Have a question about it? Add it and press Submit Request."]
+        ? ["Pick the products and enter your city, state and ZIP code.", "You'll see each shipping option with its price and delivery date.", "Have a question about it? Add it and press Submit Request."]
         : ["Pick the products you'd like and enter your full address.", "Choose regular or expedited shipping.", SUBMIT, "Our team replies with the shipping method, delivery date, cost and any taxes."];
     case "customs":
       return ["Choose the country it ships to, and add your order number if you have one.", "Write your question.", SUBMIT];
@@ -63,7 +63,7 @@ function startSteps(groupLabel: string, option: FormOption & { section: string }
   if (aboutAnOrder(option)) return [
     "On our Help Desk page, choose \"I have a question about an order\".",
     `Pick your order (or "My order isn't listed").`,
-    `Choose ${groupLabel === "Other Queries" ? "Other order questions" : groupLabel} as the category and ${option.label} under "What would you like to do?", then press Continue with this order.`,
+    `Choose ${groupLabel === "Other Queries" ? "Other order questions" : groupLabel} as the category (if it asks) and ${option.label} under "What would you like to do?", then press Continue with this order.`,
   ];
   if (option.flow === "international" && option.region === "international") return ["On our Help Desk page, choose \"My question isn't about an order\".", "Press International Shipping."];
   if (PRODUCT_SECTIONS.includes(option.section)) return [
